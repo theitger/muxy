@@ -1,0 +1,135 @@
+import SwiftUI
+import AppKit
+
+/// UI colors. The background is parsed 1:1 from the user's ghostty theme
+/// files at launch; chrome tones (sidebar, borders, active states) are
+/// derived from it so the app always matches the terminal.
+enum Theme {
+    private static let ghostty = GhosttyColors.load()
+
+    static let bg = dynamic(light: ghostty.light, dark: ghostty.dark)
+    static let surface = dynamic(
+        light: ghostty.light.shifted(by: -0.045),
+        dark: ghostty.dark.shifted(by: 0.028)
+    )
+    static let surfaceActive = dynamic(
+        light: ghostty.light.shifted(by: 0.6),
+        dark: ghostty.dark.shifted(by: 0.07)
+    )
+    static let border = dynamic(
+        light: ghostty.light.shifted(by: -0.11),
+        dark: ghostty.dark.shifted(by: 0.08)
+    )
+
+    static let textPrimary = dyn(light: 0x1A1A1A, dark: 0xF0F0F0)
+    static let textBody = dyn(light: 0x3A3A3A, dark: 0xC8C8C8)
+    static let textMuted = dyn(light: 0x707070, dark: 0x9A9A9A)
+    static let textDim = dyn(light: 0x909090, dark: 0x6A6A6A)
+    static let textFaint = dyn(light: 0xA6A6A6, dark: 0x5A5A5A)
+    static let accent = dyn(light: 0xE8630C, dark: 0xFF8A2E)
+    static let green = dyn(light: 0x2E7D32, dark: 0x28C840)
+    static let red = dyn(light: 0xB3001B, dark: 0xE63946)
+    static let dotIdle = dyn(light: 0xC4C4C0, dark: 0x3A3A3A)
+    static let claude = dyn(light: 0xBE5A38, dark: 0xD97757)
+    static let codex = dyn(light: 0x0E8A6D, dark: 0x19B98B)
+
+    private static func dyn(light: Int, dark: Int) -> Color {
+        dynamic(light: RGB(hex: light), dark: RGB(hex: dark))
+    }
+
+    private static func dynamic(light: RGB, dark: RGB) -> Color {
+        Color(nsColor: NSColor(name: nil) { appearance in
+            let rgb = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? dark : light
+            return rgb.nsColor
+        })
+    }
+}
+
+struct RGB {
+    var r: CGFloat
+    var g: CGFloat
+    var b: CGFloat
+
+    init(hex: Int) {
+        r = CGFloat((hex >> 16) & 0xFF) / 255
+        g = CGFloat((hex >> 8) & 0xFF) / 255
+        b = CGFloat(hex & 0xFF) / 255
+    }
+
+    init?(hexString: String) {
+        var text = hexString.trimmingCharacters(in: .whitespaces)
+        if text.hasPrefix("#") { text = String(text.dropFirst()) }
+        guard text.count == 6, let value = Int(text, radix: 16) else { return nil }
+        self.init(hex: value)
+    }
+
+    /// Positive amounts blend toward white, negative toward black.
+    func shifted(by amount: CGFloat) -> RGB {
+        var copy = self
+        let target: CGFloat = amount >= 0 ? 1 : 0
+        let strength = abs(amount)
+        copy.r += (target - copy.r) * strength
+        copy.g += (target - copy.g) * strength
+        copy.b += (target - copy.b) * strength
+        return copy
+    }
+
+    var nsColor: NSColor {
+        NSColor(srgbRed: r, green: g, blue: b, alpha: 1)
+    }
+}
+
+/// Reads `theme = light:X,dark:Y` from the user's ghostty config and pulls
+/// each theme file's `background = #…`.
+enum GhosttyColors {
+    struct Pair {
+        var light: RGB
+        var dark: RGB
+    }
+
+    static func load() -> Pair {
+        var pair = Pair(light: RGB(hex: 0xF4F4F0), dark: RGB(hex: 0x0F0F0F))
+        let config = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".config/ghostty")
+        guard let content = try? String(
+            contentsOf: config.appendingPathComponent("config"), encoding: .utf8
+        ) else { return pair }
+
+        for rawLine in content.split(separator: "\n") {
+            let line = rawLine.trimmingCharacters(in: .whitespaces)
+            guard line.hasPrefix("theme"),
+                  let value = line.split(separator: "=", maxSplits: 1).last
+            else { continue }
+            for part in value.split(separator: ",") {
+                let piece = part.trimmingCharacters(in: .whitespaces)
+                if piece.hasPrefix("light:") {
+                    if let bg = background(theme: String(piece.dropFirst(6)), in: config) {
+                        pair.light = bg
+                    }
+                } else if piece.hasPrefix("dark:") {
+                    if let bg = background(theme: String(piece.dropFirst(5)), in: config) {
+                        pair.dark = bg
+                    }
+                } else if let bg = background(theme: piece, in: config) {
+                    pair.light = bg
+                    pair.dark = bg
+                }
+            }
+            break
+        }
+        return pair
+    }
+
+    private static func background(theme name: String, in config: URL) -> RGB? {
+        let file = config.appendingPathComponent("themes/\(name.trimmingCharacters(in: .whitespaces))")
+        guard let content = try? String(contentsOf: file, encoding: .utf8) else { return nil }
+        for rawLine in content.split(separator: "\n") {
+            let line = rawLine.trimmingCharacters(in: .whitespaces)
+            guard line.hasPrefix("background"),
+                  let value = line.split(separator: "=", maxSplits: 1).last
+            else { continue }
+            return RGB(hexString: String(value))
+        }
+        return nil
+    }
+}

@@ -1,0 +1,7 @@
+.build/
+.swiftpm/
+xcuserdata/
+DerivedData/
+*.xcodeproj
+Vendor/libghostty-spm/GhosttyKit.xcframework/
+dist/
