@@ -25,6 +25,11 @@ enum Theme {
     /// painted with it reads as part of the terminal, not a frame around it.
     static let terminal = bg.opacity(ghostty.opacity)
 
+    /// The sidebar: a darker tone at exactly the terminal's opacity. Areas of
+    /// different opacity side by side leave a visible line in Mission
+    /// Control, where macOS redraws the window blur.
+    static let sidebar = surface.opacity(ghostty.opacity)
+
     static let textPrimary = dyn(light: 0x1A1A1A, dark: 0xF0F0F0)
     static let textBody = dyn(light: 0x3A3A3A, dark: 0xC8C8C8)
     static let textMuted = dyn(light: 0x707070, dark: 0x9A9A9A)
@@ -120,7 +125,7 @@ enum GhosttyColors {
     struct Pair {
         var light: RGB
         var dark: RGB
-        var opacity: Double = 1
+        var opacity: CGFloat = 1
     }
 
     static func load() -> Pair {
@@ -130,13 +135,22 @@ enum GhosttyColors {
         guard let content = try? String(
             contentsOf: config.appendingPathComponent("config"), encoding: .utf8
         ) else { return pair }
+        var explicit: RGB?
 
         for rawLine in content.split(separator: "\n") {
             let line = rawLine.trimmingCharacters(in: .whitespaces)
             if line.hasPrefix("background-opacity"),
                let value = line.split(separator: "=", maxSplits: 1).last,
-               let number = Double(value.trimmingCharacters(in: .whitespaces)) {
+               let number = Double(value.trimmingCharacters(in: .whitespaces)).map({ CGFloat($0) }) {
                 pair.opacity = min(max(number, 0), 1)
+                continue
+            }
+            // An explicit `background = #…` beats the theme's.
+            if line.hasPrefix("background"),
+               line.dropFirst("background".count).first.map({ $0 == " " || $0 == "=" }) == true,
+               let value = line.split(separator: "=", maxSplits: 1).last,
+               let color = RGB(hexString: String(value)) {
+                explicit = color
                 continue
             }
             guard line.hasPrefix("theme"),
@@ -157,6 +171,10 @@ enum GhosttyColors {
                     pair.dark = bg
                 }
             }
+        }
+        if let explicit {
+            pair.light = explicit
+            pair.dark = explicit
         }
         return pair
     }

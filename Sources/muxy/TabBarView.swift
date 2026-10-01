@@ -10,12 +10,12 @@ struct TabBarView: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            IconButton(symbol: "sidebar.left", help: "Seitenleiste (⌘B)") {
+            IconButton(symbol: "sidebar.left", help: L("Sidebar (⌘B)")) {
                 store.toggleSidebar()
             }
             HStack(spacing: 2) {
                 ForEach(workspace.sessions) { session in
-                    SegmentTab(store: store, window: window, workspace: workspace, session: session)
+                    SegmentTab(store: store, workspace: workspace, session: session)
                 }
             }
             .padding(3)
@@ -23,7 +23,7 @@ struct TabBarView: View {
                 RoundedRectangle(cornerRadius: 9, style: .continuous)
                     .fill(Theme.textPrimary.opacity(0.05))
             )
-            IconButton(symbol: "plus", help: "Neuer Tab (⌘T)") {
+            IconButton(symbol: "plus", help: L("New Tab (⌘T)")) {
                 window.newTab()
             }
             Spacer(minLength: 8)
@@ -33,14 +33,15 @@ struct TabBarView: View {
         .padding(.leading, store.sidebarVisible ? 10 : 80)
         .padding(.trailing, 12)
         .frame(height: 46)
-        // The terminal paints its own background; this strip matches it.
+        // Matches the terminal and reaches 1pt under it: Ghostty leaves its
+        // outermost pixels unpainted, which shows as a seam wherever the
+        // window blur is missing (Mission Control).
         .background(Theme.terminal)
     }
 }
 
 private struct SegmentTab: View {
     @ObservedObject var store: Store
-    let window: WindowModel
     @ObservedObject var workspace: Workspace
     @ObservedObject var session: TerminalSession
     @State private var hovered = false
@@ -85,16 +86,6 @@ private struct SegmentTab: View {
         )
         .contentShape(Rectangle())
         .onTapGesture { workspace.selectedSessionID = session.id }
-        .gesture(
-            // Drag out → own window; onto the sidebar or another window →
-            // its own session there.
-            DragGesture(minimumDistance: 8, coordinateSpace: .global)
-                .onChanged { _ in DragGhost.update(title: session.tabTitle, from: window.nsWindow) }
-                .onEnded { _ in
-                    DragGhost.hide()
-                    store.drop(session, from: workspace, at: NSEvent.mouseLocation)
-                }
-        )
         .onHover { hovered = $0 }
         .animation(.easeOut(duration: 0.15), value: isActive)
     }
@@ -124,7 +115,7 @@ struct IconButton: View {
     }
 }
 
-/// "2027-scrollbar wartet ⌘J" — visible from any session, so the sidebar
+/// "login-fix ⌘J" — visible from any session, so the sidebar
 /// can stay hidden without missing anything.
 private struct AttentionPill: View {
     @ObservedObject var store: Store
@@ -138,7 +129,7 @@ private struct AttentionPill: View {
             } label: {
                 HStack(spacing: 7) {
                     Circle().fill(Theme.orange.strong).frame(width: 6, height: 6)
-                    Text(waiting.count == 1 ? first.title : "\(waiting.count) Sessions warten")
+                    Text(waiting.count == 1 ? first.title : L("%d sessions waiting", waiting.count))
                         .lineLimit(1)
                         .frame(maxWidth: 220)
                     Text("⌘J").opacity(0.55)

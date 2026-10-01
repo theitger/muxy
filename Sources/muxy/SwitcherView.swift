@@ -26,7 +26,7 @@ struct SwitcherView: View {
                 Image(systemName: "magnifyingglass")
                     .font(.system(size: 13, weight: .medium))
                     .foregroundStyle(Theme.textDim)
-                TextField("Session suchen …", text: $query)
+                TextField(L("Search sessions …"), text: $query)
                     .textFieldStyle(.plain)
                     .font(.system(size: 14))
                     .foregroundStyle(Theme.textPrimary)
@@ -38,7 +38,7 @@ struct SwitcherView: View {
             .frame(height: 48)
             Rectangle().fill(Theme.hairline).frame(height: 0.5)
             if results.isEmpty {
-                Text("Keine Session gefunden.")
+                Text(L("No session found."))
                     .font(.system(size: 13))
                     .foregroundStyle(Theme.textDim)
                     .frame(maxWidth: .infinity)

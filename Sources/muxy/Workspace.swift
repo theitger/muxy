@@ -58,9 +58,9 @@ final class Workspace: ObservableObject, Identifiable {
 
     /// Branch in a git checkout, the parent path anywhere else.
     var subtitle: String {
-        context.repo != nil
-            ? (context.branch ?? "detached")
-            : Paths.abbreviate((directory as NSString).deletingLastPathComponent)
+        if context.repo != nil { return context.branch ?? "detached" }
+        if directory == Paths.home { return L("Home") }
+        return Paths.abbreviate((directory as NSString).deletingLastPathComponent)
     }
 
     var groupName: String {

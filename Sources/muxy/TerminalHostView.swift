@@ -4,17 +4,23 @@ import GhosttyTerminal
 /// Hosts exactly one terminal view — the visible session's. Switching tabs
 /// reparents the corresponding NSView; nothing is ever re-created. Detached
 /// surfaces are marked invisible so libghostty stops rendering them.
+///
+/// The newest host owns the terminal: when a session moves to another
+/// window, the old window's host may still get a last update — it must not
+/// pull the terminal back (it would be torn down with the old host).
 struct TerminalHostView: NSViewRepresentable {
     let session: TerminalSession
 
     func makeNSView(context: Context) -> NSView {
         let container = NSView()
+        session.host = container
         attach(session.terminalView, to: container)
         return container
     }
 
     func updateNSView(_ container: NSView, context: Context) {
-        guard session.terminalView.superview != container else { return }
+        guard session.host === container,
+              session.terminalView.superview != container else { return }
         for old in container.subviews {
             (old as? TerminalView)?.setSurfaceVisible(false)
             old.removeFromSuperview()

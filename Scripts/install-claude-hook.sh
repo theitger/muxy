@@ -30,5 +30,5 @@ os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
 with open(path, "w") as f:
     json.dump(data, f, indent=2)
     f.write("\n")
-print("claude hooks " + ("installiert" if changed else "schon vorhanden"))
+print("claude hooks " + ("installed" if changed else "already present"))
 PY

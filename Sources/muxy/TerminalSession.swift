@@ -18,6 +18,9 @@ final class TerminalSession: NSObject, ObservableObject, Identifiable {
         Config.prepareGhosttyResources()
         let path = Paths.home + "/.config/ghostty/config"
         let existing = FileManager.default.fileExists(atPath: path) ? path : nil
+        // The user's config 1:1 — Ghostty paints its own background too.
+        // (Turning that off to let the window paint it renders the default
+        // text washed out, so it is not an option.)
         // Empty theme: the wrapper renders its theme AFTER the config file,
         // so any non-empty value would override the user's own colors.
         return TerminalController(
@@ -28,6 +31,8 @@ final class TerminalSession: NSObject, ObservableObject, Identifiable {
 
     let id = UUID()
     let terminalView: TerminalView
+    /// The container currently showing this terminal (see TerminalHostView).
+    weak var host: NSView?
 
     /// Live working directory (OSC 7 from the shell).
     @Published private(set) var cwd: String
@@ -150,10 +155,10 @@ final class TerminalSession: NSObject, ObservableObject, Identifiable {
                 self.onContextChange?()
                 if before == .pending, let number = pr?.number {
                     switch self.context.checks {
-                    case .passed: self.markAttentionIfBackground(reason: "· #\(number) ist grün")
+                    case .passed: self.markAttentionIfBackground(reason: L("· #%d passed", number))
                     // Red while something is fixing it is expected — stay quiet.
                     case .failed where Store.shared.workspace(of: self)?.isBusy != true:
-                        self.markAttentionIfBackground(reason: "· #\(number) Checks rot")
+                        self.markAttentionIfBackground(reason: L("· #%d failed", number))
                     default: break
                     }
                 }

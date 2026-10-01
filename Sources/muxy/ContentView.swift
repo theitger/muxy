@@ -6,11 +6,16 @@ struct WindowRoot: View {
     @Binding var windowID: WindowModel.ID?
     @ObservedObject private var store = Store.shared
     @Environment(\.openWindow) private var openWindow
+    @Environment(\.openSettings) private var openSettings
+    /// Rebuilds the window when the language changes (terminals survive:
+    /// they are only reparented).
+    @AppStorage(Language.storageKey) private var language = Language.english.rawValue
 
     var body: some View {
         Group {
             if let model = store.window(windowID) {
                 ContentView(store: store, window: model)
+                    .id(language)
             } else {
                 Color.clear
             }
@@ -24,6 +29,7 @@ struct WindowRoot: View {
         }
         .onAppear {
             store.openWindow = openWindow
+            store.openSettings = openSettings
             store.start()
             if store.window(windowID) == nil {
                 let model = store.windows.first { !$0.claimed } ?? store.makeWindow()
@@ -47,9 +53,12 @@ struct ContentView: View {
     var body: some View {
         HStack(spacing: 0) {
             if store.sidebarVisible {
-                SidebarView(store: store, window: window)
-                    .transition(.move(edge: .leading))
-                SidebarHandle(store: store)
+                HStack(spacing: 0) {
+                    SidebarView(store: store, window: window)
+                    SidebarHandle(store: store)
+                }
+                .background(Theme.sidebar)
+                .transition(.move(edge: .leading))
             }
             VStack(spacing: 0) {
                 if let workspace = window.selectedWorkspace {
@@ -107,8 +116,8 @@ private struct SidebarHandle: View {
 
     var body: some View {
         Rectangle()
-            .fill(hovered || startWidth != nil ? Theme.textPrimary.opacity(0.18) : Theme.border.opacity(0.6))
-            .frame(width: hovered || startWidth != nil ? 1.5 : 0.5)
+            .fill(hovered || startWidth != nil ? Theme.textPrimary.opacity(0.2) : .clear)
+            .frame(width: 1)
             .frame(maxHeight: .infinity)
             .overlay {
                 Color.clear
@@ -129,8 +138,9 @@ private struct SidebarHandle: View {
                                     store.sidebarVisible = false
                                     return
                                 }
+                                // Whole points only: fractional edges blur and seam.
                                 store.sidebarWidth = min(max(proposed, Store.sidebarWidthRange.lowerBound),
-                                                         Store.sidebarWidthRange.upperBound)
+                                                         Store.sidebarWidthRange.upperBound).rounded()
                             }
                             .onEnded { _ in startWidth = nil }
                     )
@@ -159,22 +169,22 @@ private struct EmptyState: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 26) {
             VStack(alignment: .leading, spacing: 8) {
-                Text("Woran arbeitest du?")
+                Text(L("What are you working on?"))
                     .font(.system(size: 34, weight: .regular, design: .serif))
                     .tracking(-0.6)
                     .foregroundStyle(Theme.textPrimary)
-                Text("Jede Session ist ein Ordner mit seinen Tabs.")
+                Text(L("Every session is a folder with its tabs."))
                     .font(.system(size: 13))
                     .foregroundStyle(Theme.textDim)
             }
             VStack(spacing: 0) {
-                hint("Neue Session", "⌘N")
+                hint(L("New Session"), "⌘N")
                 divider
-                hint("Session suchen", "⌘K")
+                hint(L("Search sessions"), "⌘K")
                 divider
-                hint("Zur nächsten, die wartet", "⌘J")
+                hint(L("Next one waiting"), "⌘J")
                 divider
-                hint("Neues Fenster", "⇧⌘N")
+                hint(L("New Window"), "⇧⌘N")
             }
             .padding(.horizontal, 16)
             .background(

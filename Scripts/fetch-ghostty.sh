@@ -9,13 +9,13 @@ URL="https://github.com/Lakr233/libghostty-spm/releases/download/$VERSION/Ghostt
 DEST="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/Vendor/libghostty-spm"
 
 if [ -d "$DEST/GhosttyKit.xcframework" ]; then
-    echo "GhosttyKit.xcframework ist schon da."
+    echo "GhosttyKit.xcframework already present."
     exit 0
 fi
 
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
-echo "Lade $URL …"
+echo "Downloading $URL …"
 curl -sL --fail "$URL" -o "$tmp/ghostty.zip"
 echo "$SHA256  $tmp/ghostty.zip" | shasum -a 256 -c - >/dev/null
 unzip -q "$tmp/ghostty.zip" -d "$DEST"

@@ -35,17 +35,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
 struct MuxyApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var store = Store.shared
+    /// Menus are rebuilt in the new language right away.
+    @AppStorage(Language.storageKey) private var language = Language.english.rawValue
 
     init() {
+        // Standard menus (Edit, Window, …) follow the app's language, not the
+        // system's — must be set before AppKit first resolves localizations.
+        UserDefaults.standard.set([Language.current.rawValue], forKey: "AppleLanguages")
+
         // Never restore windows across launches.
         UserDefaults.standard.register(defaults: ["NSQuitAlwaysKeepsWindows": false])
 
-        // Single instance: stale `swift run` processes each keep a window
-        // around — kill any older muxy before this one takes over.
+        // Stale `swift run` processes of this same binary each keep a window
+        // around — replace them. Other installs (another bundle) are left
+        // alone: killing them would end their sessions.
         let me = NSRunningApplication.current
         for app in NSWorkspace.shared.runningApplications
             where app.processIdentifier != me.processIdentifier
-            && app.executableURL?.lastPathComponent == "muxy" {
+            && app.executableURL == me.executableURL {
             app.forceTerminate()
         }
 
@@ -69,34 +76,38 @@ struct MuxyApp: App {
         // surface swallows menu key equivalents); the menus list them.
         .commands {
             CommandGroup(replacing: .newItem) {
-                Button("Neue Session") { store.newWorkspaceInFront() }
+                Button(L("New Session")) { store.newWorkspaceInFront() }
                     .keyboardShortcut("n", modifiers: .command)
-                Button("Neues Fenster") { store.newWindow() }
+                Button(L("New Window")) { store.newWindow() }
                     .keyboardShortcut("n", modifiers: [.command, .shift])
-                Button("Neuer Tab") { store.newTabInFront() }
+                Button(L("New Tab")) { store.newTabInFront() }
                     .keyboardShortcut("t", modifiers: .command)
                 Divider()
-                Button("Tab schließen") { store.activeWindow?.closeCurrent() }
+                Button(L("Close Tab")) { store.activeWindow?.closeCurrent() }
                     .keyboardShortcut("w", modifiers: .command)
             }
-            CommandMenu("Sessions") {
-                Button("Suchen…") { store.activeWindow?.showSwitcher.toggle() }
+            CommandMenu(L("Sessions")) {
+                Button(L("Search…")) { store.activeWindow?.showSwitcher.toggle() }
                     .keyboardShortcut("k", modifiers: .command)
-                Button("Nächste, die wartet") { store.jumpToAttention() }
+                Button(L("Next one waiting")) { store.jumpToAttention() }
                     .keyboardShortcut("j", modifiers: .command)
                 Divider()
-                Button("Vorherige Session") { store.activeWindow?.selectWorkspace(offset: -1) }
+                Button(L("Previous Session")) { store.activeWindow?.selectWorkspace(offset: -1) }
                     .keyboardShortcut(.upArrow, modifiers: [.command, .option])
-                Button("Nächste Session") { store.activeWindow?.selectWorkspace(offset: 1) }
+                Button(L("Next Session")) { store.activeWindow?.selectWorkspace(offset: 1) }
                     .keyboardShortcut(.downArrow, modifiers: [.command, .option])
-                Button("Nächster Tab") { store.activeWindow?.selectTab(offset: 1) }
+                Button(L("Next Tab")) { store.activeWindow?.selectTab(offset: 1) }
                     .keyboardShortcut(.tab, modifiers: .control)
                 Divider()
-                Button(store.sidebarVisible ? "Seitenleiste ausblenden" : "Seitenleiste einblenden") {
+                Button(store.sidebarVisible ? L("Hide Sidebar") : L("Show Sidebar")) {
                     store.toggleSidebar()
                 }
                 .keyboardShortcut("b", modifiers: .command)
             }
+        }
+
+        Settings {
+            SettingsView()
         }
     }
 }

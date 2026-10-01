@@ -17,9 +17,10 @@ quiet signal the moment an agent needs you.
 - **PR status at a glance.** The PR badge follows the CI checks: blue
   while they run, yellow when they failed and something in the session is
   working on it, red when they failed, green when everything passed.
-- **Windows when you want them.** Drag a tab or a session out of the window
-  and it becomes its own window; drop it on another Muxy window and it moves
-  there. Running processes don't notice.
+- **Windows when you want them.** Drag a session from the sidebar and drop
+  it anywhere — it opens as its own window right there; drop it on another
+  window's sidebar and it moves in. Running processes don't notice.
+- **English or German.** English by default; switch in Settings (`⌘,`).
 - **Built to stay fast.** Exactly one terminal surface per window is
   attached; background sessions keep their PTY but cost no rendering. No
   animations while idle.

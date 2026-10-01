@@ -25,11 +25,34 @@ struct WindowConfigurator: NSViewRepresentable {
                 close.target = self
                 close.action = #selector(closeWindow)
             }
-            if let topLeft = model.pendingTopLeft {
-                model.pendingTopLeft = nil
-                window.setFrameTopLeftPoint(topLeft)
+            if let frame = model.pendingFrame {
+                model.pendingFrame = nil
+                // SwiftUI positions new windows after this call — place it
+                // now and once more on the next turn. (Never hide the window
+                // meanwhile: a terminal attached to an invisible window
+                // stops drawing.)
+                window.setFrame(frame, display: false)
+                DispatchQueue.main.async {
+                    window.setFrame(frame, display: true)
+                }
             }
             WindowBlur.apply(to: window)
+            // A window opened by dragging a session out isn't known to the
+            // window server yet at this point, and the blur call is lost —
+            // repeat it once the window is actually on screen.
+            if let occlusionObserver { NotificationCenter.default.removeObserver(occlusionObserver) }
+            occlusionObserver = NotificationCenter.default.addObserver(
+                forName: NSWindow.didChangeOcclusionStateNotification, object: window, queue: .main
+            ) { [weak window] _ in
+                guard let window, window.occlusionState.contains(.visible) else { return }
+                MainActor.assumeIsolated { WindowBlur.apply(to: window) }
+            }
+        }
+
+        private var occlusionObserver: NSObjectProtocol?
+
+        deinit {
+            if let occlusionObserver { NotificationCenter.default.removeObserver(occlusionObserver) }
         }
 
         @objc private func closeWindow() {

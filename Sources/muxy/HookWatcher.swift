@@ -44,12 +44,17 @@ final class HookWatcher {
                 .contentModificationDate ?? .distantPast
             return (url, date)
         }.sorted { $0.1 < $1.1 }
-        for (url, _) in ordered {
+        for (url, date) in ordered {
             let content = (try? String(contentsOf: url, encoding: .utf8)) ?? ""
-            try? FileManager.default.removeItem(at: url)
             let parts = content.split(whereSeparator: \.isWhitespace).map(String.init)
-            guard let uuid = parts.first, !uuid.isEmpty else { continue }
-            store?.handleHookEvent(sessionUUID: uuid, event: parts.count > 2 ? parts[2] : "stop")
+            let handled = parts.first.map {
+                store?.handleHookEvent(sessionUUID: $0, event: parts.count > 2 ? parts[2] : "stop") ?? false
+            } ?? false
+            // Another muxy instance may own the session — leave its events
+            // to it; anything nobody picked up within a minute is litter.
+            if handled || date.timeIntervalSinceNow < -60 {
+                try? FileManager.default.removeItem(at: url)
+            }
         }
     }
 }

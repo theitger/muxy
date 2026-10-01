@@ -15,13 +15,13 @@ echo "[muxy] release build …"
 swift build -c release --package-path "$REPO"
 
 if [ ! -f "$ICNS" ]; then
-    echo "[muxy] rendere Icon …"
+    echo "[muxy] rendering icon …"
     tmp="$(mktemp -d)/AppIcon.iconset"
     swift "$REPO/Scripts/make-icon.swift" "$tmp"
     iconutil -c icns "$tmp" -o "$ICNS"
 fi
 
-echo "[muxy] baue Bundle …"
+echo "[muxy] assembling bundle …"
 mkdir -p "$APP_DIR"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
@@ -37,8 +37,8 @@ if [ -d "$GHOSTTY_RES/ghostty/shell-integration" ]; then
     cp -R "$GHOSTTY_RES/ghostty/shell-integration" "$APP/Contents/Resources/ghostty/"
     cp -R "$GHOSTTY_RES/terminfo" "$APP/Contents/Resources/"
 else
-    echo "[muxy] Hinweis: Ghostty.app nicht gefunden — ohne Shell-Integration gebaut"
+    echo "[muxy] note: Ghostty.app not found — built without bundled shell integration"
 fi
 codesign --force --sign - "$APP" >/dev/null 2>&1
 
-echo "[muxy] fertig: $APP"
+echo "[muxy] done: $APP"

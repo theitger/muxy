@@ -36,7 +36,6 @@ struct SidebarView: View {
         }
         .frame(width: store.sidebarWidth)
         .frame(maxHeight: .infinity)
-        .background(Theme.surface.opacity(0.93))
     }
 
     private var footer: some View {
@@ -60,7 +59,7 @@ private struct FooterButton: View {
                 Image(systemName: "plus")
                     .font(.system(size: 11, weight: .semibold))
                     .frame(width: 28)
-                Text("Neue Session")
+                Text(L("New Session"))
                     .font(.system(size: 13, weight: .medium))
                 Spacer()
                 Kbd("⌘N")
@@ -129,9 +128,12 @@ private struct SessionRow: View {
         .contentShape(Rectangle())
         .onTapGesture { window.select(workspace) }
         .gesture(
-            // Drag out of the window → own window; onto another → moves there.
+            // Drop anywhere → its own window right there; on another
+            // window's sidebar → moves into that window.
             DragGesture(minimumDistance: 8, coordinateSpace: .global)
-                .onChanged { _ in DragGhost.update(title: workspace.title, from: window.nsWindow) }
+                .onChanged { _ in
+                    DragGhost.update(workspace, target: store.dropTarget(for: workspace, at: NSEvent.mouseLocation))
+                }
                 .onEnded { _ in
                     DragGhost.hide()
                     store.drop(workspace, at: NSEvent.mouseLocation)
@@ -140,7 +142,7 @@ private struct SessionRow: View {
         .onHover { hovered = $0 }
         .animation(.easeOut(duration: 0.15), value: hovered)
         .contextMenu {
-            Button("Schließen") { store.requestCloseWorkspace(workspace) }
+            Button(L("Close")) { store.requestCloseWorkspace(workspace) }
         }
         .help(Paths.abbreviate(workspace.directory))
     }

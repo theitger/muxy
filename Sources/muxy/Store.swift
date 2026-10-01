@@ -15,6 +15,7 @@ final class Store: ObservableObject {
 
     /// SwiftUI's window opener, captured from the first window's environment.
     var openWindow: OpenWindowAction?
+    var openSettings: OpenSettingsAction?
 
     private var started = false
     private var keyMonitor: Any?
@@ -99,10 +100,10 @@ final class Store: ObservableObject {
         let owned = model.workspaces
         confirm(
             running: owned.flatMap(\.sessions).contains { $0.needsCloseConfirmation },
-            title: "Fenster schließen?",
+            title: L("Close window?"),
             detail: owned.count == 1
-                ? "Die Session darin wird beendet."
-                : "Die \(owned.count) Sessions darin werden beendet."
+                ? L("The session in it will end.")
+                : L("The %d sessions in it will end.", owned.count)
         ) {
             owned.forEach { $0.sessions.forEach { $0.terminate() } }
             self.workspaces.removeAll { $0.windowID == model.id }
@@ -160,7 +161,7 @@ final class Store: ObservableObject {
                 return
             }
         }
-        activeWindow?.show("Gerade wartet keine Session")
+        activeWindow?.show(L("Nobody is waiting right now"))
     }
 
     /// Notification click.
@@ -196,8 +197,8 @@ final class Store: ObservableObject {
         }
         confirm(
             running: session.needsCloseConfirmation,
-            title: "\(session.tabTitle) schließen?",
-            detail: "Der laufende Prozess in \(Paths.abbreviate(session.cwd)) wird beendet."
+            title: L("Close %@?", session.tabTitle),
+            detail: L("The running process in %@ will end.", Paths.abbreviate(session.cwd))
         ) {
             session.terminate()
             self.detach(session, from: workspace)
@@ -208,8 +209,8 @@ final class Store: ObservableObject {
     func requestCloseWorkspace(_ workspace: Workspace) {
         confirm(
             running: workspace.sessions.contains { $0.needsCloseConfirmation },
-            title: "\(workspace.title) schließen?",
-            detail: "Alle Tabs in \(Paths.abbreviate(workspace.directory)) werden beendet."
+            title: L("Close %@?", workspace.title),
+            detail: L("All tabs in %@ will end.", Paths.abbreviate(workspace.directory))
         ) {
             self.closeWorkspace(workspace)
         }
@@ -220,12 +221,12 @@ final class Store: ObservableObject {
         let running = workspaces.flatMap(\.sessions).filter(\.needsCloseConfirmation)
         guard !running.isEmpty else { return true }
         let alert = NSAlert()
-        alert.messageText = "muxy beenden?"
+        alert.messageText = L("Quit muxy?")
         alert.informativeText = running.count == 1
-            ? "In einem Tab läuft noch etwas."
-            : "In \(running.count) Tabs läuft noch etwas."
-        alert.addButton(withTitle: "Beenden")
-        alert.addButton(withTitle: "Abbrechen")
+            ? L("Something is still running in one tab.")
+            : L("Something is still running in %d tabs.", running.count)
+        alert.addButton(withTitle: L("Quit"))
+        alert.addButton(withTitle: L("Cancel"))
         return alert.runModal() == .alertFirstButtonReturn
     }
 
@@ -237,8 +238,8 @@ final class Store: ObservableObject {
         let alert = NSAlert()
         alert.messageText = title
         alert.informativeText = detail
-        alert.addButton(withTitle: "Schließen")
-        alert.addButton(withTitle: "Abbrechen")
+        alert.addButton(withTitle: L("Close"))
+        alert.addButton(withTitle: L("Cancel"))
         if alert.runModal() == .alertFirstButtonReturn {
             action()
         }
@@ -264,66 +265,72 @@ final class Store: ObservableObject {
         }
     }
 
-    /// A dragged tab was dropped. Outside every muxy window → it becomes
-    /// its own window there. On another window, or on this window's
-    /// sidebar → it becomes its own session in that window.
-    func drop(_ session: TerminalSession, from workspace: Workspace, at point: NSPoint) {
-        guard let source = window(of: workspace) else { return }
-        let target = windowUnder(point)
-        if target === source, !isOverSidebar(point, in: source) { return }
-        if workspace.sessions.count == 1 {
-            // The only tab is the whole session.
-            drop(workspace, at: point)
-            return
-        }
-        detach(session, from: workspace)
-        let destination = target ?? makeWindow(at: point)
-        let moved = Workspace(windowID: destination.id)
-        add(session, to: moved)
-        workspaces.append(moved)
-        destination.select(moved)
-        if target == nil {
-            openWindow?(id: "main", value: destination.id)
-        } else {
-            destination.bringToFront()
-        }
+    /// Where a dragged session would land.
+    enum DropTarget {
+        /// Nowhere new (its own sidebar).
+        case stay
+        /// Into another window's sidebar.
+        case window(WindowModel)
+        /// A new window with this frame.
+        case newWindow(NSRect)
     }
 
-    /// A dragged sidebar row was dropped: outside → own window, on another
-    /// window → moves there.
+    func dropTarget(for workspace: Workspace, at point: NSPoint) -> DropTarget {
+        guard let source = window(of: workspace) else { return .stay }
+        if let target = windowUnder(point), isOverSidebar(point, in: target) {
+            return target === source ? .stay : .window(target)
+        }
+        let size = source.nsWindow?.frame.size ?? NSSize(width: 1280, height: 820)
+        return .newWindow(Self.frame(size: size, grabbedAt: point))
+    }
+
+    /// A dragged sidebar row was dropped: on another window's sidebar it
+    /// moves there; anywhere else it opens as its own window right there.
     func drop(_ workspace: Workspace, at point: NSPoint) {
         guard let source = window(of: workspace) else { return }
-        let target = windowUnder(point)
-        if target === source { return }
-        // Tearing the only session out of a window just moves the window.
-        if target == nil, source.workspaces.count == 1, let nsWindow = source.nsWindow {
-            nsWindow.setFrameTopLeftPoint(topLeft(for: point))
+        switch dropTarget(for: workspace, at: point) {
+        case .stay:
             return
+        case let .window(target):
+            move(workspace, from: source, to: target)
+            target.bringToFront()
+        case let .newWindow(frame):
+            // The only session of a window: the window itself goes there.
+            if source.workspaces.count == 1, let nsWindow = source.nsWindow {
+                nsWindow.setFrame(frame, display: true, animate: false)
+                source.bringToFront()
+                return
+            }
+            let target = makeWindow()
+            target.pendingFrame = frame
+            move(workspace, from: source, to: target)
+            openWindow?(id: "main", value: target.id)
         }
+    }
+
+    private func move(_ workspace: Workspace, from source: WindowModel, to target: WindowModel) {
         let index = source.orderedWorkspaces.firstIndex { $0.id == workspace.id } ?? 0
-        let destination = target ?? makeWindow(at: point)
-        workspace.windowID = destination.id
-        // Re-append so it lands at the end of the destination's list.
+        workspace.windowID = target.id
+        // Re-append so it lands at the end of the target's list.
         workspaces.removeAll { $0.id == workspace.id }
         workspaces.append(workspace)
-        destination.select(workspace)
+        target.select(workspace)
         closeIfEmpty(source, near: index)
-        if target == nil {
-            openWindow?(id: "main", value: destination.id)
-        } else {
-            destination.bringToFront()
+    }
+
+    /// A window of `size` whose top-left sits where the drag preview was,
+    /// kept on the screen under the pointer.
+    static func frame(size: NSSize, grabbedAt point: NSPoint) -> NSRect {
+        let topLeft = NSPoint(x: point.x - DragGhost.grabOffset.width, y: point.y + DragGhost.grabOffset.height)
+        var frame = NSRect(x: topLeft.x, y: topLeft.y - size.height, width: size.width, height: size.height)
+        let screen = NSScreen.screens.first { $0.frame.contains(point) } ?? NSScreen.main
+        if let visible = screen?.visibleFrame {
+            frame.size.width = min(frame.width, visible.width)
+            frame.size.height = min(frame.height, visible.height)
+            frame.origin.x = min(max(frame.minX, visible.minX), visible.maxX - frame.width)
+            frame.origin.y = min(max(frame.minY, visible.minY), visible.maxY - frame.height)
         }
-    }
-
-    private func makeWindow(at point: NSPoint) -> WindowModel {
-        let model = makeWindow()
-        model.pendingTopLeft = topLeft(for: point)
-        return model
-    }
-
-    /// The new window appears under the pointer, grabbed near its top edge.
-    private func topLeft(for point: NSPoint) -> NSPoint {
-        NSPoint(x: point.x - 120, y: point.y + 20)
+        return frame
     }
 
     /// Topmost muxy window under a screen point.
@@ -343,8 +350,9 @@ final class Store: ObservableObject {
     // MARK: - Agent events
 
     /// Claude Code hook: `stop` (turn finished), `notify` (needs you),
-    /// `prompt` (started working).
-    func handleHookEvent(sessionUUID: String, event: String) {
+    /// `prompt` (started working). False when the session isn't ours.
+    @discardableResult
+    func handleHookEvent(sessionUUID: String, event: String) -> Bool {
         for workspace in workspaces {
             guard let session = workspace.sessions.first(where: { $0.id.uuidString == sessionUUID })
             else { continue }
@@ -353,13 +361,14 @@ final class Store: ObservableObject {
                 session.agent = .working
             case "notify":
                 session.agent = .blocked
-                session.markAttentionIfBackground(reason: "braucht dich")
+                session.markAttentionIfBackground(reason: L("needs you"))
             default:
                 session.agent = .idle
-                session.markAttentionIfBackground(reason: "ist fertig")
+                session.markAttentionIfBackground(reason: L("is done"))
             }
-            return
+            return true
         }
+        return false
     }
 
     func updateBadge() {
@@ -378,7 +387,10 @@ final class Store: ObservableObject {
     private func installKeyMonitor() {
         guard keyMonitor == nil else { return }
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            guard let self, event.window?.attachedSheet == nil else { return event }
+            // Only muxy's own windows: Settings & co. keep their keys.
+            guard let self, event.window?.attachedSheet == nil,
+                  event.window == nil || self.window(for: event.window) != nil
+            else { return event }
             return self.handleKey(event) ? nil : event
         }
     }
@@ -425,6 +437,8 @@ final class Store: ObservableObject {
         case "j": jumpToAttention()
         case "k": window?.showSwitcher.toggle()
         case "b": toggleSidebar()
+        // Ghostty binds ⌘, to its own config — muxy's Settings win.
+        case ",": openSettings?()
         default: return false
         }
         return true

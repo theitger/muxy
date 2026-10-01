@@ -85,11 +85,11 @@ struct PRBadge: View {
 
     private var help: String {
         switch status {
-        case .none: "Keine Checks"
-        case .running: "Checks laufen"
-        case .fixing: "Checks rot — wird gerade gefixt"
-        case .failed: "Checks fehlgeschlagen"
-        case .ready: "Alle Checks grün"
+        case .none: L("No checks")
+        case .running: L("Checks running")
+        case .fixing: L("Checks failed — being fixed")
+        case .failed: L("Checks failed")
+        case .ready: L("All checks passed")
         }
     }
 }

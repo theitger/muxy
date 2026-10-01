@@ -30,8 +30,8 @@ final class WindowModel: ObservableObject, Identifiable {
     }
     /// A window view has taken this model (see WindowRoot).
     var claimed = false
-    /// Where a torn-off window should appear (screen point, top-left).
-    var pendingTopLeft: NSPoint?
+    /// Where a dragged-out window should appear (screen frame).
+    var pendingFrame: NSRect?
 
     private var store: Store { .shared }
 
