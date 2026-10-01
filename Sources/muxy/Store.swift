@@ -217,14 +217,19 @@ final class Store: ObservableObject {
     }
 
     /// ⌘Q — one keystroke must never silently kill every agent.
+    /// Always asks while any session is open — every agent ends with it.
     func shouldQuit() -> Bool {
+        guard !workspaces.isEmpty else { return true }
         let running = workspaces.flatMap(\.sessions).filter(\.needsCloseConfirmation)
-        guard !running.isEmpty else { return true }
         let alert = NSAlert()
         alert.messageText = L("Quit muxy?")
-        alert.informativeText = running.count == 1
-            ? L("Something is still running in one tab.")
-            : L("Something is still running in %d tabs.", running.count)
+        alert.informativeText = switch running.count {
+        case 0: workspaces.count == 1
+            ? L("The open session will end.")
+            : L("All %d open sessions will end.", workspaces.count)
+        case 1: L("Something is still running in one tab.")
+        default: L("Something is still running in %d tabs.", running.count)
+        }
         alert.addButton(withTitle: L("Quit"))
         alert.addButton(withTitle: L("Cancel"))
         return alert.runModal() == .alertFirstButtonReturn
@@ -439,6 +444,8 @@ final class Store: ObservableObject {
         case "b": toggleSidebar()
         // Ghostty binds ⌘, to its own config — muxy's Settings win.
         case ",": openSettings?()
+        // Ghostty binds ⌘Q to its own quit, which never reaches AppKit.
+        case "q": NSApplication.shared.terminate(nil)
         default: return false
         }
         return true

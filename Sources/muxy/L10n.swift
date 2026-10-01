@@ -87,6 +87,8 @@ private enum German {
         "Something is still running in one tab.": "In einem Tab läuft noch etwas.",
         "Something is still running in %d tabs.": "In %d Tabs läuft noch etwas.",
         "Quit": "Beenden",
+        "The open session will end.": "Die offene Session wird beendet.",
+        "All %d open sessions will end.": "Alle %d offenen Sessions werden beendet.",
         "Cancel": "Abbrechen",
 
         // Notifications ("<session> needs you")
