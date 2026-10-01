@@ -135,9 +135,11 @@ final class TerminalSurfaceCoordinator {
         let newSurface = TerminalSurface(rawSurface)
         surface = newSurface
         newSurface.setOcclusion(effectiveSurfaceVisible)
-        controller.shouldProcessWakeup = { [weak self] in
-            self?.canRenderFrame == true
-        }
+        // muxy patch: no per-surface wakeup gate. The controller is shared
+        // by every surface, and this closure belonged to whichever surface
+        // was created last — once that one was hidden, the app stopped
+        // ticking and no surface got its title/pwd/bell actions anymore.
+        // Rendering still pauses per surface (occlusion, display link).
         controller.onWakeup = { [weak self] in
             self?.requestImmediateTick()
         }
@@ -315,7 +317,6 @@ final class TerminalSurfaceCoordinator {
             session.clearSurface(ifMatches: surface?.rawValue)
         }
         controller?.onWakeup = nil
-        controller?.shouldProcessWakeup = nil
         bridge.rawSurface = nil
         let hadSurface = surface != nil
         surface?.setFocus(false)
