@@ -5,19 +5,45 @@ import AppKit
 /// background blur — the same mechanism Ghostty uses — so the terminal's
 /// `background-opacity` from the user's config shows through 1:1.
 struct WindowConfigurator: NSViewRepresentable {
+    let model: WindowModel
+
     final class ConfigView: NSView {
+        weak var model: WindowModel?
+
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
-            guard let window else { return }
+            guard let window, let model else { return }
+            model.nsWindow = window
             window.isOpaque = false
             window.backgroundColor = .clear
             window.titlebarAppearsTransparent = true
             window.isRestorable = false
+            window.tabbingMode = .disallowed
+            // Closing goes through muxy, which confirms running work and
+            // ends the window's sessions with it.
+            if let close = window.standardWindowButton(.closeButton) {
+                close.target = self
+                close.action = #selector(closeWindow)
+            }
+            if let topLeft = model.pendingTopLeft {
+                model.pendingTopLeft = nil
+                window.setFrameTopLeftPoint(topLeft)
+            }
             WindowBlur.apply(to: window)
+        }
+
+        @objc private func closeWindow() {
+            guard let model else { return }
+            Store.shared.requestCloseWindow(model)
         }
     }
 
-    func makeNSView(context: Context) -> NSView { ConfigView() }
+    func makeNSView(context: Context) -> NSView {
+        let view = ConfigView()
+        view.model = model
+        return view
+    }
+
     func updateNSView(_ nsView: NSView, context: Context) {}
 }
 

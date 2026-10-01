@@ -21,6 +21,10 @@ enum Theme {
         dark: ghostty.dark.shifted(by: 0.08)
     )
 
+    /// The terminal's own background at its configured opacity — chrome
+    /// painted with it reads as part of the terminal, not a frame around it.
+    static let terminal = bg.opacity(ghostty.opacity)
+
     static let textPrimary = dyn(light: 0x1A1A1A, dark: 0xF0F0F0)
     static let textBody = dyn(light: 0x3A3A3A, dark: 0xC8C8C8)
     static let textMuted = dyn(light: 0x707070, dark: 0x9A9A9A)
@@ -32,6 +36,37 @@ enum Theme {
     static let dotIdle = dyn(light: 0xC4C4C0, dark: 0x3A3A3A)
     static let claude = dyn(light: 0xBE5A38, dark: 0xD97757)
     static let codex = dyn(light: 0x0E8A6D, dark: 0x19B98B)
+
+    // Status tones: a soft tint for backgrounds, a strong shade for
+    // text and icons on it.
+    struct Tone {
+        let soft: Color
+        let strong: Color
+    }
+
+    static let blue = tone(soft: 0xEDF3FC, strong: 0x315C9B, base: 0x5080D8, darkStrong: 0x9DBAF0)
+    static let greenTone = tone(soft: 0xEEF9E1, strong: 0x3F6F12, base: 0x83CD2D, darkStrong: 0xA9DE6E)
+    static let yellow = tone(soft: 0xFEF7DC, strong: 0x8A6100, base: 0xF2B705, darkStrong: 0xF5CF5B)
+    static let orange = tone(soft: 0xFFF3E5, strong: 0x9B5609, base: 0xF78C10, darkStrong: 0xFFB45C)
+    static let redTone = tone(soft: 0xFEF2F2, strong: 0xB91C1C, base: 0xDC2626, darkStrong: 0xF87171)
+    static let neutral = Tone(soft: textPrimary.opacity(0.06), strong: textMuted)
+
+    /// Hover / selection fills — ink at low opacity works on any theme.
+    static let fillHover = textPrimary.opacity(0.04)
+    static let fillActive = textPrimary.opacity(0.075)
+    static let hairline = textPrimary.opacity(0.09)
+
+    /// Standard motion curve: fast start, long soft landing.
+    static let ease = Animation.timingCurve(0.32, 0.72, 0, 1, duration: 0.25)
+
+    private static func tone(soft: Int, strong: Int, base: Int, darkStrong: Int) -> Tone {
+        let baseRGB = RGB(hex: base)
+        let darkSoft = NSColor(srgbRed: baseRGB.r, green: baseRGB.g, blue: baseRGB.b, alpha: 0.16)
+        let softColor = Color(nsColor: NSColor(name: nil) { appearance in
+            appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? darkSoft : RGB(hex: soft).nsColor
+        })
+        return Tone(soft: softColor, strong: dyn(light: strong, dark: darkStrong))
+    }
 
     private static func dyn(light: Int, dark: Int) -> Color {
         dynamic(light: RGB(hex: light), dark: RGB(hex: dark))
@@ -85,6 +120,7 @@ enum GhosttyColors {
     struct Pair {
         var light: RGB
         var dark: RGB
+        var opacity: Double = 1
     }
 
     static func load() -> Pair {
@@ -97,6 +133,12 @@ enum GhosttyColors {
 
         for rawLine in content.split(separator: "\n") {
             let line = rawLine.trimmingCharacters(in: .whitespaces)
+            if line.hasPrefix("background-opacity"),
+               let value = line.split(separator: "=", maxSplits: 1).last,
+               let number = Double(value.trimmingCharacters(in: .whitespaces)) {
+                pair.opacity = min(max(number, 0), 1)
+                continue
+            }
             guard line.hasPrefix("theme"),
                   let value = line.split(separator: "=", maxSplits: 1).last
             else { continue }
@@ -115,7 +157,6 @@ enum GhosttyColors {
                     pair.dark = bg
                 }
             }
-            break
         }
         return pair
     }

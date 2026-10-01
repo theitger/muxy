@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# muxy [dir] — open a new muxy session in dir (default: here).
+# Link it onto your PATH: ln -s "$PWD/Scripts/muxy" ~/.local/bin/muxy
+exec open -a Muxy "$(cd "${1:-.}" && pwd)"

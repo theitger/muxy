@@ -7,7 +7,7 @@ import GhosttyTerminal
 /// The user's actual Ghostty config (`~/.config/ghostty/config`) is loaded
 /// into the shared controller, so theme, font and feel match their Ghostty.
 ///
-/// Anti-lag rules, learned from cmux issue #4101:
+/// Anti-lag rules:
 /// - One view per session, created once, only ever *reparented*.
 /// - Invisible sessions get `setSurfaceVisible(false)`: the PTY and VT
 ///   state keep running, rendering stops entirely.
@@ -15,8 +15,8 @@ import GhosttyTerminal
 final class TerminalSession: NSObject, ObservableObject, Identifiable {
     /// One ghostty app/config instance shared by all surfaces.
     static let controller: TerminalController = {
-        let path = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(".config/ghostty/config").path
+        Config.prepareGhosttyResources()
+        let path = Paths.home + "/.config/ghostty/config"
         let existing = FileManager.default.fileExists(atPath: path) ? path : nil
         // Empty theme: the wrapper renders its theme AFTER the config file,
         // so any non-empty value would override the user's own colors.
@@ -27,22 +27,31 @@ final class TerminalSession: NSObject, ObservableObject, Identifiable {
     }()
 
     let id = UUID()
-    let worktree: Worktree
-    let agent: AgentKind
     let terminalView: TerminalView
 
-    @Published var status: SessionStatus = .running
-    @Published var title: String
-    /// Bell/notification from the terminal (e.g. Claude wants input) while
-    /// the session is not in front — shown as the single orange dot.
-    @Published var needsAttention = false
+    /// Live working directory (OSC 7 from the shell).
+    @Published private(set) var cwd: String
+    @Published private(set) var title: String
+    @Published private(set) var context: RepoContext
+    @Published private(set) var status: SessionStatus = .running
+    @Published var agent: AgentState = .none
+    /// Something happened here while you were looking elsewhere — the
+    /// single orange signal.
+    @Published var needsAttention = false {
+        didSet {
+            if needsAttention != oldValue { onAttentionChange?() }
+        }
+    }
 
-    var name: String { worktree.name }
+    var onAttentionChange: (() -> Void)?
+    var onContextChange: (() -> Void)?
 
-    init(worktree: Worktree, agent: AgentKind) {
-        self.worktree = worktree
-        self.agent = agent
-        self.title = worktree.name
+    private var contextToken = 0
+
+    init(directory: String) {
+        cwd = directory
+        title = Paths.folderName(directory)
+        context = .plain(directory)
         terminalView = TerminalView(frame: NSRect(x: 0, y: 0, width: 800, height: 600))
         super.init()
 
@@ -50,11 +59,12 @@ final class TerminalSession: NSObject, ObservableObject, Identifiable {
         terminalView.controller = Self.controller
         terminalView.configuration = TerminalSurfaceOptions(
             backend: .exec,
-            workingDirectory: worktree.path,
+            workingDirectory: directory,
             // Every process in this terminal inherits the session id — the
-            // Claude Code hook uses it to route "done/needs input" back.
+            // Claude Code hook uses it to route its events back.
             envVars: ["MUXY": "1", "MUXY_SESSION": id.uuidString]
         )
+        refreshContext()
     }
 
     /// Ghostty's own logic: confirm only when foreground work is running
@@ -70,49 +80,149 @@ final class TerminalSession: NSObject, ObservableObject, Identifiable {
         terminalView.setSurfaceVisible(false)
         terminalView.removeFromSuperview()
     }
+
+    /// The session came to the front.
+    func markSeen() {
+        needsAttention = false
+        // A permission prompt you are looking at gets answered — the hook
+        // only speaks again at the end of the turn.
+        if agent == .blocked { agent = .working }
+    }
+
+    /// A foreground command is running in this tab's shell.
+    var isBusy: Bool {
+        agent == .working || (agent == .none && needsCloseConfirmation)
+    }
+
+    /// Tab label: what runs here, not the shell's noisy title.
+    var tabTitle: String {
+        if agent != .none { return "Claude" }
+        let clean = Self.clean(title)
+        // An idle shell titles itself with its path — the folder says it shorter.
+        if clean.isEmpty || clean.hasPrefix("~") || clean.hasPrefix("/") {
+            return context.shortFolder
+        }
+        return clean
+    }
+
+    /// The agent's own title (Claude names the conversation), nil when
+    /// nothing meaningful is set.
+    var agentTitle: String? {
+        guard agent != .none else { return nil }
+        let clean = Self.clean(title)
+        if clean.isEmpty || clean == "Claude Code" || clean.hasPrefix("claude") || clean.hasPrefix("~")
+            || clean.hasPrefix("/") { return nil }
+        return clean
+    }
+
+    /// Drops leading spinner/status glyphs ("✳ Fix bug" → "Fix bug").
+    private static func clean(_ title: String) -> String {
+        String(title.drop { !$0.isLetter && !$0.isNumber && $0 != "~" && $0 != "/" })
+            .trimmingCharacters(in: .whitespaces)
+    }
+
+    // MARK: - Context (repo, branch, PR)
+
+    func refreshContext(includePR: Bool = true) {
+        contextToken += 1
+        let token = contextToken
+        let directory = cwd
+        Task.detached(priority: .utility) {
+            let resolved = Git.context(for: directory)
+            await MainActor.run {
+                guard token == self.contextToken else { return }
+                var context = resolved
+                // Keep the known PR while it's the same branch.
+                if context.branch == self.context.branch {
+                    context.pr = self.context.pr
+                    context.checks = self.context.checks
+                }
+                self.context = context
+                self.onContextChange?()
+            }
+            guard includePR, Git.mayHavePR(resolved.branch) else { return }
+            let pr = Git.pullRequest(in: directory)
+            await MainActor.run {
+                guard token == self.contextToken else { return }
+                let before = self.context.checks
+                self.context.pr = pr?.number
+                self.context.checks = pr?.checks ?? .none
+                self.onContextChange?()
+                if before == .pending, let number = pr?.number {
+                    switch self.context.checks {
+                    case .passed: self.markAttentionIfBackground(reason: "· #\(number) ist grün")
+                    // Red while something is fixing it is expected — stay quiet.
+                    case .failed where Store.shared.workspace(of: self)?.isBusy != true:
+                        self.markAttentionIfBackground(reason: "· #\(number) Checks rot")
+                    default: break
+                    }
+                }
+            }
+        }
+    }
 }
 
 extension TerminalSession: TerminalSurfaceTitleDelegate {
     func terminalDidChangeTitle(_ title: String) {
-        // "/Users/x" → "~", bare home-folder name ("theitger") → "~".
-        let home = FileManager.default.homeDirectoryForCurrentUser.path
-        var clean = title.replacingOccurrences(of: home, with: "~")
-        if clean == (home as NSString).lastPathComponent {
-            clean = "~"
-        }
-        DispatchQueue.main.async { self.title = clean }
+        let clean = Paths.abbreviate(title)
+        // Shell integration titles a running command with its command line
+        // — the cheapest way to notice an agent started by hand.
+        if agent == .none, clean.lowercased().hasPrefix("claude") { agent = .idle }
+        self.title = clean
+    }
+}
+
+extension TerminalSession: TerminalSurfacePwdDelegate {
+    func terminalDidChangeWorkingDirectory(_ path: String) {
+        guard path != cwd else { return }
+        cwd = path
+        refreshContext()
+    }
+}
+
+extension TerminalSession: TerminalSurfaceCommandFinishedDelegate {
+    func terminalDidFinishCommand(exitCode _: Int?, durationNanos _: UInt64) {
+        // Commands inside claude never reach this shell — a finished
+        // command here means claude itself exited.
+        agent = .none
     }
 }
 
 extension TerminalSession: TerminalSurfaceCloseDelegate {
     func terminalDidClose(processAlive _: Bool) {
-        DispatchQueue.main.async { self.status = .exited(nil) }
+        status = .exited(nil)
     }
 }
 
 extension TerminalSession: TerminalSurfaceBellDelegate {
     func terminalDidRingBell() {
-        markAttentionIfBackground()
+        markAttentionIfBackground(reason: nil)
     }
 }
 
 extension TerminalSession: TerminalSurfaceDesktopNotificationDelegate {
     func terminalDidRequestDesktopNotification(title _: String, body _: String) {
-        markAttentionIfBackground()
+        markAttentionIfBackground(reason: nil)
     }
 }
 
 extension TerminalSession {
-    /// The visible session is being watched — only background sessions
-    /// get the orange dot. (Detached views have no window.)
-    /// `agent` names who is waiting ("Claude", "Codex") — from the hook
-    /// pipeline; bell events don't know and fall back to the session title.
-    func markAttentionIfBackground(agent: String? = nil) {
-        DispatchQueue.main.async {
-            if self.terminalView.window == nil {
-                self.needsAttention = true
-            }
-            Notifier.postIfInactive(title: "\(agent ?? self.title) wartet auf dich", body: "")
+    /// Visible sessions are being watched — only background ones get the
+    /// orange signal; the banner only when muxy isn't frontmost.
+    func markAttentionIfBackground(reason: String?) {
+        if terminalView.window == nil {
+            needsAttention = true
         }
+        Notifier.post(session: self, reason: reason)
+    }
+}
+
+enum SessionStatus {
+    case running
+    case exited(Int32?)
+
+    var isRunning: Bool {
+        if case .running = self { return true }
+        return false
     }
 }

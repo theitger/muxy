@@ -32,7 +32,7 @@ struct TerminalHostView: NSViewRepresentable {
             terminal.bottomAnchor.constraint(equalTo: container.bottomAnchor),
         ])
         terminal.setSurfaceVisible(true)
-        session.needsAttention = false
+        session.markSeen()
         DispatchQueue.main.async {
             terminal.fitToSize()
             terminal.window?.makeFirstResponder(terminal)

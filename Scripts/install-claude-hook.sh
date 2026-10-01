@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Adds muxy's attention hook (Stop + Notification) to Claude Code's
+# Adds muxy's agent hooks (UserPromptSubmit + Stop + Notification) to Claude Code's
 # settings. Idempotent; existing hooks are left untouched. The hook is a
 # no-op for claude sessions running outside muxy.
 set -euo pipefail
@@ -20,7 +20,7 @@ if os.path.exists(path):
         data = json.load(f)
 hooks = data.setdefault("hooks", {})
 changed = False
-for event, arg in (("Stop", "stop"), ("Notification", "notify")):
+for event, arg in (("UserPromptSubmit", "prompt"), ("Stop", "stop"), ("Notification", "notify")):
     entries = hooks.setdefault(event, [])
     if not any("claude-hook.sh" in h.get("command", "")
                for e in entries for h in e.get("hooks", [])):

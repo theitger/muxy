@@ -1,105 +1,157 @@
 import SwiftUI
 
-/// Chrome-style tab strip: only the ACTIVE workspace's tabs, left-aligned
-/// in the terminal column (the traffic lights live over the sidebar, so no
-/// spacer needed here).
+/// The strip above the terminal, painted in the terminal's own color so it
+/// reads as part of it. Tabs are a segmented control; on the right a
+/// soft pill appears when another session wants you.
 struct TabBarView: View {
     @ObservedObject var store: Store
+    @ObservedObject var window: WindowModel
     @ObservedObject var workspace: Workspace
 
     var body: some View {
-        HStack(spacing: 4) {
-            ForEach(workspace.sessions) { session in
-                ChromeTab(store: store, workspace: workspace, session: session)
+        HStack(spacing: 8) {
+            IconButton(symbol: "sidebar.left", help: "Seitenleiste (⌘B)") {
+                store.toggleSidebar()
             }
-            newTabButton
-            Spacer(minLength: 0)
+            HStack(spacing: 2) {
+                ForEach(workspace.sessions) { session in
+                    SegmentTab(store: store, window: window, workspace: workspace, session: session)
+                }
+            }
+            .padding(3)
+            .background(
+                RoundedRectangle(cornerRadius: 9, style: .continuous)
+                    .fill(Theme.textPrimary.opacity(0.05))
+            )
+            IconButton(symbol: "plus", help: "Neuer Tab (⌘T)") {
+                window.newTab()
+            }
+            Spacer(minLength: 8)
+            AttentionPill(store: store, window: window)
         }
-        .padding(.horizontal, 8)
-        .frame(height: 38)
-        .background(Theme.surface.opacity(0.93))
-    }
-
-    private var newTabButton: some View {
-        Button {
-            store.newTab()
-        } label: {
-            Image(systemName: "plus")
-                .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(Theme.textDim)
-                .frame(width: 26, height: 26)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .help("Neuer Tab (⌘T)")
+        // Folded sidebar: leave room for the traffic lights.
+        .padding(.leading, store.sidebarVisible ? 10 : 80)
+        .padding(.trailing, 12)
+        .frame(height: 46)
+        // The terminal paints its own background; this strip matches it.
+        .background(Theme.terminal)
     }
 }
 
-private struct ChromeTab: View {
+private struct SegmentTab: View {
     @ObservedObject var store: Store
+    let window: WindowModel
     @ObservedObject var workspace: Workspace
     @ObservedObject var session: TerminalSession
     @State private var hovered = false
 
     private var isActive: Bool { workspace.selectedSessionID == session.id }
-    private var isExited: Bool {
-        if case .exited = session.status { return true }
-        return false
+
+    private var symbol: String {
+        if session.agent != .none { return "sparkle" }
+        return "chevron.forward"
     }
 
     var body: some View {
         HStack(spacing: 6) {
-            if session.needsAttention {
-                Circle()
-                    .fill(Theme.accent)
-                    .frame(width: 6, height: 6)
-            }
-            Text(session.title)
-                .font(.system(size: 12.5, weight: isActive ? .medium : .regular))
-                .foregroundStyle(titleColor)
+            Image(systemName: symbol)
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(isActive ? Theme.textMuted : Theme.textFaint)
+            Text(session.tabTitle)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(isActive ? Theme.textPrimary : (hovered ? Theme.textBody : Theme.textMuted))
                 .lineLimit(1)
-                .truncationMode(.tail)
-            Spacer(minLength: 0)
-            closeButton
+            if session.needsAttention {
+                Circle().fill(Theme.orange.strong).frame(width: 5, height: 5)
+            } else if hovered, workspace.sessions.count > 1 {
+                Button {
+                    store.close(session, in: workspace)
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 7.5, weight: .bold))
+                        .foregroundStyle(Theme.textDim)
+                        .frame(width: 12, height: 12)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
         }
-        .padding(.leading, 10)
-        .padding(.trailing, 4)
-        .frame(height: 28)
-        .frame(minWidth: 100, maxWidth: 180)
-        .background(background)
-        .clipShape(RoundedRectangle(cornerRadius: 7))
+        .padding(.horizontal, 10)
+        .frame(height: 26)
+        .background(
+            RoundedRectangle(cornerRadius: 6.5, style: .continuous)
+                .fill(isActive ? Theme.bg : .clear)
+                .shadow(color: .black.opacity(isActive ? 0.08 : 0), radius: 1.5, y: 1)
+        )
         .contentShape(Rectangle())
         .onTapGesture { workspace.selectedSessionID = session.id }
+        .gesture(
+            // Drag out → own window; onto the sidebar or another window →
+            // its own session there.
+            DragGesture(minimumDistance: 8, coordinateSpace: .global)
+                .onChanged { _ in DragGhost.update(title: session.tabTitle, from: window.nsWindow) }
+                .onEnded { _ in
+                    DragGhost.hide()
+                    store.drop(session, from: workspace, at: NSEvent.mouseLocation)
+                }
+        )
+        .onHover { hovered = $0 }
+        .animation(.easeOut(duration: 0.15), value: isActive)
+    }
+}
+
+struct IconButton: View {
+    let symbol: String
+    let help: String
+    let action: () -> Void
+    @State private var hovered = false
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(hovered ? Theme.textPrimary : Theme.textDim)
+                .frame(width: 28, height: 28)
+                .background(
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .fill(hovered ? Theme.fillHover : .clear)
+                )
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(help)
         .onHover { hovered = $0 }
     }
+}
 
-    private var titleColor: Color {
-        if isExited { return Theme.textFaint }
-        if isActive { return Theme.textPrimary }
-        return Theme.textMuted
-    }
+/// "2027-scrollbar wartet ⌘J" — visible from any session, so the sidebar
+/// can stay hidden without missing anything.
+private struct AttentionPill: View {
+    @ObservedObject var store: Store
+    @ObservedObject var window: WindowModel
 
-    @ViewBuilder
-    private var closeButton: some View {
-        if isActive || hovered {
+    var body: some View {
+        let waiting = window.attentionWorkspaces
+        if let first = waiting.first {
             Button {
-                store.close(session, in: workspace)
+                store.jumpToAttention()
             } label: {
-                Image(systemName: "xmark")
-                    .font(.system(size: 8, weight: .bold))
-                    .foregroundStyle(Theme.textFaint)
-                    .frame(width: 18, height: 18)
-                    .contentShape(Rectangle())
+                HStack(spacing: 7) {
+                    Circle().fill(Theme.orange.strong).frame(width: 6, height: 6)
+                    Text(waiting.count == 1 ? first.title : "\(waiting.count) Sessions warten")
+                        .lineLimit(1)
+                        .frame(maxWidth: 220)
+                    Text("⌘J").opacity(0.55)
+                }
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(Theme.orange.strong)
+                .padding(.horizontal, 11)
+                .frame(height: 26)
+                .background(Capsule().fill(Theme.orange.soft))
+                .contentShape(Capsule())
             }
             .buttonStyle(.plain)
-        } else {
-            Color.clear.frame(width: 18, height: 18)
+            .transition(.opacity.combined(with: .scale(scale: 0.95)))
         }
-    }
-
-    private var background: some ShapeStyle {
-        if isActive { return AnyShapeStyle(Theme.surfaceActive) }
-        if hovered { return AnyShapeStyle(Theme.surfaceActive.opacity(0.45)) }
-        return AnyShapeStyle(.clear)
     }
 }

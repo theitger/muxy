@@ -28,6 +28,17 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$REPO/Packaging/Info.plist" "$APP/Contents/Info.plist"
 cp "$REPO/.build/release/muxy" "$APP/Contents/MacOS/muxy"
 cp "$ICNS" "$APP/Contents/Resources/AppIcon.icns"
+
+# Ghostty's shell integration + terminfo, so muxy doesn't depend on an
+# installed Ghostty.app at runtime. Same layout as Ghostty.app.
+GHOSTTY_RES="/Applications/Ghostty.app/Contents/Resources"
+if [ -d "$GHOSTTY_RES/ghostty/shell-integration" ]; then
+    mkdir -p "$APP/Contents/Resources/ghostty"
+    cp -R "$GHOSTTY_RES/ghostty/shell-integration" "$APP/Contents/Resources/ghostty/"
+    cp -R "$GHOSTTY_RES/terminfo" "$APP/Contents/Resources/"
+else
+    echo "[muxy] Hinweis: Ghostty.app nicht gefunden — ohne Shell-Integration gebaut"
+fi
 codesign --force --sign - "$APP" >/dev/null 2>&1
 
 echo "[muxy] fertig: $APP"

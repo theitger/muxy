@@ -1,23 +1,28 @@
 # Muxy
 
-A native macOS terminal workspace for running many coding agents (Claude
-Code, Codex, …) in parallel — **real Ghostty rendering**, a sidebar of open
-workspaces, Chrome-style tabs, and notifications the moment an agent needs
-you. One window instead of window chaos, built to stay fast.
+A native macOS terminal workspace for running many coding agents in
+parallel — **real Ghostty rendering**, every session in one window, and a
+quiet signal the moment an agent needs you.
 
 - **It IS your Ghostty.** Muxy embeds [libghostty](https://ghostty.org) and
   loads your own `~/.config/ghostty/config` — theme, font, opacity, padding,
   everything, 1:1. Light/dark follows the system.
-- **cmux-style model.** Sidebar items are open workspaces (a git worktree or
-  an ad-hoc terminal); each owns its tabs. Close it and it's gone.
-- **Agent-aware.** Every terminal carries a session id; a Claude Code hook
-  reports "done / needs input" back to Muxy deterministically → orange dot
-  on the tab and sidebar item, plus a macOS banner ("Claude wartet auf
-  dich") with sound when Muxy is in the background.
-- **Built to stay fast.** Exactly one terminal surface is ever attached to
-  the view hierarchy; background sessions keep their PTY and state but cost
-  no rendering. No session restore at launch, scrollback capped, one
-  process. (Idle: ~85 MB RAM, 0% CPU.)
+- **A session is what used to be a window.** `⌘N` opens one, you `cd`
+  somewhere and start your agent; `⌘T` opens a tab right there. The sidebar
+  sorts sessions by repository and shows branch and PR on its own — nothing
+  to configure.
+- **Agent-aware.** A Claude Code hook reports *working*, *done* and *needs
+  you* per tab. The session's tile changes, the Dock shows a count, and a
+  banner (click → that session) appears when Muxy is in the background.
+- **PR status at a glance.** The PR badge follows the CI checks: blue
+  while they run, yellow when they failed and something in the session is
+  working on it, red when they failed, green when everything passed.
+- **Windows when you want them.** Drag a tab or a session out of the window
+  and it becomes its own window; drop it on another Muxy window and it moves
+  there. Running processes don't notice.
+- **Built to stay fast.** Exactly one terminal surface per window is
+  attached; background sessions keep their PTY but cost no rendering. No
+  animations while idle.
 
 ## Install
 
@@ -39,30 +44,35 @@ git clone https://github.com/theitger/muxy && cd muxy
 ./Scripts/make-app.sh   # fetches the pinned GhosttyKit binary, builds ~/Applications/Muxy.app
 ```
 
-Requires macOS 14+, Xcode 15+ command line tools.
+Requires macOS 14+, Xcode 15+ command line tools. If Ghostty.app is
+installed, its shell integration and terminfo are bundled into Muxy.
 
 ## Setup
 
-1. **Projects:** list your repos in `~/.config/muxy/projects.txt` (one
-   absolute path per line, `~` allowed). They appear — with all their git
-   worktrees — in the menu-bar "Öffnen" menu.
-2. **Claude notifications:** `./Scripts/install-claude-hook.sh` adds a
-   Stop/Notification hook to your Claude Code settings. The hook is a no-op
-   outside Muxy and leaves existing hooks untouched.
+1. **Agent status:** `./Scripts/install-claude-hook.sh` adds
+   UserPromptSubmit/Stop/Notification hooks to your Claude Code settings.
+   They are a no-op outside Muxy and leave existing hooks untouched.
+2. **`muxy` on your PATH** (optional):
+   `ln -s "$PWD/Scripts/muxy" ~/.local/bin/muxy`, then `muxy .` opens a
+   session in the current directory. Folders dropped on the Dock icon do the
+   same.
 
-## Use
+## Keys
 
 | Key | Action |
 | --- | --- |
-| `⌘N` | new terminal workspace (sidebar item) |
-| `⇧⌘N` | create a git worktree (`<repo>.worktrees/<branch>`) + open it |
-| `⌘T` | new tab in the current workspace |
-| `⌘W` | close tab → last tab closes the workspace → nothing left quits Muxy (confirms only if something is actually running — Ghostty's own check) |
-| `⌘1..9` | switch tab |
-| hover ✕ / right-click | close a sidebar item |
+| `⌘N` | new session (in home) |
+| `⇧⌘N` | new window |
+| `⌘T` | new tab in the current tab's directory |
+| `⌘W` | close tab → the last tab closes the session → an empty window closes |
+| `⌘1…9` · `⌃Tab` | switch tab |
+| `⌃1…9` · `⌘⌥↑/↓` | switch session |
+| `⌘J` | next session that wants you (any window) |
+| `⌘K` | search sessions |
+| `⌘B` | show/hide the sidebar (drag its edge to resize) |
 
-Orange is the only signal color: a dot means an agent wants you; opening the
-session clears it.
+Closing a window ends its sessions (confirmed if something runs); `⌘Q`
+confirms too. Muxy keeps running without windows — click the Dock icon.
 
 ## Architecture notes
 
@@ -72,11 +82,11 @@ session clears it.
   ~50 MB GhosttyKit binary is fetched at build time, checksum-verified).
 - Ghostty's exec backend spawns your login shell per tab — real PTY, real
   VT, no custom terminal code in this repo.
+- The working directory (OSC 7) and command exit codes (OSC 133) come from
+  the shell; repository, branch, PR and its checks are derived from them with
+  `git` and `gh` (checks re-polled every minute).
 - Chrome colors are parsed from your Ghostty theme files at launch and
   derived programmatically, so the UI always matches the terminal.
-- Anti-lag rules were derived from
-  [cmux issue #4101](https://github.com/manaflow-ai/cmux/issues/4101);
-  see `Sources/muxy/TerminalSession.swift`.
 
 ## Credits & license
 
