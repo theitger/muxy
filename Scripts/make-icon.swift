@@ -1,8 +1,8 @@
 // Renders the muxy app icon: a lowercase m from three equal stems and two
-// arches, one stroke weight with round ends. Light: ink on cream, the
-// Porsche GT3 RS Light Ghostty theme muxy was designed with; dark: cream on
-// that theme's dark background. No detail beyond the letter, so every size
-// is the same mark.
+// arches, one stroke weight with round ends. Light: warm ink on warm grey;
+// dark: warm grey on a warm near-black. Deliberately a touch warmer than the
+// Porsche GT3 RS Ghostty themes muxy was designed with. No detail beyond the
+// letter, so every size is the same mark.
 // Usage: swift Scripts/make-icon.swift <iconset-dir> [icon-composer-dir]
 //   <iconset-dir>: the light .icns sizes (macOS before 26, alerts)
 //   <icon-composer-dir>/AppIcon.icon: light + dark for macOS 26, whose dark
@@ -15,8 +15,8 @@ try? FileManager.default.createDirectory(atPath: outDir, withIntermediateDirecto
 struct Look {
     let paper: Int
     let ink: Int
-    static let light = Look(paper: 0xF4F4F0, ink: 0x1A1A1A)
-    static let dark = Look(paper: 0x0F0F0F, ink: 0xF4F4F0)
+    static let light = Look(paper: 0xE6E1D8, ink: 0x2B2723)
+    static let dark = Look(paper: 0x1C1A17, ink: 0xD8D1C3)
 }
 
 func rgb(_ hex: Int, _ alpha: CGFloat = 1) -> CGColor {
