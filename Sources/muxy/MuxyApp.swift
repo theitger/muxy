@@ -1,30 +1,58 @@
 import SwiftUI
+import UserNotifications
 
-final class AppDelegate: NSObject, NSApplicationDelegate {
+@MainActor
+final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate {
     func applicationDidFinishLaunching(_: Notification) {
-        Notifier.requestPermission()
+        Notifier.requestPermission(delegate: self)
     }
 
+    /// Like Ghostty with `quit-after-last-window-closed = false`: closing the
+    /// last window leaves muxy running; the Dock icon opens a new one.
     func applicationShouldTerminateAfterLastWindowClosed(_: NSApplication) -> Bool {
-        true
+        false
+    }
+
+    func applicationShouldTerminate(_: NSApplication) -> NSApplication.TerminateReply {
+        Store.shared.shouldQuit() ? .terminateNow : .terminateCancel
+    }
+
+    /// Banner click → that session.
+    nonisolated func userNotificationCenter(
+        _: UNUserNotificationCenter,
+        didReceive response: UNNotificationResponse,
+        withCompletionHandler completion: @escaping () -> Void
+    ) {
+        let id = response.notification.request.content.userInfo["session"] as? String
+        Task { @MainActor in
+            if let id { Store.shared.focus(sessionID: id) }
+            completion()
+        }
     }
 }
 
 @main
 struct MuxyApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
-    @StateObject private var store = Store()
+    @StateObject private var store = Store.shared
+    /// Menus are rebuilt in the new language right away.
+    @AppStorage(Language.storageKey) private var language = Language.english.rawValue
 
     init() {
+        // Standard menus (Edit, Window, …) follow the app's language, not the
+        // system's — must be set before AppKit first resolves localizations.
+        UserDefaults.standard.set([Language.current.rawValue], forKey: "AppleLanguages")
+
         // Never restore windows across launches.
         UserDefaults.standard.register(defaults: ["NSQuitAlwaysKeepsWindows": false])
 
-        // Single instance: stale `swift run` processes each keep a window
-        // around — kill any older muxy before this one takes over.
+        // Stale `swift run` processes of this same binary each keep a window
+        // around — replace them. Other installs (another bundle) are left
+        // alone: killing them would end their sessions.
         let me = NSRunningApplication.current
         for app in NSWorkspace.shared.runningApplications
             where app.processIdentifier != me.processIdentifier
-            && app.executableURL?.lastPathComponent == "muxy" {
+            && app.executableURL == me.executableURL {
             app.forceTerminate()
         }
 
@@ -37,56 +65,49 @@ struct MuxyApp: App {
     }
 
     var body: some Scene {
-        // Single-window app: `Window` (not WindowGroup) prevents macOS
-        // from restoring/stacking multiple windows at launch.
-        Window("muxy", id: "main") {
-            ContentView(store: store)
-                .frame(minWidth: 900, minHeight: 560)
+        // One scene per muxy window; the value names its WindowModel.
+        WindowGroup(id: "main", for: WindowModel.ID.self) { $windowID in
+            WindowRoot(windowID: $windowID)
+                .frame(minWidth: 760, minHeight: 480)
         }
+        .defaultSize(width: 1280, height: 820)
         .windowStyle(.hiddenTitleBar)
+        // Shortcuts are handled by the key monitor in Store (the Ghostty
+        // surface swallows menu key equivalents); the menus list them.
         .commands {
             CommandGroup(replacing: .newItem) {
-                Button("Neuer Tab") { store.newTab() }
-                    .keyboardShortcut("t", modifiers: .command)
-                Button("Neues Terminal") { store.newTerminalWorkspace() }
+                Button(L("New Session")) { store.newWorkspaceInFront() }
                     .keyboardShortcut("n", modifiers: .command)
-                Button("Neuer Worktree…") { store.showNewWorktreeSheet = true }
+                Button(L("New Window")) { store.newWindow() }
                     .keyboardShortcut("n", modifiers: [.command, .shift])
-                Button("Tab schließen") { store.closeCurrent() }
+                Button(L("New Tab")) { store.newTabInFront() }
+                    .keyboardShortcut("t", modifiers: .command)
+                Divider()
+                Button(L("Close Tab")) { store.activeWindow?.closeCurrent() }
                     .keyboardShortcut("w", modifiers: .command)
-                Button("Worktrees neu laden") { store.refreshWorktrees() }
-                    .keyboardShortcut("r", modifiers: [.command, .shift])
             }
-            // ⌘1..9 (Tab-Wechsel) läuft über den Key-Monitor im Store —
-            // die Ghostty-Surface schluckt Menü-Shortcuts.
-            CommandMenu("Öffnen") {
-                Button("Terminal (Home)") { store.newTerminalWorkspace() }
+            CommandMenu(L("Sessions")) {
+                Button(L("Search…")) { store.activeWindow?.showSwitcher.toggle() }
+                    .keyboardShortcut("k", modifiers: .command)
+                Button(L("Next one waiting")) { store.jumpToAttention() }
+                    .keyboardShortcut("j", modifiers: .command)
                 Divider()
-                ForEach(store.projects) { project in
-                    let trees = store.worktrees[project.path] ?? []
-                    if trees.count <= 1 {
-                        Button(project.name) {
-                            store.openWorktree(
-                                trees.first ?? Worktree(
-                                    path: project.path, branch: "", projectPath: project.path
-                                )
-                            )
-                        }
-                    } else {
-                        Menu(project.name) {
-                            ForEach(trees) { worktree in
-                                Button(worktree.isMain ? "main" : worktree.name) {
-                                    store.openWorktree(worktree)
-                                }
-                            }
-                        }
-                    }
-                }
+                Button(L("Previous Session")) { store.activeWindow?.selectWorkspace(offset: -1) }
+                    .keyboardShortcut(.upArrow, modifiers: [.command, .option])
+                Button(L("Next Session")) { store.activeWindow?.selectWorkspace(offset: 1) }
+                    .keyboardShortcut(.downArrow, modifiers: [.command, .option])
+                Button(L("Next Tab")) { store.activeWindow?.selectTab(offset: 1) }
+                    .keyboardShortcut(.tab, modifiers: .control)
                 Divider()
-                Button("Projektliste bearbeiten…") {
-                    NSWorkspace.shared.open(Store.projectsFile)
+                Button(store.sidebarVisible ? L("Hide Sidebar") : L("Show Sidebar")) {
+                    store.toggleSidebar()
                 }
+                .keyboardShortcut("b", modifiers: .command)
             }
+        }
+
+        Settings {
+            SettingsView()
         }
     }
 }

@@ -1,39 +1,75 @@
-import SwiftUI
+import Foundation
 
-enum AgentKind: String, CaseIterable, Identifiable {
-    case shell
-    case claude
-    case codex
+/// What a coding agent inside a session is doing, as reported by the
+/// Claude Code hook (Scripts/claude-hook.sh) and the shell.
+enum AgentState {
+    /// No agent running in this tab.
+    case none
+    /// Agent is open and idle — its turn is over.
+    case idle
+    /// Agent is working on a prompt.
+    case working
+    /// Agent is blocked on you (permission prompt, question).
+    case blocked
+}
 
-    var id: String { rawValue }
+/// CI checks of a session's pull request, as GitHub reports them.
+enum Checks: Equatable {
+    case none
+    case pending
+    case failed
+    case passed
+}
 
-    var color: Color {
-        switch self {
-        case .shell: Theme.textFaint
-        case .claude: Theme.claude
-        case .codex: Theme.codex
+/// What the PR badge shows: the checks, plus whether someone is on it.
+enum PRStatus: Equatable {
+    /// No checks reported (yet).
+    case none
+    /// Checks are running.
+    case running
+    /// Checks failed and something in the session is working on it.
+    case fixing
+    /// Checks failed, nothing is running.
+    case failed
+    /// All checks passed — ready.
+    case ready
+}
+
+/// Where a session currently is, derived from its working directory.
+struct RepoContext: Equatable {
+    /// Main repository name — shared by all its worktrees. nil outside git.
+    var repo: String?
+    /// Last path component of the working directory's checkout (or the
+    /// directory itself outside git).
+    var folder: String
+    var branch: String?
+    var pr: Int?
+    var checks: Checks = .none
+
+    /// The folder without the repo prefix the group header already shows
+    /// ("myapp-login-fix" → "login-fix").
+    var shortFolder: String {
+        if let repo, folder.hasPrefix(repo + "-"), folder.count > repo.count + 1 {
+            return String(folder.dropFirst(repo.count + 1))
         }
+        return folder
     }
 
-    /// Candidate executable paths, checked in order; falls back to
-    /// resolving via login shell PATH.
-    var candidates: [String] {
-        let home = FileManager.default.homeDirectoryForCurrentUser.path
-        switch self {
-        case .shell: return []
-        case .claude: return ["\(home)/.local/bin/claude", "/opt/homebrew/bin/claude", "/usr/local/bin/claude"]
-        case .codex: return ["/opt/homebrew/bin/codex", "\(home)/.local/bin/codex", "/usr/local/bin/codex"]
-        }
+    static func plain(_ directory: String) -> RepoContext {
+        RepoContext(repo: nil, folder: Paths.folderName(directory), branch: nil, pr: nil)
+    }
+}
+
+enum Paths {
+    static let home = FileManager.default.homeDirectoryForCurrentUser.path
+
+    /// "/Users/x/foo" → "~/foo".
+    static func abbreviate(_ path: String) -> String {
+        path.hasPrefix(home) ? "~" + path.dropFirst(home.count) : path
     }
 
-    var resolvedExecutable: String {
-        if self == .shell { return Self.userShell }
-        return candidates.first(where: { FileManager.default.isExecutableFile(atPath: $0) }) ?? rawValue
-    }
-
-    /// The command executed inside `/bin/zsh -lc` after cd'ing into the worktree.
-    var launchInvocation: String {
-        self == .shell ? "exec '\(Self.userShell)' -l" : "exec '\(resolvedExecutable)'"
+    static func folderName(_ path: String) -> String {
+        path == home ? "~" : (path as NSString).lastPathComponent
     }
 
     /// The user's login shell from the passwd database — the SHELL env var
@@ -43,42 +79,5 @@ enum AgentKind: String, CaseIterable, Identifiable {
             return String(cString: shell)
         }
         return "/bin/zsh"
-    }
-}
-
-struct Project: Identifiable, Hashable {
-    let path: String
-    var id: String { path }
-
-    var displayPath: String {
-        let home = FileManager.default.homeDirectoryForCurrentUser.path
-        return path.hasPrefix(home) ? "~" + path.dropFirst(home.count) : path
-    }
-
-    var name: String { (path as NSString).lastPathComponent }
-}
-
-struct Worktree: Identifiable, Hashable {
-    let path: String
-    let branch: String
-    let projectPath: String
-
-    var id: String { path }
-    var name: String { (path as NSString).lastPathComponent }
-    var isMain: Bool { path == projectPath }
-
-    var displayPath: String {
-        let home = FileManager.default.homeDirectoryForCurrentUser.path
-        return path.hasPrefix(home) ? "~" + path.dropFirst(home.count) : path
-    }
-}
-
-enum SessionStatus {
-    case running
-    case exited(Int32?)
-
-    var isRunning: Bool {
-        if case .running = self { return true }
-        return false
     }
 }

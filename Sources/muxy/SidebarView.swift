@@ -1,116 +1,149 @@
 import SwiftUI
 
-/// cmux semantics: the sidebar lists OPEN workspaces only. Closing one
-/// removes its row. New ones come from ⌘N or the "+" menu (projects,
-/// worktrees, plain terminal).
+/// Sessions grouped by repository: soft rounded rows, a filled row for the
+/// active one, state carried by the tint of each row's tile and its PR
+/// badge.
 struct SidebarView: View {
     @ObservedObject var store: Store
+    @ObservedObject var window: WindowModel
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             ScrollView {
-                VStack(alignment: .leading, spacing: 3) {
-                    ForEach(store.workspaces) { workspace in
-                        WorkspaceRow(store: store, workspace: workspace)
-                    }
-                    if store.workspaces.isEmpty {
-                        emptyHint
+                LazyVStack(alignment: .leading, spacing: 20) {
+                    ForEach(window.groups) { group in
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(group.name)
+                                .font(.system(size: 10.5, weight: .semibold))
+                                .tracking(0.9)
+                                .textCase(.uppercase)
+                                .foregroundStyle(Theme.textFaint)
+                                .lineLimit(1)
+                                .padding(.horizontal, 10)
+                                .frame(height: 24, alignment: .center)
+                            ForEach(group.workspaces) { workspace in
+                                SessionRow(store: store, window: window, workspace: workspace)
+                            }
+                        }
                     }
                 }
                 .padding(.horizontal, 10)
-                .padding(.top, 44)
-                .padding(.bottom, 12)
+                .padding(.top, 46)
+                .padding(.bottom, 10)
             }
+            .scrollIndicators(.never)
+            footer
         }
-        .frame(width: 260)
+        .frame(width: store.sidebarWidth)
         .frame(maxHeight: .infinity)
-        .background(Theme.surface.opacity(0.93))
     }
 
-    private var emptyHint: some View {
-        Text("Nichts offen.\n⌘N oder + unten für ein\nneues Terminal.")
-            .font(.system(size: 12))
-            .foregroundStyle(Theme.textFaint)
-            .padding(12)
-    }
-
-}
-
-/// Live terminal title (set by the shell via OSC, like a Ghostty window title).
-private struct SessionTitleText: View {
-    @ObservedObject var session: TerminalSession
-    let isSelected: Bool
-
-    var body: some View {
-        Text(session.title)
-            .font(.system(size: 14, weight: isSelected ? .medium : .regular))
-            .foregroundStyle(isSelected ? Theme.textPrimary : Theme.textBody)
-            .lineLimit(1)
-            .truncationMode(.tail)
+    private var footer: some View {
+        FooterButton {
+            window.newWorkspace()
+        }
+        .padding(10)
+        .overlay(alignment: .top) {
+            Rectangle().fill(Theme.hairline).frame(height: 0.5)
+        }
     }
 }
 
-private struct WorkspaceRow: View {
-    @ObservedObject var store: Store
-    @ObservedObject var workspace: Workspace
+private struct FooterButton: View {
+    let action: () -> Void
     @State private var hovered = false
 
-    private var isSelected: Bool { store.selectedWorkspaceID == workspace.id }
-
     var body: some View {
-        Button {
-            store.selectedWorkspaceID = workspace.id
-        } label: {
+        Button(action: action) {
             HStack(spacing: 10) {
-                if workspace.anyAttention {
-                    Circle()
-                        .fill(Theme.accent)
-                        .frame(width: 6, height: 6)
-                }
-                if workspace.worktree == nil, let session = workspace.selectedSession {
-                    SessionTitleText(session: session, isSelected: isSelected)
-                } else {
-                    Text(workspace.name)
-                        .font(.system(size: 14, weight: isSelected ? .medium : .regular))
-                        .foregroundStyle(isSelected ? Theme.textPrimary : Theme.textBody)
-                        .lineLimit(1)
-                }
-                Spacer(minLength: 0)
-                if workspace.sessions.count > 1 {
-                    Text("\(workspace.sessions.count)")
-                        .font(.system(size: 11, design: .monospaced))
-                        .foregroundStyle(Theme.textFaint)
-                }
-                if hovered {
-                    Button {
-                        store.requestCloseWorkspace(workspace)
-                    } label: {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 8, weight: .bold))
-                            .foregroundStyle(Theme.textFaint)
-                            .frame(width: 16, height: 16)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                }
+                Image(systemName: "plus")
+                    .font(.system(size: 11, weight: .semibold))
+                    .frame(width: 28)
+                Text(L("New Session"))
+                    .font(.system(size: 13, weight: .medium))
+                Spacer()
+                Kbd("⌘N")
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
+            .foregroundStyle(hovered ? Theme.textPrimary : Theme.textMuted)
+            .padding(.horizontal, 8)
+            .frame(height: 38)
+            .background(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(hovered ? Theme.fillHover : .clear)
+            )
             .contentShape(Rectangle())
-            .background(rowBackground)
-            .clipShape(RoundedRectangle(cornerRadius: 7))
         }
         .buttonStyle(.plain)
         .onHover { hovered = $0 }
-        .contextMenu {
-            Button("Schließen") { store.requestCloseWorkspace(workspace) }
-        }
-        .help(workspace.displayPath)
+        .animation(.easeOut(duration: 0.15), value: hovered)
     }
+}
 
-    private var rowBackground: some ShapeStyle {
-        if isSelected { return AnyShapeStyle(Theme.surfaceActive) }
-        if hovered { return AnyShapeStyle(Theme.surfaceActive.opacity(0.55)) }
-        return AnyShapeStyle(.clear)
+private struct SessionRow: View {
+    @ObservedObject var store: Store
+    @ObservedObject var window: WindowModel
+    @ObservedObject var workspace: Workspace
+    @State private var hovered = false
+
+    private var isSelected: Bool { window.selectedWorkspaceID == workspace.id }
+
+    var body: some View {
+        HStack(spacing: 10) {
+            SessionTile(agent: workspace.agent, attention: workspace.needsAttention, isGit: workspace.context.repo != nil)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(workspace.title)
+                    .font(.system(size: 13, weight: isSelected ? .semibold : .medium))
+                    .foregroundStyle(isSelected ? Theme.textPrimary : Theme.textBody)
+                    .lineLimit(1)
+                Text(workspace.subtitle)
+                    .font(.system(size: 11))
+                    .foregroundStyle(Theme.textDim)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+            Spacer(minLength: 4)
+            if hovered {
+                Button {
+                    store.requestCloseWorkspace(workspace)
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(Theme.textDim)
+                        .frame(width: 20, height: 20)
+                        .background(Circle().fill(Theme.fillActive))
+                }
+                .buttonStyle(.plain)
+                .transition(.opacity)
+            } else {
+                PRBadge(pr: workspace.context.pr, status: workspace.prStatus)
+            }
+        }
+        .padding(.leading, 8)
+        .padding(.trailing, 8)
+        .frame(height: 48)
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(isSelected ? Theme.fillActive : (hovered ? Theme.fillHover : .clear))
+        )
+        .contentShape(Rectangle())
+        .onTapGesture { window.select(workspace) }
+        .gesture(
+            // Drop anywhere → its own window right there; on another
+            // window's sidebar → moves into that window.
+            DragGesture(minimumDistance: 8, coordinateSpace: .global)
+                .onChanged { _ in
+                    DragGhost.update(workspace, target: store.dropTarget(for: workspace, at: NSEvent.mouseLocation))
+                }
+                .onEnded { _ in
+                    DragGhost.hide()
+                    store.drop(workspace, at: NSEvent.mouseLocation)
+                }
+        )
+        .onHover { hovered = $0 }
+        .animation(.easeOut(duration: 0.15), value: hovered)
+        .contextMenu {
+            Button(L("Close")) { store.requestCloseWorkspace(workspace) }
+        }
+        .help(Paths.abbreviate(workspace.directory))
     }
 }

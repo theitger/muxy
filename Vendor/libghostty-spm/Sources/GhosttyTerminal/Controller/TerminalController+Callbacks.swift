@@ -28,7 +28,24 @@ private enum TerminalCallbacks {
         action: ghostty_action_s
     ) -> Bool {
         guard let appPtr else { return false }
-        guard ghostty_app_userdata(appPtr) != nil else { return false }
+        guard let appUserdata = ghostty_app_userdata(appPtr) else { return false }
+
+        // muxy patch: answer soft config reloads like Ghostty.app does —
+        // re-apply the current config. Ghostty asks for this when the
+        // color scheme changes; without it a `theme = light:…,dark:…`
+        // never switches while the app runs.
+        if action.tag == GHOSTTY_ACTION_RELOAD_CONFIG, action.action.reload_config.soft {
+            let controller = Unmanaged<TerminalController>.fromOpaque(appUserdata)
+                .takeUnretainedValue()
+            guard let config = controller.config else { return false }
+            if target.tag == GHOSTTY_TARGET_SURFACE, let surface = target.target.surface {
+                ghostty_surface_update_config(surface, config)
+            } else {
+                ghostty_app_update_config(appPtr, config)
+            }
+            return true
+        }
+
         guard target.tag == GHOSTTY_TARGET_SURFACE else { return false }
         guard let surfacePtr = target.target.surface else { return false }
         guard let bridgePtr = ghostty_surface_userdata(surfacePtr) else { return false }
