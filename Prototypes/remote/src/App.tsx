@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react'
 import { useMuxy } from '@/lib/useMuxy'
+import { useVisualViewport } from '@/lib/viewport'
 import { Pair } from '@/screens/Pair'
 import { SessionScreen } from '@/screens/SessionScreen'
 import { Sessions, wantsYou } from '@/screens/Sessions'
 
 export default function App() {
   const muxy = useMuxy()
+  useVisualViewport()
   const [open, setOpen] = useState<string | null>(null)
   const [everConnected, setEverConnected] = useState(false)
   const [awaitingNew, setAwaitingNew] = useState(false)
@@ -37,7 +39,7 @@ export default function App() {
 
   if (!muxy.paired || muxy.state === 'rejected' || !everConnected) {
     return (
-      <div className="mx-auto h-full max-w-[560px]">
+      <div className="app-frame mx-auto max-w-[560px]">
         <Pair paired={muxy.paired} state={muxy.state} />
       </div>
     )
@@ -47,7 +49,7 @@ export default function App() {
   const urgent = muxy.sessions.filter(wantsYou)
 
   return (
-    <div className="mx-auto h-full max-w-[560px] overflow-hidden">
+    <div className="app-frame mx-auto max-w-[560px] overflow-hidden">
       {session ? (
         <SessionScreen
           key={session.id}

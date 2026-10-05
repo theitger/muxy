@@ -62,3 +62,4 @@ export type Key =
   | 'y'
   | 'n'
   | 'q'
+  | `ctrl-${string}`

@@ -46,6 +46,7 @@
   --m-orange-soft: #fff3e5; --m-orange: #9b5609;
   --m-red-soft: #fef2f2;    --m-red: #b91c1c;
   --m-neutral-soft: rgb(26 26 26 / 0.06);
+  --m-keycap: #ffffff;
 
   /* Ghostty palette (GT3 RS Light) for terminal output. */
   --ansi-red: #b3001b;
@@ -111,6 +112,7 @@
     --m-orange-soft: rgb(247 140 16 / 0.16); --m-orange: #ffb45c;
     --m-red-soft: rgb(220 38 38 / 0.16);     --m-red: #f87171;
     --m-neutral-soft: rgb(240 240 240 / 0.06);
+    --m-keycap: #3a3a3c;
     --ansi-red: #e63946;
     --ansi-green: #7ab870;
     --ansi-yellow: #f5c400;
@@ -143,6 +145,7 @@
   --m-orange-soft: rgb(247 140 16 / 0.16); --m-orange: #ffb45c;
   --m-red-soft: rgb(220 38 38 / 0.16);     --m-red: #f87171;
   --m-neutral-soft: rgb(240 240 240 / 0.06);
+  --m-keycap: #3a3a3c;
   --ansi-red: #e63946;
   --ansi-green: #7ab870;
   --ansi-yellow: #f5c400;
@@ -181,6 +184,7 @@
   --color-tone-red: var(--m-red);
   --color-tone-red-soft: var(--m-red-soft);
   --color-tone-neutral-soft: var(--m-neutral-soft);
+  --color-keycap: var(--m-keycap);
   --color-ansi-red: var(--ansi-red);
   --color-ansi-green: var(--ansi-green);
   --color-ansi-yellow: var(--ansi-yellow);
@@ -241,6 +245,19 @@
   button {
     cursor: pointer;
   }
+}
+
+/* Sized to the visual viewport: the dock rides on top of the keyboard. */
+.app-frame {
+  position: fixed;
+  inset-inline: 0;
+  top: var(--app-top, 0px);
+  height: var(--app-h, 100%);
+}
+html,
+body {
+  overflow: hidden;
+  touch-action: manipulation;
 }
 
 @keyframes pulse-soft {

@@ -106,7 +106,7 @@ export function useMuxy() {
     channel.current?.send({ t: 'type', tab, text, enter })
   }, [])
 
-  const key = useCallback((tab: string, k: Key) => {
+  const key = useCallback((tab: string, k: Key | string) => {
     channel.current?.send({ t: 'key', tab, key: k })
   }, [])
 
