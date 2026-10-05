@@ -141,6 +141,8 @@ final class TerminalSession: NSObject, ObservableObject, Identifiable {
                 if context.branch == self.context.branch {
                     context.pr = self.context.pr
                     context.checks = self.context.checks
+                    context.isDraft = self.context.isDraft
+                    context.mergeability = self.context.mergeability
                 }
                 self.context = context
                 self.onContextChange?()
@@ -152,6 +154,8 @@ final class TerminalSession: NSObject, ObservableObject, Identifiable {
                 let before = self.context.checks
                 self.context.pr = pr?.number
                 self.context.checks = pr?.checks ?? .none
+                self.context.isDraft = pr?.isDraft ?? false
+                self.context.mergeability = pr?.mergeability ?? .unknown
                 self.onContextChange?()
                 if before == .pending, let number = pr?.number {
                     switch self.context.checks {

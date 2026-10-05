@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Claude Code hook (UserPromptSubmit/Stop/Notification): tells muxy what
+# Claude Code hook (see install-claude-hook.sh for the events): tells muxy what
 # this session's agent is doing. muxy injects MUXY_SESSION into every
 # terminal it spawns; the hook inherits it through claude's environment.
 # Outside muxy: no-op. Prints nothing — UserPromptSubmit output would be
