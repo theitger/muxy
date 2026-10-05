@@ -33,6 +33,61 @@ public final class TerminalSurface {
         return ghostty_surface_needs_confirm_quit(s)
     }
 
+    /// muxy patch: the terminal's text as Ghostty would copy it — soft-wrapped
+    /// rows joined, no styling. `screen: false` reads the active area (the
+    /// rows a shell draws into), `true` the whole scrollback.
+    public func readText(screen: Bool) -> String? {
+        guard let s = surface else { return nil }
+        let tag = screen ? GHOSTTY_POINT_SCREEN : GHOSTTY_POINT_ACTIVE
+        let selection = ghostty_selection_s(
+            top_left: ghostty_point_s(tag: tag, coord: GHOSTTY_POINT_COORD_TOP_LEFT, x: 0, y: 0),
+            bottom_right: ghostty_point_s(tag: tag, coord: GHOSTTY_POINT_COORD_BOTTOM_RIGHT, x: 0, y: 0),
+            rectangle: false
+        )
+        var out = ghostty_text_s()
+        guard ghostty_surface_read_text(s, selection, &out) else { return nil }
+        defer { ghostty_surface_free_text(s, &out) }
+        guard let text = out.text, out.text_len > 0 else { return "" }
+        let bytes = UnsafeBufferPointer(start: text, count: Int(out.text_len)).map { UInt8(bitPattern: $0) }
+        return String(decoding: bytes, as: UTF8.self)
+    }
+
+    /// muxy patch: a synthetic key press + release, encoded by Ghostty for
+    /// whatever mode the program in the terminal asked for (application
+    /// cursor keys, the kitty keyboard protocol, …). `keycode` is the macOS
+    /// virtual key code; `mods` Ghostty's modifier bits.
+    @discardableResult
+    public func sendKey(keycode: UInt32, mods: UInt32 = 0, text: String? = nil, unshifted: UInt32 = 0) -> Bool {
+        guard let s = surface else { return false }
+        var handled = false
+        for action in [GHOSTTY_ACTION_PRESS, GHOSTTY_ACTION_RELEASE] {
+            var event = ghostty_input_key_s()
+            event.action = action
+            event.keycode = keycode
+            event.mods = ghostty_input_mods_e(rawValue: mods)
+            event.consumed_mods = ghostty_input_mods_e(rawValue: 0)
+            event.unshifted_codepoint = unshifted
+            event.composing = false
+            if action == GHOSTTY_ACTION_PRESS, let text {
+                handled = text.withCString { pointer in
+                    event.text = pointer
+                    return ghostty_surface_key(s, event)
+                }
+            } else {
+                let result = ghostty_surface_key(s, event)
+                if action == GHOSTTY_ACTION_PRESS { handled = result }
+            }
+        }
+        return handled
+    }
+
+    /// muxy patch: grid size in cells.
+    public var gridSize: (columns: Int, rows: Int) {
+        guard let s = surface else { return (0, 0) }
+        let size = ghostty_surface_size(s)
+        return (Int(size.columns), Int(size.rows))
+    }
+
     // MARK: - Input
 
     @discardableResult

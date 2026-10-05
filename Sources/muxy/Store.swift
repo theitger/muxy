@@ -35,6 +35,7 @@ final class Store: ObservableObject {
         let watcher = HookWatcher(store: self)
         watcher.start()
         hookWatcher = watcher
+        RemoteServer.shared.startIfEnabled()
         // PRs get opened and checks finish while you work — poll gently.
         prTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.refreshPullRequests() }
@@ -360,10 +361,11 @@ final class Store: ObservableObject {
     /// (turn died on an API error), `stop` (turn finished). False when the
     /// session isn't ours.
     @discardableResult
-    func handleHookEvent(sessionUUID: String, event: String) -> Bool {
+    func handleHookEvent(sessionUUID: String, event: String, transcript: String? = nil) -> Bool {
         for workspace in workspaces {
             guard let session = workspace.sessions.first(where: { $0.id.uuidString == sessionUUID })
             else { continue }
+            if let transcript { session.transcriptPath = transcript }
             switch event {
             case "prompt", "tool":
                 session.agent = .working

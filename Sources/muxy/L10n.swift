@@ -106,6 +106,20 @@ private enum German {
         "· #%d failed": "· #%d Checks rot",
 
         // Settings
+        "Phone": "Handy",
+        "Use Muxy from your phone — anywhere through a relay, or on the same Wi-Fi.": "Muxy vom Handy aus bedienen — über einen Relay von überall, sonst im selben WLAN.",
+        "Relay": "Relay",
+        "e.g. muxy.example.com — empty: Wi-Fi only": "z. B. muxy.example.com — leer: nur WLAN",
+        "Save": "Sichern",
+        "Relay connected — reachable from anywhere.": "Relay verbunden — von überall erreichbar.",
+        "Connecting to the relay …": "Verbinde mit dem Relay …",
+        "Relay unreachable: %@": "Relay nicht erreichbar: %@",
+        "Scan with the phone's camera.": "Mit der Handy-Kamera scannen.",
+        "The code is the key: whoever scans it can use your terminals. Pair again to lock every phone out.": "Der Code ist der Schlüssel: Wer ihn scannt, kann deine Terminals bedienen. Neu koppeln sperrt alle Handys aus.",
+        "1 phone connected": "1 Handy verbunden",
+        "%d phones connected": "%d Handys verbunden",
+        "Pair Again": "Neu koppeln",
+        "No network connection.": "Keine Netzwerkverbindung.",
         "Language": "Sprache",
         "Some menus switch after the next launch.": "Manche Menüs wechseln erst nach einem Neustart.",
     ]

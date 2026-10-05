@@ -23,6 +23,14 @@ quiet signal the moment an agent needs you.
 - **Windows when you want them.** Drag a session from the sidebar and drop
   it anywhere — it opens as its own window right there; drop it on another
   window's sidebar and it moves in. Running processes don't notice.
+- **On your phone, from anywhere.** Settings → Phone shows a QR code; scan
+  it and Safari becomes a remote for every session — through your own
+  relay (`Relay/`, a small server Muxy connects out to) or, without one,
+  on the same Wi-Fi: the sidebar with agent
+  state and PR badges, Claude as a chat with permission buttons, any tab's
+  screen with a line to type into and the keys a phone lacks. Pairing puts
+  a secret on the phone; every connection is end-to-end encrypted with it
+  (fresh X25519 keys, ChaCha20-Poly1305). "Pair Again" locks all phones out.
 - **English or German.** English by default; switch in Settings (`⌘,`).
 - **Built to stay fast.** Exactly one terminal surface per window is
   attached; background sessions keep their PTY but cost no rendering. No

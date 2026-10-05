@@ -16,7 +16,7 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import type { Agent, PRStatus } from '@/data'
+import type { Agent, PRStatus } from '@/lib/protocol'
 
 type Tone = 'blue' | 'green' | 'yellow' | 'orange' | 'red' | 'neutral'
 

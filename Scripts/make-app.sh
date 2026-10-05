@@ -14,6 +14,15 @@ fi
 echo "[muxy] release build …"
 swift build -c release --package-path "$REPO"
 
+# The phone app (Settings → Phone), served by Muxy itself.
+REMOTE="$REPO/Prototypes/remote"
+if command -v pnpm >/dev/null 2>&1; then
+    echo "[muxy] phone app …"
+    (cd "$REMOTE" && pnpm install --frozen-lockfile --silent && pnpm build >/dev/null)
+else
+    echo "[muxy] note: pnpm not found — built without the phone app"
+fi
+
 if [ ! -f "$ICNS" ]; then
     echo "[muxy] rendering icon …"
     tmp="$(mktemp -d)"
@@ -28,6 +37,9 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$REPO/Packaging/Info.plist" "$APP/Contents/Info.plist"
 cp "$REPO/.build/release/muxy" "$APP/Contents/MacOS/muxy"
 cp "$ICNS" "$APP/Contents/Resources/AppIcon.icns"
+if [ -f "$REMOTE/dist/index.html" ]; then
+    cp "$REMOTE/dist/index.html" "$APP/Contents/Resources/remote.html"
+fi
 
 # macOS 26 dark icon style: ship a real dark variant (Icon Composer source,
 # compiled by Xcode's actool) — otherwise the system tints the icon itself.
