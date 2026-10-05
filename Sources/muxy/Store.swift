@@ -354,22 +354,36 @@ final class Store: ObservableObject {
 
     // MARK: - Agent events
 
-    /// Claude Code hook: `stop` (turn finished), `notify` (needs you),
-    /// `prompt` (started working). False when the session isn't ours.
+    /// Claude Code hook: `prompt` (started working), `tool` (working —
+    /// also when it resumes on its own), `notify` (needs you), `idle`
+    /// (waiting for input — ends a turn that was interrupted), `error`
+    /// (turn died on an API error), `stop` (turn finished). False when the
+    /// session isn't ours.
     @discardableResult
     func handleHookEvent(sessionUUID: String, event: String) -> Bool {
         for workspace in workspaces {
             guard let session = workspace.sessions.first(where: { $0.id.uuidString == sessionUUID })
             else { continue }
             switch event {
-            case "prompt":
+            case "prompt", "tool":
                 session.agent = .working
             case "notify":
                 session.agent = .blocked
                 session.markAttentionIfBackground(reason: L("needs you"))
+            case "idle":
+                // Esc fires no Stop — this is the first word after it. A
+                // pending permission prompt stays what it is.
+                if session.agent == .working { session.agent = .idle }
+            case "error":
+                session.agent = .failed
+                session.markAttentionIfBackground(reason: L("hit an error"))
             default:
                 session.agent = .idle
                 session.markAttentionIfBackground(reason: L("is done"))
+                // A turn often ends with a push — don't wait for the poll.
+                if let primary = workspace.primary, Git.mayHavePR(primary.context.branch) {
+                    primary.refreshContext()
+                }
             }
             return true
         }

@@ -75,19 +75,65 @@ enum Git {
         return !["main", "master", "develop", "dev", "trunk"].contains(branch)
     }
 
-    /// Open PR of the directory's current branch and the state of its
-    /// checks, via gh.
-    static func pullRequest(in directory: String) -> (number: Int, checks: Checks)? {
+    struct PullRequest {
+        var number: Int
+        var checks: Checks
+        var isDraft: Bool
+        var mergeability: Mergeability
+    }
+
+    /// Open PR of the directory's current branch, its checks and whether
+    /// GitHub would merge it, via gh.
+    static func pullRequest(in directory: String) -> PullRequest? {
+        guard let first = fetchPullRequest(in: directory) else { return nil }
+        // GitHub computes mergeability lazily: the first ask after a push
+        // often answers UNKNOWN and starts the computation — ask once more.
+        guard first.mergeability == .unknown else { return first }
+        Thread.sleep(forTimeInterval: 3)
+        return fetchPullRequest(in: directory) ?? first
+    }
+
+    private static func fetchPullRequest(in directory: String) -> PullRequest? {
         guard let gh = Shell.find("gh"),
               let output = Shell.run(
-                  gh, ["pr", "view", "--json", "number,state,statusCheckRollup"], in: directory
+                  gh,
+                  ["pr", "view", "--json",
+                   "number,state,isDraft,mergeable,mergeStateStatus,reviewDecision,statusCheckRollup"],
+                  in: directory
               ),
               let json = try? JSONSerialization.jsonObject(with: Data(output.utf8)) as? [String: Any],
               json["state"] as? String == "OPEN",
               let number = json["number"] as? Int
         else { return nil }
         let rollup = json["statusCheckRollup"] as? [[String: Any]] ?? []
-        return (number, checks(from: rollup))
+        return PullRequest(
+            number: number,
+            checks: checks(from: rollup),
+            isDraft: json["isDraft"] as? Bool ?? false,
+            mergeability: mergeability(
+                mergeable: json["mergeable"] as? String ?? "",
+                state: json["mergeStateStatus"] as? String ?? "",
+                review: json["reviewDecision"] as? String ?? ""
+            )
+        )
+    }
+
+    /// GraphQL MergeableState + MergeStateStatus + ReviewDecision → one
+    /// answer. UNSTABLE and DRAFT count as clean here: failing checks and
+    /// drafts are judged on their own.
+    static func mergeability(mergeable: String, state: String, review: String) -> Mergeability {
+        if mergeable == "CONFLICTING" || state == "DIRTY" { return .conflicting }
+        switch state {
+        case "CLEAN", "HAS_HOOKS", "UNSTABLE", "DRAFT": return .clean
+        case "BEHIND": return .behind
+        case "BLOCKED":
+            switch review {
+            case "CHANGES_REQUESTED": return .changesRequested
+            case "REVIEW_REQUIRED": return .reviewRequired
+            default: return .blocked
+            }
+        default: return .unknown
+        }
     }
 
     /// Check runs carry status + conclusion, commit statuses a state.

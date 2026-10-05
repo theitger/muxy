@@ -74,6 +74,7 @@ final class Workspace: ObservableObject, Identifiable {
     var agent: AgentState {
         let states = sessions.map(\.agent)
         if states.contains(.blocked) { return .blocked }
+        if states.contains(.failed) { return .failed }
         if states.contains(.working) { return .working }
         if states.contains(.idle) { return .idle }
         return .none
@@ -85,13 +86,15 @@ final class Workspace: ObservableObject, Identifiable {
         sessions.contains { $0.isBusy }
     }
 
+    /// Green only when GitHub would merge it now: checks passed, not a
+    /// draft, no conflicts, nothing branch protection still wants.
     var prStatus: PRStatus {
-        switch context.checks {
-        case .none: .none
-        case .pending: .running
-        case .passed: .ready
-        case .failed: isBusy ? .fixing : .failed
-        }
+        if context.checks == .failed { return isBusy ? .fixing : .failed }
+        if context.mergeability == .conflicting { return .conflicts }
+        if context.checks == .pending { return .running }
+        if context.isDraft { return .draft }
+        guard context.checks == .passed else { return .none }
+        return context.mergeability == .clean ? .ready : .waiting(context.mergeability)
     }
 
     var searchText: String {

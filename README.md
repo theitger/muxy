@@ -14,9 +14,12 @@ quiet signal the moment an agent needs you.
 - **Agent-aware.** A Claude Code hook reports *working*, *done* and *needs
   you* per tab. The session's tile changes, the Dock shows a count, and a
   banner (click → that session) appears when Muxy is in the background.
-- **PR status at a glance.** The PR badge follows the CI checks: blue
-  while they run, yellow when they failed and something in the session is
-  working on it, red when they failed, green when everything passed.
+- **PR status at a glance.** The PR badge follows the CI checks and
+  GitHub's merge state: blue while checks run, yellow when they failed and
+  something in the session is working on it, red when they failed or the
+  PR has conflicts, grey for drafts and PRs GitHub still holds back
+  (review, out-of-date branch, required check missing), green only when
+  it could be merged right now.
 - **Windows when you want them.** Drag a session from the sidebar and drop
   it anywhere — it opens as its own window right there; drop it on another
   window's sidebar and it moves in. Running processes don't notice.
@@ -51,8 +54,9 @@ installed, its shell integration and terminfo are bundled into Muxy.
 ## Setup
 
 1. **Agent status:** `./Scripts/install-claude-hook.sh` adds
-   UserPromptSubmit/Stop/Notification hooks to your Claude Code settings.
-   They are a no-op outside Muxy and leave existing hooks untouched.
+   UserPromptSubmit/PreToolUse/Notification/Stop/StopFailure hooks to your
+   Claude Code settings. They are a no-op outside Muxy and leave other
+   hooks untouched; rerun it after updating Muxy.
 2. **`muxy` on your PATH** (optional):
    `ln -s "$PWD/Scripts/muxy" ~/.local/bin/muxy`, then `muxy .` opens a
    session in the current directory. Folders dropped on the Dock icon do the
