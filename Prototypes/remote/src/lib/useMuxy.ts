@@ -17,27 +17,41 @@ function store(key: string, value: string | null) {
   }
 }
 
+/** Started from the home screen rather than a Safari tab. */
+function standalone() {
+  return matchMedia('(display-mode: standalone)').matches || (navigator as { standalone?: boolean }).standalone === true
+}
+
 /**
- * The pairing arrives once in the QR code's fragment (#r=room&k=secret);
- * it is kept in this browser and wiped from the address bar right away.
- * With a room the phone goes through the relay serving this page,
- * without one straight to Muxy on the local network.
+ * The pairing arrives in the QR code's fragment (#r=room&k=secret) —
+ * browsers never send a fragment to a server. iOS gives a home-screen app
+ * its own storage, separate from Safari's, and "Add to Home Screen" saves
+ * the current address: so in a Safari tab the pairing stays in the
+ * address, and the home-screen app picks it up from there on its first
+ * start. Only there, where there is no address bar, it is wiped.
  */
 function readPairing(): Pairing | null {
+  let pairing: Pairing | null = null
   const secret = location.hash.match(/k=([A-Za-z0-9_-]{43})/)?.[1]
   if (secret) {
-    const room = location.hash.match(/r=([0-9a-f]{32})/)?.[1] ?? null
-    store(SECRET_KEY, secret)
-    store(ROOM_KEY, room)
-    history.replaceState(null, '', location.pathname)
-    return { secret, room }
+    pairing = { secret, room: location.hash.match(/r=([0-9a-f]{32})/)?.[1] ?? null }
+    store(SECRET_KEY, pairing.secret)
+    store(ROOM_KEY, pairing.room)
+  } else {
+    try {
+      const stored = localStorage.getItem(SECRET_KEY)
+      if (stored) pairing = { secret: stored, room: localStorage.getItem(ROOM_KEY) }
+    } catch {
+      /* no storage */
+    }
   }
-  try {
-    const stored = localStorage.getItem(SECRET_KEY)
-    return stored ? { secret: stored, room: localStorage.getItem(ROOM_KEY) } : null
-  } catch {
-    return null
+  if (standalone()) {
+    if (location.hash) history.replaceState(null, '', location.pathname)
+  } else if (pairing && !secret) {
+    // Opened without the link: put it back, so adding to the home screen works.
+    history.replaceState(null, '', `${location.pathname}#${pairing.room ? `r=${pairing.room}&` : ''}k=${pairing.secret}`)
   }
+  return pairing
 }
 
 function channelURL(room: string | null) {
