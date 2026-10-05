@@ -32,6 +32,7 @@ export function TerminalView({
   onType,
   onKey,
   busy,
+  commands,
 }: {
   screen?: Screen
   history: boolean
@@ -39,6 +40,7 @@ export function TerminalView({
   onType: (text: string, enter: boolean) => void
   onKey: (key: Key | string) => void
   busy?: boolean
+  commands?: string[]
 }) {
   const [wrap, setWrap] = useState(() => stored('muxy.wrap', '1') === '1')
   const [size, setSize] = useState(() => Number(stored('muxy.fontSize', '12.5')))
@@ -160,6 +162,7 @@ export function TerminalView({
       <Dock
         screen={screen?.text}
         busy={busy}
+        history={commands}
         onType={(text, enter) => {
           stick.current = true
           onType(text, enter)

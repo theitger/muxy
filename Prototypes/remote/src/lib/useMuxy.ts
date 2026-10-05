@@ -5,6 +5,16 @@ import type { ChatItem, Key, Screen, Session } from './protocol'
 
 const SECRET_KEY = 'muxy.secret'
 const ROOM_KEY = 'muxy.room'
+const SENT_KEY = 'muxy.sent'
+
+/** Commands sent from this phone, newest first — history until Muxy sends its own. */
+function readSent(): string[] {
+  try {
+    return JSON.parse(localStorage.getItem(SENT_KEY) ?? '[]')
+  } catch {
+    return []
+  }
+}
 
 type Pairing = { secret: string; room: string | null }
 
@@ -71,6 +81,8 @@ export function useMuxy() {
   const [state, setState] = useState<ChannelState>('connecting')
   const [sessions, setSessions] = useState<Session[]>([])
   const [recent, setRecent] = useState<string[]>([])
+  const [shellHistory, setShellHistory] = useState<string[]>([])
+  const [sent, setSent] = useState<string[]>(readSent)
   const [screens, setScreens] = useState<Record<string, Screen>>({})
   const [chats, setChats] = useState<Record<string, ChatItem[]>>({})
   const [opened, setOpened] = useState<{ session: string | null; at: number } | null>(null)
@@ -88,6 +100,7 @@ export function useMuxy() {
           case 'sessions':
             setSessions(m.sessions as Session[])
             setRecent(m.recent as string[])
+            if (Array.isArray(m.history)) setShellHistory(m.history as string[])
             break
           case 'screen':
             setScreens((s) => ({ ...s, [m.tab as string]: m as unknown as Screen }))
@@ -118,7 +131,18 @@ export function useMuxy() {
 
   const type = useCallback((tab: string, text: string, enter = true) => {
     channel.current?.send({ t: 'type', tab, text, enter })
+    const line = text.trim()
+    if (enter && line && !line.includes('\n')) {
+      setSent((list) => {
+        const next = [line, ...list.filter((c) => c !== line)].slice(0, 40)
+        store(SENT_KEY, JSON.stringify(next))
+        return next
+      })
+    }
   }, [])
+
+  // Newest first: what this phone sent, then the shell's own history.
+  const history = [...new Set([...sent, ...shellHistory])]
 
   const key = useCallback((tab: string, k: Key | string) => {
     channel.current?.send({ t: 'key', tab, key: k })
@@ -128,7 +152,7 @@ export function useMuxy() {
     channel.current?.send({ t: 'open', directory })
   }, [])
 
-  return { paired: !!pairing, state, sessions, recent, screens, chats, opened, watch, type, key, open }
+  return { paired: !!pairing, state, sessions, recent, history, screens, chats, opened, watch, type, key, open }
 }
 
 export type Muxy = ReturnType<typeof useMuxy>

@@ -99,7 +99,6 @@ export function ClaudeView({
             onType={onType}
             onKey={onKey}
             multiline
-            keys={false}
             placeholder={tab.agent === 'working' ? 'Nachricht für danach …' : tab.agent === 'failed' ? '„weiter“ schickt die Runde neu los' : 'Antwort an Claude …'}
           />
         </>
