@@ -40,6 +40,9 @@ final class TerminalSession: NSObject, ObservableObject, Identifiable {
     @Published private(set) var context: RepoContext
     @Published private(set) var status: SessionStatus = .running
     @Published var agent: AgentState = .none
+    /// Claude's conversation log, as the hook reports it — the remote
+    /// renders it as a chat.
+    var transcriptPath: String?
     /// Something happened here while you were looking elsewhere — the
     /// single orange signal.
     @Published var needsAttention = false {
@@ -194,6 +197,7 @@ extension TerminalSession: TerminalSurfaceCommandFinishedDelegate {
         // Commands inside claude never reach this shell — a finished
         // command here means claude itself exited.
         agent = .none
+        transcriptPath = nil
     }
 }
 

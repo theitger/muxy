@@ -1,7 +1,8 @@
 import Foundation
 
 /// Watches ~/.local/state/muxy/events for files written by the Claude Code
-/// hook (Scripts/claude-hook.sh). Each file is "<session-uuid> <agent> <event>".
+/// hook (Scripts/claude-hook.sh). Each file is
+/// "<session-uuid> <agent> <event> [<transcript path>]".
 /// This is the deterministic "agent is working / done / needs input"
 /// channel — no bell heuristics involved.
 @MainActor
@@ -46,9 +47,13 @@ final class HookWatcher {
         }.sorted { $0.1 < $1.1 }
         for (url, date) in ordered {
             let content = (try? String(contentsOf: url, encoding: .utf8)) ?? ""
-            let parts = content.split(whereSeparator: \.isWhitespace).map(String.init)
-            let handled = parts.first.map {
-                store?.handleHookEvent(sessionUUID: $0, event: parts.count > 2 ? parts[2] : "stop") ?? false
+            let parts = content.split(separator: " ", maxSplits: 3, omittingEmptySubsequences: false)
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            let transcript = parts.count > 3 && !parts[3].isEmpty ? parts[3] : nil
+            let handled = parts.first.flatMap { $0.isEmpty ? nil : $0 }.map {
+                store?.handleHookEvent(
+                    sessionUUID: $0, event: parts.count > 2 ? parts[2] : "stop", transcript: transcript
+                ) ?? false
             } ?? false
             // Another muxy instance may own the session — leave its events
             // to it; anything nobody picked up within a minute is litter.

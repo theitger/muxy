@@ -106,6 +106,14 @@ private enum German {
         "· #%d failed": "· #%d Checks rot",
 
         // Settings
+        "Phone": "Handy",
+        "Use Muxy from your phone on the same Wi-Fi.": "Muxy vom Handy aus bedienen, im selben WLAN.",
+        "Scan with the phone's camera.": "Mit der Handy-Kamera scannen.",
+        "The code is the key: whoever scans it can use your terminals. Pair again to lock every phone out.": "Der Code ist der Schlüssel: Wer ihn scannt, kann deine Terminals bedienen. Neu koppeln sperrt alle Handys aus.",
+        "1 phone connected": "1 Handy verbunden",
+        "%d phones connected": "%d Handys verbunden",
+        "Pair Again": "Neu koppeln",
+        "No network connection.": "Keine Netzwerkverbindung.",
         "Language": "Sprache",
         "Some menus switch after the next launch.": "Manche Menüs wechseln erst nach einem Neustart.",
     ]

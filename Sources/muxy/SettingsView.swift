@@ -24,8 +24,10 @@ struct SettingsView: View {
             Text(L("Some menus switch after the next launch."))
                 .font(.system(size: 11.5))
                 .foregroundStyle(Theme.textDim)
+            Divider().padding(.vertical, 6)
+            RemoteSettings()
         }
         .padding(20)
-        .frame(width: 400)
+        .frame(width: 440)
     }
 }
