@@ -4,16 +4,19 @@ The web app Muxy serves to a paired phone (Settings → Phone): the session
 list, Claude as a chat built from its transcript, every tab's screen with
 input and special keys.
 
-- **Transport:** Muxy serves this app on port 47820 and the channel on
-  47821, local network only.
+- **Transport:** through a relay (`Relay/`, which also serves this app
+  over HTTPS; the QR code carries `#r=<room>&k=<secret>`) or, without
+  one, straight from Muxy on the local network (app on port 47820,
+  channel on 47821).
 - **Security:** the QR code carries a 32-byte secret in the URL fragment
   (never sent over the network). Each connection runs X25519 → HKDF-SHA256
   over secret + exchange → ChaCha20-Poly1305 per direction with counter
   nonces. Muxy acts on nothing before the phone proved the secret. Swift
   side: `Sources/muxy/Remote/RemoteCrypto.swift`; keep both in sync.
-- **Known limits:** the page itself is served over plain HTTP, so an
-  active attacker on the same network could swap the app's code and steal
-  the secret on the next load. Screens are text only (no colors yet).
+- **Known limits:** whoever controls the server that serves this page
+  could swap its code and steal the secret on the next load — the relay
+  host, or on the local-network path anyone able to tamper with plain
+  HTTP there. Screens are text only (no colors yet).
 
 ```sh
 pnpm install

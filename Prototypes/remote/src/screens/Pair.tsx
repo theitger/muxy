@@ -8,7 +8,7 @@ export function Pair({ paired, state }: { paired: boolean; state: ChannelState }
     ? [QrCode, 'Mit Muxy koppeln', 'Öffne auf dem Mac Muxy → Einstellungen (⌘,) → Handy, schalte es ein und scanne den QR-Code mit der Kamera.']
     : state === 'rejected'
       ? [ShieldAlert, 'Kopplung abgelaufen', 'Muxy hat einen neuen Schlüssel. Scanne den QR-Code in Muxy → Einstellungen → Handy erneut.']
-      : [WifiOff, 'Muxy nicht erreichbar', 'Ist der Mac wach, Muxy offen und das Handy im selben WLAN? Es wird weiter versucht.']
+      : [WifiOff, 'Muxy nicht erreichbar', 'Ist der Mac wach und Muxy offen (Einstellungen → Handy)? Es wird weiter versucht.']
 
   return (
     <div className="flex h-full flex-col items-center justify-center gap-4 bg-surface px-8 text-center">

@@ -3,10 +3,12 @@ import Foundation
 import IOKit.pwr_mgt
 import Network
 
-/// Muxy on the phone, over the local network: one port serves the web app,
-/// the next one carries the encrypted channel (see RemoteCrypto). Off until
-/// switched on in Settings; nothing is accepted before a connection has
-/// proven it holds the pairing secret.
+/// Muxy on the phone. Through a relay (any network: Muxy connects out, the
+/// relay serves the web app) or, without one, over the local network (one
+/// port serves the web app, the next carries the channel). Either way the
+/// channel is end-to-end encrypted (see RemoteCrypto); nothing is accepted
+/// before a phone has proven it holds the pairing secret. Off until
+/// switched on in Settings.
 @MainActor
 final class RemoteServer: ObservableObject {
     static let shared = RemoteServer()
@@ -14,11 +16,14 @@ final class RemoteServer: ObservableObject {
     static let httpPort: UInt16 = 47_820
     static var socketPort: UInt16 { httpPort + 1 }
     static let enabledKey = "remoteEnabled"
+    static let relayKey = "remoteRelay"
 
     @Published private(set) var isRunning = false
+    @Published private(set) var relayState: RemoteRelay.State?
     @Published private(set) var phones = 0
     @Published private(set) var problem: String?
 
+    private var relay: RemoteRelay?
     private var httpListener: NWListener?
     private var socketListener: NWListener?
     private var connections: [ObjectIdentifier: RemoteConnection] = [:]
@@ -40,9 +45,36 @@ final class RemoteServer: ObservableObject {
         on ? start() : stop()
     }
 
+    /// The relay's host name, e.g. "muxy.example.com"; empty: local network.
+    var relayHost: String {
+        (UserDefaults.standard.string(forKey: Self.relayKey) ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "https://", with: "")
+            .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+    }
+
+    func setRelayHost(_ host: String) {
+        UserDefaults.standard.set(host, forKey: Self.relayKey)
+        if isRunning {
+            stop()
+            start()
+        }
+    }
+
     func start() {
         guard !isRunning else { return }
         problem = nil
+        if !relayHost.isEmpty {
+            let relay = RemoteRelay(
+                host: relayHost, token: RemoteCrypto.relayToken, secret: secret,
+                onState: { [weak self] state in self?.relayState = state },
+                attach: { [weak self] connection in self?.track(connection) }
+            )
+            self.relay = relay
+            relay.start()
+            startTicking()
+            return
+        }
         do {
             let http = try NWListener(using: .tcp, on: NWEndpoint.Port(rawValue: Self.httpPort)!)
             http.newConnectionHandler = { connection in
@@ -73,6 +105,10 @@ final class RemoteServer: ObservableObject {
             stop()
             return
         }
+        startTicking()
+    }
+
+    private func startTicking() {
         isRunning = true
         timer = Timer.scheduledTimer(withTimeInterval: 0.3, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.tick() }
@@ -82,6 +118,9 @@ final class RemoteServer: ObservableObject {
     func stop() {
         timer?.invalidate()
         timer = nil
+        relay?.stop()
+        relay = nil
+        relayState = nil
         httpListener?.cancel()
         socketListener?.cancel()
         httpListener = nil
@@ -95,9 +134,10 @@ final class RemoteServer: ObservableObject {
     /// New secret: every paired phone is locked out, open connections end.
     func pairAgain() {
         RemoteCrypto.newSecret()
-        for connection in connections.values { connection.close() }
-        connections.removeAll()
-        updatePhones()
+        if isRunning {
+            stop()
+            start()
+        }
     }
 
     private func listenerChanged(_ state: NWListener.State) {
@@ -112,6 +152,10 @@ final class RemoteServer: ObservableObject {
     /// What the QR code holds: this Mac's address plus the secret in the
     /// fragment — browsers never send a fragment over the network.
     var pairingURL: String? {
+        if !relayHost.isEmpty {
+            let room = RemoteRelay.room(for: RemoteCrypto.relayToken)
+            return "https://\(relayHost)/#r=\(room)&k=\(secret.base64URL)"
+        }
         guard let host = Self.localAddress() else { return nil }
         return "http://\(host):\(Self.httpPort)/#k=\(secret.base64URL)"
     }
@@ -184,7 +228,43 @@ final class RemoteServer: ObservableObject {
     // MARK: - Connections
 
     private func accept(_ connection: NWConnection) {
-        let remote = RemoteConnection(connection: connection, secret: secret)
+        let remote = RemoteConnection(
+            secret: secret,
+            send: { data in
+                let metadata = NWProtocolWebSocket.Metadata(opcode: .binary)
+                let context = NWConnection.ContentContext(identifier: "frame", metadata: [metadata])
+                connection.send(content: data, contentContext: context, isComplete: true, completion: .contentProcessed { error in
+                    if error != nil { connection.cancel() }
+                })
+            },
+            close: { connection.cancel() }
+        )
+        track(remote)
+        connection.stateUpdateHandler = { [weak remote] state in
+            MainActor.assumeIsolated {
+                switch state {
+                case .ready: remote?.start()
+                case .failed, .cancelled: remote?.close()
+                default: break
+                }
+            }
+        }
+        func receive() {
+            connection.receiveMessage { [weak remote] data, _, _, error in
+                MainActor.assumeIsolated {
+                    guard let remote else { return }
+                    if error != nil { return remote.close() }
+                    if let data { remote.receive(data) }
+                    receive()
+                }
+            }
+        }
+        receive()
+        connection.start(queue: .main)
+    }
+
+    /// Every phone, however it came in, counts for the badge and the push.
+    func track(_ remote: RemoteConnection) {
         let key = ObjectIdentifier(remote)
         remote.onAuthenticated = { [weak self] in self?.updatePhones() }
         remote.onClose = { [weak self] in
@@ -192,7 +272,6 @@ final class RemoteServer: ObservableObject {
             self?.updatePhones()
         }
         connections[key] = remote
-        remote.start()
     }
 
     private func tick() {
@@ -220,11 +299,13 @@ final class RemoteServer: ObservableObject {
 }
 
 /// One phone. Speaks only after the handshake proved the secret; every
-/// frame after that is sealed (see RemoteCrypto).
+/// frame after that is sealed (see RemoteCrypto). The transport — a local
+/// socket or a relay channel — only moves frames.
 @MainActor
 final class RemoteConnection {
-    private let connection: NWConnection
     private let secret: Data
+    private let transportSend: (Data) -> Void
+    private let transportClose: () -> Void
     private let serverKey = Curve25519.KeyAgreement.PrivateKey()
     private var keys: RemoteCrypto.Keys?
     private var sendCounter: UInt64 = 0
@@ -245,23 +326,16 @@ final class RemoteConnection {
     private var lastHistoryRead = Date.distantPast
     private var parsing = false
 
-    init(connection: NWConnection, secret: Data) {
-        self.connection = connection
+    init(secret: Data, send: @escaping (Data) -> Void, close: @escaping () -> Void) {
         self.secret = secret
+        transportSend = send
+        transportClose = close
     }
 
+    /// The transport is up: say hello, and drop a phone that hasn't proven
+    /// itself within 10 s.
     func start() {
-        connection.stateUpdateHandler = { [weak self] state in
-            MainActor.assumeIsolated {
-                switch state {
-                case .ready: self?.sendHello()
-                case .failed, .cancelled: self?.close()
-                default: break
-                }
-            }
-        }
-        connection.start(queue: .main)
-        // A connection that hasn't proven itself within 10 s is dropped.
+        sendFrame(Data([0x01]) + serverKey.publicKey.rawRepresentation)
         DispatchQueue.main.asyncAfter(deadline: .now() + 10) { [weak self] in
             MainActor.assumeIsolated {
                 if self?.isAuthenticated == false { self?.close() }
@@ -269,27 +343,16 @@ final class RemoteConnection {
         }
     }
 
+    func receive(_ frame: Data) {
+        guard !closed, !frame.isEmpty else { return }
+        handle(frame)
+    }
+
     func close() {
         guard !closed else { return }
         closed = true
-        connection.cancel()
+        transportClose()
         onClose?()
-    }
-
-    private func sendHello() {
-        sendFrame(Data([0x01]) + serverKey.publicKey.rawRepresentation)
-        receive()
-    }
-
-    private func receive() {
-        connection.receiveMessage { [weak self] data, _, _, error in
-            MainActor.assumeIsolated {
-                guard let self, !self.closed else { return }
-                if error != nil { return self.close() }
-                if let data, !data.isEmpty { self.handle(data) }
-                if !self.closed { self.receive() }
-            }
-        }
     }
 
     private func handle(_ frame: Data) {
@@ -416,12 +479,7 @@ final class RemoteConnection {
     }
 
     private func sendFrame(_ data: Data) {
-        let metadata = NWProtocolWebSocket.Metadata(opcode: .binary)
-        let context = NWConnection.ContentContext(identifier: "frame", metadata: [metadata])
-        connection.send(content: data, contentContext: context, isComplete: true, completion: .contentProcessed { [weak self] error in
-            if error != nil {
-                MainActor.assumeIsolated { self?.close() }
-            }
-        })
+        guard !closed else { return }
+        transportSend(data)
     }
 }

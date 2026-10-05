@@ -77,18 +77,29 @@ enum RemoteCrypto {
             .appendingPathComponent("Muxy/remote-secret")
     }
 
-    static func loadSecret() -> Data? {
-        guard let data = try? Data(contentsOf: secretURL), data.count == 32 else { return nil }
+    /// Identifies this Mac to a relay. Unlike the secret it never reaches
+    /// a phone; "pair again" leaves it alone.
+    static var relayTokenURL: URL {
+        secretURL.deletingLastPathComponent().appendingPathComponent("remote-relay-token")
+    }
+
+    static func loadSecret() -> Data? { load(secretURL) }
+
+    @discardableResult
+    static func newSecret() -> Data { create(secretURL) }
+
+    static var relayToken: Data { load(relayTokenURL) ?? create(relayTokenURL) }
+
+    private static func load(_ url: URL) -> Data? {
+        guard let data = try? Data(contentsOf: url), data.count == 32 else { return nil }
         return data
     }
 
-    @discardableResult
-    static func newSecret() -> Data {
+    private static func create(_ url: URL) -> Data {
         var bytes = [UInt8](repeating: 0, count: 32)
         let status = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
         precondition(status == errSecSuccess, "no randomness")
         let data = Data(bytes)
-        let url = secretURL
         try? FileManager.default.createDirectory(
             at: url.deletingLastPathComponent(), withIntermediateDirectories: true
         )

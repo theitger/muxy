@@ -4,39 +4,56 @@ import { fromBase64URL } from './crypto'
 import type { ChatItem, Key, Screen, Session } from './protocol'
 
 const SECRET_KEY = 'muxy.secret'
+const ROOM_KEY = 'muxy.room'
+
+type Pairing = { secret: string; room: string | null }
+
+function store(key: string, value: string | null) {
+  try {
+    if (value === null) localStorage.removeItem(key)
+    else localStorage.setItem(key, value)
+  } catch {
+    /* private mode: works for this visit only */
+  }
+}
 
 /**
- * The pairing secret arrives once in the QR code's fragment (#k=…); it is
- * kept in this browser and wiped from the address bar right away.
+ * The pairing arrives once in the QR code's fragment (#r=room&k=secret);
+ * it is kept in this browser and wiped from the address bar right away.
+ * With a room the phone goes through the relay serving this page,
+ * without one straight to Muxy on the local network.
  */
-function readSecret(): string | null {
-  const match = location.hash.match(/k=([A-Za-z0-9_-]{43})/)
-  if (match) {
-    try {
-      localStorage.setItem(SECRET_KEY, match[1])
-    } catch {
-      /* private mode: works for this visit only */
-    }
+function readPairing(): Pairing | null {
+  const secret = location.hash.match(/k=([A-Za-z0-9_-]{43})/)?.[1]
+  if (secret) {
+    const room = location.hash.match(/r=([0-9a-f]{32})/)?.[1] ?? null
+    store(SECRET_KEY, secret)
+    store(ROOM_KEY, room)
     history.replaceState(null, '', location.pathname)
-    return match[1]
+    return { secret, room }
   }
   try {
-    return localStorage.getItem(SECRET_KEY)
+    const stored = localStorage.getItem(SECRET_KEY)
+    return stored ? { secret: stored, room: localStorage.getItem(ROOM_KEY) } : null
   } catch {
     return null
   }
 }
 
+function channelURL(room: string | null) {
+  if (room) return `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/relay/phone/${room}`
+  // Served by Muxy: the channel is the next port. `pnpm dev`: Muxy's default.
+  const port = import.meta.env.DEV ? 47821 : Number(location.port || 80) + 1
+  return `ws://${location.hostname}:${port}/`
+}
+
 export function forgetPairing() {
-  try {
-    localStorage.removeItem(SECRET_KEY)
-  } catch {
-    /* nothing stored */
-  }
+  store(SECRET_KEY, null)
+  store(ROOM_KEY, null)
 }
 
 export function useMuxy() {
-  const [secret] = useState(readSecret)
+  const [pairing] = useState(readPairing)
   const [state, setState] = useState<ChannelState>('connecting')
   const [sessions, setSessions] = useState<Session[]>([])
   const [recent, setRecent] = useState<string[]>([])
@@ -47,13 +64,11 @@ export function useMuxy() {
   const watching = useRef<{ tab: string; history: boolean } | null>(null)
 
   useEffect(() => {
-    if (!secret) return
-    // Served by Muxy: the channel is the next port. `pnpm dev`: Muxy's default.
-    const port = import.meta.env.DEV ? 47821 : Number(location.port || 80) + 1
-    const url = `ws://${location.hostname}:${port}/`
+    if (!pairing) return
+    const url = channelURL(pairing.room)
     const c = new Channel(
       url,
-      fromBase64URL(secret),
+      fromBase64URL(pairing.secret),
       (m) => {
         switch (m.t) {
           case 'sessions':
@@ -80,7 +95,7 @@ export function useMuxy() {
     channel.current = c
     c.start()
     return () => c.stop()
-  }, [secret])
+  }, [pairing])
 
   const watch = useCallback((tab: string | null, withHistory = false) => {
     watching.current = tab ? { tab, history: withHistory } : null
@@ -99,7 +114,7 @@ export function useMuxy() {
     channel.current?.send({ t: 'open', directory })
   }, [])
 
-  return { paired: !!secret, state, sessions, recent, screens, chats, opened, watch, type, key, open }
+  return { paired: !!pairing, state, sessions, recent, screens, chats, opened, watch, type, key, open }
 }
 
 export type Muxy = ReturnType<typeof useMuxy>
