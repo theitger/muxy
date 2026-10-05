@@ -74,7 +74,14 @@ private enum German {
         "Checks running": "Checks laufen",
         "Checks failed — being fixed": "Checks rot — wird gerade gefixt",
         "Checks failed": "Checks fehlgeschlagen",
-        "All checks passed": "Alle Checks grün",
+        "Merge conflicts": "Merge-Konflikte",
+        "Draft": "Entwurf",
+        "Checks passed — branch out of date": "Checks grün — Branch nicht aktuell",
+        "Checks passed — review required": "Checks grün — Review nötig",
+        "Checks passed — changes requested": "Checks grün — Änderungen angefordert",
+        "Checks passed — merge blocked": "Checks grün — Merge blockiert",
+        "Checks passed — mergeability unknown": "Checks grün — Mergebarkeit unklar",
+        "Ready to merge": "Bereit zum Mergen",
 
         // Dialogs
         "Close window?": "Fenster schließen?",
@@ -94,6 +101,7 @@ private enum German {
         // Notifications ("<session> needs you")
         "needs you": "braucht dich",
         "is done": "ist fertig",
+        "hit an error": "ist auf einen Fehler gelaufen",
         "· #%d passed": "· #%d ist grün",
         "· #%d failed": "· #%d Checks rot",
 

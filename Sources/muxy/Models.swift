@@ -11,6 +11,8 @@ enum AgentState {
     case working
     /// Agent is blocked on you (permission prompt, question).
     case blocked
+    /// The turn died on an API error (rate limit, overload, auth, …).
+    case failed
 }
 
 /// CI checks of a session's pull request, as GitHub reports them.
@@ -21,7 +23,23 @@ enum Checks: Equatable {
     case passed
 }
 
-/// What the PR badge shows: the checks, plus whether someone is on it.
+/// Whether GitHub would merge the PR right now, apart from its checks.
+enum Mergeability: Equatable {
+    /// GitHub is still computing it — not a yes.
+    case unknown
+    case clean
+    case conflicting
+    /// Branch protection wants the head brought up to date.
+    case behind
+    case reviewRequired
+    case changesRequested
+    /// Anything else branch protection objects to (e.g. a required check
+    /// that hasn't reported yet).
+    case blocked
+}
+
+/// What the PR badge shows: the checks, whether someone is on them, and
+/// whether the PR could actually be merged.
 enum PRStatus: Equatable {
     /// No checks reported (yet).
     case none
@@ -31,7 +49,13 @@ enum PRStatus: Equatable {
     case fixing
     /// Checks failed, nothing is running.
     case failed
-    /// All checks passed — ready.
+    /// Merge conflicts with the base branch.
+    case conflicts
+    /// Still a draft.
+    case draft
+    /// Checks passed, but GitHub won't merge it yet.
+    case waiting(Mergeability)
+    /// Checks passed, not a draft, mergeable — ready.
     case ready
 }
 
@@ -45,6 +69,8 @@ struct RepoContext: Equatable {
     var branch: String?
     var pr: Int?
     var checks: Checks = .none
+    var isDraft = false
+    var mergeability: Mergeability = .unknown
 
     /// The folder without the repo prefix the group header already shows
     /// ("myapp-login-fix" → "login-fix").
