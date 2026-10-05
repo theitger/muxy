@@ -1,0 +1,263 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+/* The user's terminal font (IosevkaTerm Nerd Font, SIL OFL 1.1), subset to
+   what a terminal shows — phones don't have it installed. */
+@font-face {
+  font-family: "IosevkaTerm Muxy";
+  src: url("./fonts/iosevka-term-Regular.woff") format("woff");
+  font-weight: 400;
+  font-display: block;
+}
+@font-face {
+  font-family: "IosevkaTerm Muxy";
+  src: url("./fonts/iosevka-term-Bold.woff") format("woff");
+  font-weight: 700;
+  font-display: block;
+}
+
+/* The light/dark switch follows the system, exactly like Muxy itself. */
+@custom-variant dark (&:where([data-theme=dark], [data-theme=dark] *));
+
+/*
+ * Muxy's Theme.swift, 1:1: the background is the Ghostty theme
+ * (Porsche GT3 RS / GT3 RS Light), chrome tones are derived from it, status
+ * tones are a soft tint plus a strong shade.
+ */
+:root {
+  --m-bg: #f4f4f0;
+  --m-surface: #e9e9e5;
+  --m-raised: #fbfbf9;
+  --m-t1: #1a1a1a;
+  --m-t2: #3a3a3a;
+  --m-t3: #707070;
+  --m-t4: #909090;
+  --m-t5: #a6a6a6;
+  --m-hover: rgb(26 26 26 / 0.04);
+  --m-active: rgb(26 26 26 / 0.075);
+  --m-hair: rgb(26 26 26 / 0.09);
+  --m-accent: #e8630c;
+  --m-claude: #be5a38;
+
+  --m-blue-soft: #edf3fc;   --m-blue: #315c9b;
+  --m-green-soft: #eef9e1;  --m-green: #3f6f12;
+  --m-yellow-soft: #fef7dc; --m-yellow: #8a6100;
+  --m-orange-soft: #fff3e5; --m-orange: #9b5609;
+  --m-red-soft: #fef2f2;    --m-red: #b91c1c;
+  --m-neutral-soft: rgb(26 26 26 / 0.06);
+
+  /* Ghostty palette (GT3 RS Light) for terminal output. */
+  --ansi-red: #b3001b;
+  --ansi-green: #2e7d32;
+  --ansi-yellow: #c49800;
+  --ansi-blue: #1e4fa0;
+  --ansi-magenta: #993d6e;
+  --ansi-cyan: #2e7d7d;
+  --ansi-dim: #6a6a6a;
+  --term-fg: #1a1a1a;
+
+  /* starship.toml "Porsche Edition" — fixed hex, same in both themes. */
+  --ss-dir: #7a6254;
+  --ss-branch: #6e8fb4;
+  --ss-status: #9da9a0;
+  --ss-duration: #a7c080;
+  --ss-char: #5c6a72;
+  --ss-error: #e67e80;
+
+  --mono: "IosevkaTerm Muxy", "IosevkaTerm Nerd Font Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --sans: system-ui, -apple-system, "SF Pro Text", "Helvetica Neue", sans-serif;
+
+  /* shadcn's own tokens, mapped onto Muxy's. */
+  --background: var(--m-bg);
+  --foreground: var(--m-t1);
+  --card: var(--m-raised);
+  --card-foreground: var(--m-t1);
+  --popover: var(--m-raised);
+  --popover-foreground: var(--m-t1);
+  --primary: var(--m-t1);
+  --primary-foreground: var(--m-bg);
+  --secondary: var(--m-active);
+  --secondary-foreground: var(--m-t1);
+  --muted: var(--m-active);
+  --muted-foreground: var(--m-t3);
+  --accent: var(--m-active);
+  --accent-foreground: var(--m-t1);
+  --destructive: var(--m-red);
+  --border: var(--m-hair);
+  --input: var(--m-hair);
+  --ring: var(--m-t4);
+  --radius: 0.625rem;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --m-bg: #0f0f0f;
+    --m-surface: #161616;
+    --m-raised: #1b1b1b;
+    --m-t1: #f0f0f0;
+    --m-t2: #c8c8c8;
+    --m-t3: #9a9a9a;
+    --m-t4: #6a6a6a;
+    --m-t5: #5a5a5a;
+    --m-hover: rgb(240 240 240 / 0.04);
+    --m-active: rgb(240 240 240 / 0.075);
+    --m-hair: rgb(240 240 240 / 0.09);
+    --m-accent: #ff8a2e;
+    --m-claude: #d97757;
+    --m-blue-soft: rgb(80 128 216 / 0.16);   --m-blue: #9dbaf0;
+    --m-green-soft: rgb(131 205 45 / 0.16);  --m-green: #a9de6e;
+    --m-yellow-soft: rgb(242 183 5 / 0.16);  --m-yellow: #f5cf5b;
+    --m-orange-soft: rgb(247 140 16 / 0.16); --m-orange: #ffb45c;
+    --m-red-soft: rgb(220 38 38 / 0.16);     --m-red: #f87171;
+    --m-neutral-soft: rgb(240 240 240 / 0.06);
+    --ansi-red: #e63946;
+    --ansi-green: #7ab870;
+    --ansi-yellow: #f5c400;
+    --ansi-blue: #5a8be0;
+    --ansi-magenta: #d07aaa;
+    --ansi-cyan: #6ac0c0;
+    --ansi-dim: #707070;
+    --term-fg: #c8c8c8;
+    color-scheme: dark;
+  }
+}
+
+:root[data-theme="dark"] {
+  --m-bg: #0f0f0f;
+  --m-surface: #161616;
+  --m-raised: #1b1b1b;
+  --m-t1: #f0f0f0;
+  --m-t2: #c8c8c8;
+  --m-t3: #9a9a9a;
+  --m-t4: #6a6a6a;
+  --m-t5: #5a5a5a;
+  --m-hover: rgb(240 240 240 / 0.04);
+  --m-active: rgb(240 240 240 / 0.075);
+  --m-hair: rgb(240 240 240 / 0.09);
+  --m-accent: #ff8a2e;
+  --m-claude: #d97757;
+  --m-blue-soft: rgb(80 128 216 / 0.16);   --m-blue: #9dbaf0;
+  --m-green-soft: rgb(131 205 45 / 0.16);  --m-green: #a9de6e;
+  --m-yellow-soft: rgb(242 183 5 / 0.16);  --m-yellow: #f5cf5b;
+  --m-orange-soft: rgb(247 140 16 / 0.16); --m-orange: #ffb45c;
+  --m-red-soft: rgb(220 38 38 / 0.16);     --m-red: #f87171;
+  --m-neutral-soft: rgb(240 240 240 / 0.06);
+  --ansi-red: #e63946;
+  --ansi-green: #7ab870;
+  --ansi-yellow: #f5c400;
+  --ansi-blue: #5a8be0;
+  --ansi-magenta: #d07aaa;
+  --ansi-cyan: #6ac0c0;
+  --ansi-dim: #707070;
+  --term-fg: #c8c8c8;
+  color-scheme: dark;
+}
+
+@theme inline {
+  --font-sans: var(--sans);
+  --font-mono: var(--mono);
+  --color-bg: var(--m-bg);
+  --color-surface: var(--m-surface);
+  --color-raised: var(--m-raised);
+  --color-t1: var(--m-t1);
+  --color-t2: var(--m-t2);
+  --color-t3: var(--m-t3);
+  --color-t4: var(--m-t4);
+  --color-t5: var(--m-t5);
+  --color-hover: var(--m-hover);
+  --color-active: var(--m-active);
+  --color-hair: var(--m-hair);
+  --color-brand: var(--m-accent);
+  --color-claude: var(--m-claude);
+  --color-tone-blue: var(--m-blue);
+  --color-tone-blue-soft: var(--m-blue-soft);
+  --color-tone-green: var(--m-green);
+  --color-tone-green-soft: var(--m-green-soft);
+  --color-tone-yellow: var(--m-yellow);
+  --color-tone-yellow-soft: var(--m-yellow-soft);
+  --color-tone-orange: var(--m-orange);
+  --color-tone-orange-soft: var(--m-orange-soft);
+  --color-tone-red: var(--m-red);
+  --color-tone-red-soft: var(--m-red-soft);
+  --color-tone-neutral-soft: var(--m-neutral-soft);
+  --color-ansi-red: var(--ansi-red);
+  --color-ansi-green: var(--ansi-green);
+  --color-ansi-yellow: var(--ansi-yellow);
+  --color-ansi-blue: var(--ansi-blue);
+  --color-ansi-magenta: var(--ansi-magenta);
+  --color-ansi-cyan: var(--ansi-cyan);
+  --color-ansi-dim: var(--ansi-dim);
+  --color-term: var(--term-fg);
+  --color-ss-dir: var(--ss-dir);
+  --color-ss-branch: var(--ss-branch);
+  --color-ss-status: var(--ss-status);
+  --color-ss-duration: var(--ss-duration);
+  --color-ss-char: var(--ss-char);
+  --color-ss-error: var(--ss-error);
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+  body {
+    background: var(--m-bg);
+    color: var(--m-t1);
+    font-family: var(--sans);
+    -webkit-font-smoothing: antialiased;
+    -webkit-tap-highlight-color: transparent;
+    overscroll-behavior: none;
+  }
+  button {
+    cursor: pointer;
+  }
+}
+
+@keyframes pulse-soft {
+  50% { opacity: 0.35; }
+}
+.pulse-soft {
+  animation: pulse-soft 1.4s ease-in-out infinite;
+}
+@keyframes caret {
+  50% { opacity: 0; }
+}
+.caret {
+  animation: caret 1s steps(1) infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .pulse-soft,
+  .caret {
+    animation: none;
+  }
+}
