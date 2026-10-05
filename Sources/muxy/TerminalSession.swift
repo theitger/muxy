@@ -57,7 +57,7 @@ final class TerminalSession: NSObject, ObservableObject, Identifiable {
         cwd = directory
         title = Paths.folderName(directory)
         context = .plain(directory)
-        terminalView = TerminalView(frame: NSRect(x: 0, y: 0, width: 800, height: 600))
+        terminalView = DropTerminalView(frame: NSRect(x: 0, y: 0, width: 800, height: 600))
         super.init()
 
         terminalView.delegate = self
