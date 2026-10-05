@@ -106,6 +106,13 @@ private enum German {
         "· #%d failed": "· #%d Checks rot",
 
         // Settings
+        "Keep the Mac awake": "Mac wach halten",
+        "While Muxy runs, even with the lid closed. Asks for your password once.": "Solange Muxy läuft, auch zugeklappt. Fragt einmal nach deinem Passwort.",
+        "Paused: battery below %d %% — the Mac may sleep.": "Pausiert: Akku unter %d %% — der Mac darf schlafen.",
+        "On — the Mac won't sleep, lid closed included. Mind the heat in a bag.": "An — der Mac schläft nicht, auch zugeklappt. Vorsicht mit Wärme in der Tasche.",
+        "Couldn't keep the Mac awake.": "Konnte den Mac nicht wach halten.",
+        "Couldn't set up: unusual user name.": "Einrichtung fehlgeschlagen: ungewöhnlicher Benutzername.",
+        "Couldn't set up: %@": "Einrichtung fehlgeschlagen: %@",
         "Phone": "Handy",
         "Use Muxy from your phone — anywhere through a relay, or on the same Wi-Fi.": "Muxy vom Handy aus bedienen — über einen Relay von überall, sonst im selben WLAN.",
         "Relay": "Relay",

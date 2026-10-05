@@ -25,9 +25,44 @@ struct SettingsView: View {
                 .font(.system(size: 11.5))
                 .foregroundStyle(Theme.textDim)
             Divider().padding(.vertical, 6)
+            StayAwakeSettings()
+            Divider().padding(.vertical, 6)
             RemoteSettings()
         }
         .padding(20)
         .frame(width: 440)
+    }
+}
+
+/// Settings → keep the Mac awake, lid closed included.
+private struct StayAwakeSettings: View {
+    @ObservedObject private var awake = StayAwake.shared
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(L("Keep the Mac awake"))
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(Theme.textBody)
+                    Text(L("While Muxy runs, even with the lid closed. Asks for your password once."))
+                        .font(.system(size: 11.5))
+                        .foregroundStyle(Theme.textDim)
+                }
+                Spacer()
+                Toggle("", isOn: Binding(get: { awake.enabled }, set: { awake.setEnabled($0) }))
+                    .labelsHidden()
+                    .toggleStyle(.switch)
+            }
+            if let problem = awake.problem {
+                Text(problem).font(.system(size: 11.5)).foregroundStyle(Theme.red)
+            } else if awake.enabled, awake.lowBattery {
+                Text(L("Paused: battery below %d %% — the Mac may sleep.", StayAwake.batteryFloor))
+                    .font(.system(size: 11.5)).foregroundStyle(Theme.textDim)
+            } else if awake.holding {
+                Text(L("On — the Mac won't sleep, lid closed included. Mind the heat in a bag."))
+                    .font(.system(size: 11.5)).foregroundStyle(Theme.green)
+            }
+        }
     }
 }
