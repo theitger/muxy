@@ -119,9 +119,25 @@ enum RemoteState {
         "q": (12, 0, "q", 113),
     ]
 
+    /// macOS key codes of the letters (ANSI positions) — for ctrl + any letter.
+    static let letterCodes: [Character: UInt32] = [
+        "a": 0, "s": 1, "d": 2, "f": 3, "h": 4, "g": 5, "z": 6, "x": 7, "c": 8, "v": 9,
+        "b": 11, "q": 12, "w": 13, "e": 14, "r": 15, "y": 16, "t": 17, "o": 31, "u": 32,
+        "i": 34, "p": 35, "l": 37, "j": 38, "k": 40, "n": 45, "m": 46,
+    ]
+
+    static func lookup(_ key: String) -> (UInt32, UInt32, String?, UInt32)? {
+        if let known = keys[key] { return known }
+        if key.hasPrefix("ctrl-"), key.count == 6, let letter = key.last, let code = letterCodes[letter],
+           let ascii = letter.asciiValue {
+            return (code, 2, nil, UInt32(ascii))
+        }
+        return nil
+    }
+
     @discardableResult
     static func press(_ key: String, in session: TerminalSession) -> Bool {
-        guard let (code, mods, text, unshifted) = keys[key],
+        guard let (code, mods, text, unshifted) = lookup(key),
               let surface = session.terminalView.currentSurface else { return false }
         markSeen(session)
         return surface.sendKey(keycode: code, mods: mods, text: text, unshifted: unshifted)

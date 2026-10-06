@@ -12,8 +12,9 @@ REPO="$(cd "$HERE/.." && pwd)"
 
 scp -q "$HERE/dist/muxy-relay" "$HOST:/usr/local/bin/muxy-relay.new"
 scp -q "$REPO/Prototypes/remote/dist/index.html" "$HOST:/var/www/$NAME/index.html.new"
+scp -q "$REPO/Prototypes/remote/dist/apple-touch-icon.png" "$HOST:/var/www/$NAME/apple-touch-icon.png"
 ssh "$HOST" "set -e
 install -m 755 /usr/local/bin/muxy-relay.new /usr/local/bin/muxy-relay && rm /usr/local/bin/muxy-relay.new
-mv /var/www/$NAME/index.html.new /var/www/$NAME/index.html && chmod 644 /var/www/$NAME/index.html
+mv /var/www/$NAME/index.html.new /var/www/$NAME/index.html && chmod 644 /var/www/$NAME/index.html /var/www/$NAME/apple-touch-icon.png
 systemctl restart muxy-relay && systemctl is-active muxy-relay"
 echo "deployed to $NAME"

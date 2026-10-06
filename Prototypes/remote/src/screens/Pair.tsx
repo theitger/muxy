@@ -5,7 +5,11 @@ import { forgetPairing } from '@/lib/useMuxy'
 /** Before anything works: not paired yet, Muxy unreachable, or the key was replaced. */
 export function Pair({ paired, state }: { paired: boolean; state: ChannelState }) {
   const [Icon, title, text] = !paired
-    ? [QrCode, 'Mit Muxy koppeln', 'Öffne auf dem Mac Muxy → Einstellungen (⌘,) → Handy, schalte es ein und scanne den QR-Code mit der Kamera.']
+    ? [
+        QrCode,
+        'Mit Muxy koppeln',
+        'Scanne den QR-Code aus Muxy → Einstellungen (⌘,) → Handy mit der Kamera. Für den Home-Bildschirm danach in Safari: Teilen → Zum Home-Bildschirm.',
+      ]
     : state === 'rejected'
       ? [ShieldAlert, 'Kopplung abgelaufen', 'Muxy hat einen neuen Schlüssel. Scanne den QR-Code in Muxy → Einstellungen → Handy erneut.']
       : [WifiOff, 'Muxy nicht erreichbar', 'Ist der Mac wach und Muxy offen (Einstellungen → Handy)? Es wird weiter versucht.']

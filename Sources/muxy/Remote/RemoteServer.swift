@@ -412,7 +412,10 @@ final class RemoteConnection {
     /// watched tab's screen, its chat.
     func push() {
         let sessions = RemoteState.sessions()
-        let payload: [String: Any] = ["t": "sessions", "sessions": sessions, "recent": RemoteState.recentDirectories()]
+        let payload: [String: Any] = [
+            "t": "sessions", "sessions": sessions, "recent": RemoteState.recentDirectories(),
+            "history": ShellHistory.recent(),
+        ]
         if let json = Self.encode(payload), json != lastSessions {
             lastSessions = json
             sendJSON(json)

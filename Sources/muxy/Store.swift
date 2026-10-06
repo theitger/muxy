@@ -36,6 +36,7 @@ final class Store: ObservableObject {
         watcher.start()
         hookWatcher = watcher
         RemoteServer.shared.startIfEnabled()
+        StayAwake.shared.start()
         // PRs get opened and checks finish while you work — poll gently.
         prTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.refreshPullRequests() }

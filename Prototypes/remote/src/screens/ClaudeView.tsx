@@ -1,8 +1,9 @@
-import { ArrowUp, ChevronRight, FileText, PencilLine, Search, SquareTerminal, Wrench } from 'lucide-react'
+import { ChevronRight, FileText, PencilLine, Search, SquareTerminal, Wrench } from 'lucide-react'
 import { Fragment, useEffect, useRef, useState } from 'react'
 import { cn } from '@/lib/utils'
 import type { ChatItem, Key, Screen, Tab } from '@/lib/protocol'
 import { TerminalView } from './TerminalView'
+import { Dock } from '@/components/Dock'
 
 /**
  * Claude as a conversation, read from its transcript. Permission prompts
@@ -23,10 +24,9 @@ export function ClaudeView({
   history: boolean
   onHistory: (on: boolean) => void
   onType: (text: string, enter: boolean) => void
-  onKey: (key: Key) => void
+  onKey: (key: Key | string) => void
 }) {
   const [mode, setMode] = useState<'chat' | 'terminal'>(items === undefined ? 'terminal' : 'chat')
-  const [draft, setDraft] = useState('')
   const end = useRef<HTMLDivElement>(null)
 
   // The transcript arrives a moment after the screen — switch once it does.
@@ -42,13 +42,6 @@ export function ClaudeView({
     end.current?.scrollIntoView({ block: 'end' })
   }, [items?.length, tab.agent, mode])
 
-  const pending = tab.agent === 'blocked' ? [...(items ?? [])].reverse().find((i) => i.kind === 'tool' && !i.done) : undefined
-
-  function send(text: string) {
-    if (!text.trim()) return
-    onType(text.trim(), true)
-    setDraft('')
-  }
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -70,7 +63,7 @@ export function ClaudeView({
           onHistory={onHistory}
           onType={onType}
           onKey={onKey}
-          extraKeys={['1', '2', '3', 'enter']}
+          busy={tab.agent === 'working'}
         />
       ) : (
         <>
@@ -89,15 +82,6 @@ export function ClaudeView({
               </div>
             )}
 
-            {tab.agent === 'working' && (
-              <div className="mt-3 flex items-center gap-2 text-[14px] text-tone-blue">
-                <span className="size-2 rounded-full bg-current pulse-soft" />
-                Claude arbeitet …
-                <button type="button" onClick={() => onKey('esc')} className="ml-auto rounded-lg border border-hair bg-raised px-2.5 py-1 text-[12.5px] font-medium text-t2">
-                  Stopp
-                </button>
-              </div>
-            )}
 
             {tab.agent === 'failed' && (
               <div className="mt-3 rounded-2xl border border-tone-red/25 bg-tone-red-soft p-3.5">
@@ -106,68 +90,17 @@ export function ClaudeView({
               </div>
             )}
 
-            {tab.agent === 'blocked' && (
-              <div className="mt-3 rounded-2xl border border-tone-orange/30 bg-tone-orange-soft p-3.5">
-                <div className="text-[13px] font-semibold text-tone-orange">Claude braucht deine Freigabe</div>
-                {pending?.kind === 'tool' && (
-                  <code className="mt-1.5 block rounded-lg bg-raised px-2.5 py-2 font-mono text-[13px] break-all text-t1">
-                    {pending.tool}: {pending.target}
-                  </code>
-                )}
-                <div className="mt-3 grid grid-cols-2 gap-2">
-                  <button type="button" onClick={() => onKey('1')} className="h-10 rounded-xl bg-t1 text-[14px] font-semibold text-bg active:opacity-80">
-                    Erlauben
-                  </button>
-                  <button type="button" onClick={() => onKey('esc')} className="h-10 rounded-xl border border-hair bg-raised text-[14px] font-medium text-t1 active:bg-active">
-                    Ablehnen
-                  </button>
-                  <button type="button" onClick={() => onKey('2')} className="col-span-2 h-9 rounded-xl text-[13px] font-medium text-t2 active:bg-active">
-                    Immer erlauben (Option 2)
-                  </button>
-                </div>
-                <button type="button" onClick={() => setMode('terminal')} className="mt-1 w-full text-center text-[12px] text-t3 underline-offset-2 active:underline">
-                  Frage im Terminal ansehen
-                </button>
-              </div>
-            )}
             <div ref={end} />
           </div>
 
-          <div className="border-t border-hair bg-surface px-3 pt-2 pb-[calc(env(safe-area-inset-bottom,0px)+8px)]">
-            {tab.agent === 'failed' && (
-              <div className="mb-2 flex gap-1.5">
-                <button type="button" onClick={() => send('weiter')} className="rounded-full border border-hair bg-raised px-3 py-1.5 text-[13px] text-t2 active:bg-active">
-                  weiter
-                </button>
-              </div>
-            )}
-            <form
-              className="flex items-end gap-2"
-              onSubmit={(e) => {
-                e.preventDefault()
-                send(draft)
-              }}
-            >
-              <div className="flex min-h-11 flex-1 items-end rounded-[22px] border border-hair bg-raised px-3.5 py-2.5">
-                <textarea
-                  id="claude-draft"
-                  value={draft}
-                  rows={1}
-                  onChange={(e) => setDraft(e.target.value)}
-                  placeholder={tab.agent === 'working' ? 'Nachricht für danach …' : 'Antwort an Claude …'}
-                  className="max-h-32 flex-1 resize-none bg-transparent text-[16px] leading-[1.35] text-t1 outline-none placeholder:text-[15px] placeholder:text-t4"
-                />
-              </div>
-              <button
-                type="submit"
-                aria-label="Senden"
-                disabled={!draft.trim()}
-                className="grid size-11 shrink-0 place-items-center rounded-full bg-claude text-white disabled:opacity-30"
-              >
-                <ArrowUp className="size-5" strokeWidth={2.6} />
-              </button>
-            </form>
-          </div>
+          <Dock
+            screen={screen?.text}
+            busy={tab.agent === 'working'}
+            onType={onType}
+            onKey={onKey}
+            multiline
+            placeholder={tab.agent === 'working' ? 'Nachricht für danach …' : tab.agent === 'failed' ? '„weiter“ schickt die Runde neu los' : 'Antwort an Claude …'}
+          />
         </>
       )}
     </div>
@@ -250,7 +183,7 @@ function ToolRow({ item }: { item: Extract<ChatItem, { kind: 'tool' }> }) {
           : item.tool === 'Read'
             ? FileText
             : Wrench
-  const summary = item.output?.filter((l) => l.trim()).at(-1)
+  const summary = item.output?.filter((l) => l.trim() && !/^… \d+ more lines$/.test(l)).at(-1)
   return (
     <div className={cn('rounded-xl border bg-raised', item.error ? 'border-tone-red/35' : 'border-hair')}>
       <button type="button" onClick={() => setOpen(!open)} aria-expanded={open} className="flex w-full items-center gap-2 px-3 py-2 text-left">

@@ -89,6 +89,7 @@ export function SessionScreen({
       ) : (
         <TerminalView
           key={tab.id}
+          commands={muxy.history}
           screen={muxy.screens[tab.id]}
           history={history}
           onHistory={setHistory}
