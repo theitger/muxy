@@ -42,12 +42,12 @@ quiet signal the moment an agent needs you.
 brew tap theitger/tap
 brew trust theitger/tap        # Homebrew ≥ 6 requires tap trust
 brew install --cask muxy
-xattr -dr com.apple.quarantine /Applications/Muxy.app
 ```
 
-The last line is needed because the app is ad-hoc signed (no Apple
-Developer certificate) — without it Gatekeeper blocks the first launch as
-"unverified developer".
+The app is ad-hoc signed (no Apple Developer certificate), so the cask
+clears the quarantine flag after installing; otherwise Gatekeeper would
+block the first launch as "unverified developer". Installing the zip by
+hand instead needs `xattr -dr com.apple.quarantine /Applications/Muxy.app`.
 
 ### Build from source
 
