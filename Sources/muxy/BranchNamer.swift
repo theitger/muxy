@@ -156,13 +156,14 @@ enum BranchNamer {
 
     private static let types = ["feat", "fix", "chore", "docs", "refactor", "test"]
 
-    /// Whatever the model said, as a clean `type/words` name.
+    /// Whatever the model said, as a clean `type/words` name: its last line
+    /// that holds one (a code fence may close the answer).
     static func normalize(_ answer: String) -> String? {
-        guard let line = answer.split(whereSeparator: \.isNewline)
-            .map({ $0.trimmingCharacters(in: .whitespaces) })
-            .last(where: { !$0.isEmpty })
-        else { return nil }
-        var name = line.lowercased()
+        answer.split(whereSeparator: \.isNewline).reversed().lazy.compactMap { name(from: String($0)) }.first
+    }
+
+    private static func name(from line: String) -> String? {
+        var name = line.trimmingCharacters(in: .whitespaces).lowercased()
             .trimmingCharacters(in: CharacterSet(charactersIn: "`'\"*. "))
             .replacingOccurrences(of: " ", with: "-")
             .replacingOccurrences(of: "_", with: "-")
@@ -171,6 +172,8 @@ enum BranchNamer {
         })
         while name.contains("--") { name = name.replacingOccurrences(of: "--", with: "-") }
         name = name.trimmingCharacters(in: CharacterSet(charactersIn: "-/"))
+        // Nothing left, or a type without words ("feat/").
+        guard !name.isEmpty, !types.contains(name) else { return nil }
         if !name.contains("/") {
             // "fix-login-bug" → "fix/login-bug"
             let parts = name.split(separator: "-", maxSplits: 1).map(String.init)
@@ -181,8 +184,7 @@ enum BranchNamer {
             }
         }
         name = String(name.prefix(60)).trimmingCharacters(in: CharacterSet(charactersIn: "-/"))
-        let words = name.split(separator: "/").last.map { $0.split(separator: "-").count } ?? 0
-        return words == 0 ? nil : name
+        return name.split(separator: "/").count > 1 ? name : nil
     }
 
     private static func slug(_ text: String) -> String {
