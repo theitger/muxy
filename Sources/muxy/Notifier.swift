@@ -40,4 +40,18 @@ enum Notifier {
         )
         UNUserNotificationCenter.current().add(request)
     }
+
+    /// A banner with its own words (`muxy notify`); a click opens `session`.
+    static func post(title: String, body: String, session: TerminalSession?) {
+        guard available, !NSApplication.shared.isActive else { return }
+        let content = UNMutableNotificationContent()
+        content.title = title
+        content.body = body
+        content.sound = .default
+        if let session { content.userInfo = ["session": session.id.uuidString] }
+        let request = UNNotificationRequest(
+            identifier: session?.id.uuidString ?? UUID().uuidString, content: content, trigger: nil
+        )
+        UNUserNotificationCenter.current().add(request)
+    }
 }

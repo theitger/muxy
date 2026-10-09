@@ -41,7 +41,6 @@ struct NewSessionView: View {
         let typed = branch.trimmingCharacters(in: .whitespaces)
         return typed.isEmpty ? nil : typed
     }
-    private var hasTask: Bool { !prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -344,11 +343,7 @@ struct NewSessionView: View {
     }
 
     private func start() {
-        let spec = SessionSpec(
-            directory: target, agent: agent, prompt: prompt,
-            branch: worktree ? typedBranch ?? BranchNamer.placeholder() : nil,
-            autoName: worktree && typedBranch == nil && hasTask
-        )
+        let spec = SessionSpec(directory: target, agent: agent, prompt: prompt, worktree: worktree, branch: typedBranch)
         store.launch(spec, in: window)
         window.showNewSession = false
     }

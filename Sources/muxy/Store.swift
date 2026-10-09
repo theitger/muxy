@@ -51,6 +51,7 @@ final class Store: ObservableObject {
         let watcher = HookWatcher(store: self)
         watcher.start()
         hookWatcher = watcher
+        CommandCenter.shared.start(store: self)
         RemoteServer.shared.startIfEnabled()
         StayAwake.shared.start()
         // PRs get opened and checks finish while you work — poll gently.

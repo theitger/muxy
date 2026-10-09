@@ -56,9 +56,12 @@ final class TerminalSession: NSObject, ObservableObject, Identifiable {
     /// single orange signal.
     @Published var needsAttention = false {
         didSet {
+            if !needsAttention { notice = nil }
             if needsAttention != oldValue { onAttentionChange?() }
         }
     }
+    /// What `muxy notify` said, shown on the card until you look.
+    @Published var notice: String?
 
     /// The last lines of output for the wings (see Store.refreshSnapshots).
     @Published private(set) var snapshot: Snapshot?
@@ -106,7 +109,10 @@ final class TerminalSession: NSObject, ObservableObject, Identifiable {
             workingDirectory: directory,
             // Every process in this terminal inherits the session id — the
             // Claude Code hook uses it to route its events back.
-            envVars: environment.merging(["MUXY": "1", "MUXY_SESSION": id.uuidString]) { _, ours in ours },
+            // MUXY_STATE_DIR (dev builds) points `muxy` commands back here.
+            envVars: environment.merging(
+                ["MUXY": "1", "MUXY_SESSION": id.uuidString].merging(StateDirectory.environment) { a, _ in a }
+            ) { _, ours in ours },
             command: command
         )
         terminalView.controller = Self.controller

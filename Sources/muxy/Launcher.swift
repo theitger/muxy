@@ -12,6 +12,20 @@ struct SessionSpec {
     var autoName = false
 }
 
+extension SessionSpec {
+    /// What ⌘N and `muxy new` start alike: with `worktree`, on the branch
+    /// you named, else on a placeholder that is renamed after the task
+    /// (when there is one, see BranchNamer).
+    init(directory: String, agent: AgentKind?, prompt: String, worktree: Bool, branch typed: String?) {
+        let hasTask = !prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        self.init(
+            directory: directory, agent: agent, prompt: prompt,
+            branch: worktree ? typed ?? BranchNamer.placeholder() : nil,
+            autoName: worktree && typed == nil && hasTask
+        )
+    }
+}
+
 enum Launcher {
     struct Failure: Error {
         let message: String
@@ -173,7 +187,11 @@ extension Shell {
     }
 
     /// Like `run`, with the exit status and stderr; killed after `timeout`.
-    static func execute(_ executable: String, _ args: [String], in directory: String, timeout: TimeInterval = 60) -> Result {
+    /// `environment` overrides variables (muxy's own PATH included).
+    static func execute(
+        _ executable: String, _ args: [String], in directory: String, timeout: TimeInterval = 60,
+        environment: [String: String] = [:]
+    ) -> Result {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: executable)
         process.arguments = args
@@ -183,7 +201,7 @@ extension Shell {
         env["PATH"] = path
         // Never wait on a credential prompt nobody can see.
         env["GIT_TERMINAL_PROMPT"] = "0"
-        process.environment = env
+        process.environment = env.merging(environment) { _, override in override }
         // Output goes to files, not pipes: a full pipe can't stall the
         // child, and a grandchild holding one open can't stall us.
         let files = FileManager.default.temporaryDirectory

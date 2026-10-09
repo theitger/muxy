@@ -71,6 +71,10 @@ final class Workspace: ObservableObject, Identifiable {
         sessions.contains { $0.needsAttention }
     }
 
+    var notice: String? {
+        sessions.lazy.compactMap(\.notice).first
+    }
+
     var agent: AgentState {
         let states = sessions.map(\.agent)
         if states.contains(.blocked) { return .blocked }
@@ -126,6 +130,8 @@ final class Workspace: ObservableObject, Identifiable {
         switch agent {
         case .blocked: return L("Needs you")
         case .failed: return L("Error")
+        // What `muxy notify` said, until you look.
+        case _ where notice != nil: return notice ?? ""
         case .working: return featured?.snapshot?.activity ?? L("Working")
         case .idle where needsAttention: return L("Done")
         default: return subtitle

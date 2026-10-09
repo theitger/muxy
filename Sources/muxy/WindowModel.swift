@@ -25,11 +25,11 @@ final class WindowModel: ObservableObject, Identifiable {
     @Published private(set) var toast: String?
     private var toastToken = 0
 
-    func show(_ message: String) {
+    func show(_ message: String, seconds: Double = 1.6) {
         toastToken += 1
         let token = toastToken
         toast = message
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) { [weak self] in
+        DispatchQueue.main.asyncAfter(deadline: .now() + seconds) { [weak self] in
             guard let self, self.toastToken == token else { return }
             self.toast = nil
         }
