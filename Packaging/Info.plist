@@ -42,9 +42,29 @@
 	<string>6</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>14.0</string>
+	<key>NSAppleEventsUsageDescription</key>
+	<string>A program running in Muxy would like to use AppleScript.</string>
+	<key>NSCalendarsUsageDescription</key>
+	<string>A program running in Muxy would like to access your calendar.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>A program running in Muxy would like to use the camera.</string>
+	<key>NSContactsUsageDescription</key>
+	<string>A program running in Muxy would like to access your contacts.</string>
 	<key>NSHighResolutionCapable</key>
 	<true/>
+	<key>NSLocationUsageDescription</key>
+	<string>A program running in Muxy would like to access your location.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>A program running in Muxy would like to use the microphone.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>A program running in Muxy would like to access your photos.</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
+	<key>SUEnableAutomaticChecks</key>
+	<true/>
+	<key>SUFeedURL</key>
+	<string>https://github.com/theitger/muxy/releases/latest/download/appcast.xml</string>
+	<key>SUPublicEDKey</key>
+	<string></string>
 </dict>
 </plist>
