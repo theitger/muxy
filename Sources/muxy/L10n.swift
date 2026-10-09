@@ -100,6 +100,7 @@ private enum German {
 
         // Notifications ("<session> needs you")
         "needs you": "braucht dich",
+        "Needs you": "Braucht dich",
         "What should happen?": "Was soll passieren?",
         "Task": "Aufgabe",
         "New Shell": "Neue Shell",
@@ -134,6 +135,13 @@ private enum German {
         "git worktree add failed.": "git worktree add ist fehlgeschlagen.",
         "Skip permission prompts": "Ohne Berechtigungsabfragen starten",
         "New sessions start Claude with --dangerously-skip-permissions and Codex with --dangerously-bypass-approvals-and-sandbox.": "Neue Sessions starten Claude mit --dangerously-skip-permissions und Codex mit --dangerously-bypass-approvals-and-sandbox.",
+        "Error": "Fehler",
+        "Working": "Arbeitet",
+        "Done": "Fertig",
+        "Detailed": "Detailliert",
+        "Simple": "Einfach",
+        "Detailed Sessions": "Sessions detailliert",
+        "Simple Sessions": "Sessions einfach",
         "is done": "ist fertig",
         "hit an error": "ist auf einen Fehler gelaufen",
         "· #%d passed": "· #%d ist grün",

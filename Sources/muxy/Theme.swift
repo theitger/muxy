@@ -61,6 +61,17 @@ enum Theme {
     static let fillActive = textPrimary.opacity(0.075)
     static let hairline = textPrimary.opacity(0.09)
 
+    /// The color an agent state speaks in.
+    static func tone(for agent: AgentState) -> Tone {
+        switch agent {
+        case .blocked: orange
+        case .failed: redTone
+        case .working: blue
+        case .idle: greenTone
+        case .none: neutral
+        }
+    }
+
     /// The terminal's own font (Ghostty's `font-family`), for text that
     /// quotes the terminal; the system monospace when it isn't installed.
     static func mono(size: CGFloat) -> Font {

@@ -29,8 +29,9 @@ struct SessionTile: View {
 
     var body: some View {
         let look = look
+        // Nothing to say: the symbol alone, no tile around it.
         RoundedRectangle(cornerRadius: size * 0.3, style: .continuous)
-            .fill(look.tone.soft)
+            .fill(!attention && (agent == .none || agent == .idle) ? .clear : look.tone.soft)
             .frame(width: size, height: size)
             .overlay {
                 Image(systemName: look.symbol)
@@ -135,6 +136,30 @@ struct Kbd: View {
                 RoundedRectangle(cornerRadius: 4, style: .continuous)
                     .strokeBorder(Theme.hairline, lineWidth: 0.5)
             )
+    }
+}
+
+struct IconButton: View {
+    let symbol: String
+    let help: String
+    let action: () -> Void
+    @State private var hovered = false
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(hovered ? Theme.textPrimary : Theme.textDim)
+                .frame(width: 28, height: 28)
+                .background(
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .fill(hovered ? Theme.fillHover : .clear)
+                )
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(help)
+        .onHover { hovered = $0 }
     }
 }
 

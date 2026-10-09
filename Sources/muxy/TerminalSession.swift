@@ -53,6 +53,9 @@ final class TerminalSession: NSObject, ObservableObject, Identifiable {
         }
     }
 
+    /// The last lines of output for the wings (see Store.refreshSnapshots).
+    @Published private(set) var snapshot: Snapshot?
+
     var onAttentionChange: (() -> Void)?
     var onContextChange: (() -> Void)?
 
@@ -125,6 +128,30 @@ final class TerminalSession: NSObject, ObservableObject, Identifiable {
     func terminate() {
         terminalView.setSurfaceVisible(false)
         terminalView.removeFromSuperview()
+    }
+
+    /// Reads the active area — background surfaces keep their VT state, so
+    /// this works without rendering. Publishes only real changes.
+    func refreshSnapshot() {
+        guard let surface = terminalView.currentSurface,
+              let text = surface.readText(screen: false) else { return }
+        let fresh = Snapshot.make(from: text, columns: Int(surface.gridSize.columns))
+        #if DEBUG
+        SnapshotLog.write(session: self, raw: text, snapshot: fresh)
+        #endif
+        if fresh != snapshot { snapshot = fresh }
+        if kind == .codex { followCodex(fresh) }
+    }
+
+    /// Codex reports no turns to muxy (yet): its own progress line is the
+    /// signal. Present means working; gone means the turn ended.
+    private func followCodex(_ snapshot: Snapshot) {
+        if snapshot.activity != nil {
+            if agent != .working { agent = .working }
+        } else if agent == .working {
+            agent = .idle
+            markAttentionIfBackground(reason: L("is done"))
+        }
     }
 
     /// The session came to the front.

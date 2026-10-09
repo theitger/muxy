@@ -97,6 +97,26 @@ final class Workspace: ObservableObject, Identifiable {
         return context.mergeability == .clean ? .ready : .waiting(context.mergeability)
     }
 
+    /// The tab a card in the wings speaks for: the one blocked on you, else
+    /// an agent at work, else any agent, else the tab you last looked at.
+    var featured: TerminalSession? {
+        sessions.first { $0.agent == .blocked }
+            ?? sessions.first { $0.agent == .working }
+            ?? sessions.first { $0.agent != .none }
+            ?? selectedSession
+    }
+
+    /// One line under a card's title: what is happening right now.
+    var activity: String {
+        switch agent {
+        case .blocked: return L("Needs you")
+        case .failed: return L("Error")
+        case .working: return featured?.snapshot?.activity ?? L("Working")
+        case .idle where needsAttention: return L("Done")
+        default: return subtitle
+        }
+    }
+
     var searchText: String {
         [title, context.folder, context.repo ?? "", context.branch ?? "",
          context.pr.map { "#\($0)" } ?? "", directory].joined(separator: " ").lowercased()

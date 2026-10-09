@@ -10,6 +10,8 @@ final class Store: ObservableObject {
     @Published private(set) var windows: [WindowModel] = []
     @AppStorage("sidebarVisible") var sidebarVisible = true
     @AppStorage("sidebarWidth") var sidebarWidth: Double = 256
+    /// Wings show each session's last lines; off: title and status only.
+    @AppStorage("detailedWings") var detailedWings = true
     /// Agents started by "New Session" skip their permission prompts.
     @AppStorage("skipPermissions") var skipPermissions = true
 
@@ -23,9 +25,14 @@ final class Store: ObservableObject {
     private var keyMonitor: Any?
     private var hookWatcher: HookWatcher?
     private var prTimer: Timer?
+    private var snapshotTimer: Timer?
 
     func toggleSidebar() {
         withAnimation(Theme.ease) { sidebarVisible.toggle() }
+    }
+
+    func toggleDetailedWings() {
+        withAnimation(Theme.ease) { detailedWings.toggle() }
     }
 
     // MARK: - Lifecycle
@@ -43,6 +50,12 @@ final class Store: ObservableObject {
         prTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.refreshPullRequests() }
         }
+        let snapshots = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.refreshSnapshots() }
+        }
+        // Lets macOS coalesce the wakeup with others.
+        snapshots.tolerance = 0.3
+        snapshotTimer = snapshots
         #if DEBUG
         launchDebugSessions()
         #endif
@@ -71,6 +84,32 @@ final class Store: ObservableObject {
         }
     }
     #endif
+
+    /// The wings' live lines: one text read per card, only for windows on
+    /// screen.
+    func refreshSnapshots() {
+        #if DEBUG
+        // Debugging: every running session, seen or not.
+        if ProcessInfo.processInfo.environment["MUXY_DEBUG_SNAPSHOTS"] != nil {
+            workspaces.flatMap(\.sessions).forEach { $0.refreshSnapshot() }
+            return
+        }
+        #endif
+        // Codex: its state is read off its screen, always, seen or not.
+        for session in workspaces.flatMap(\.sessions) where session.kind == .codex {
+            session.refreshSnapshot()
+        }
+        guard detailedWings, sidebarVisible else { return }
+        for window in windows {
+            guard let nsWindow = window.nsWindow, nsWindow.occlusionState.contains(.visible) else { continue }
+            // The one on stage too: its card keeps its size and lines.
+            for workspace in window.workspaces {
+                if let featured = workspace.featured, featured.kind != .codex {
+                    featured.refreshSnapshot()
+                }
+            }
+        }
+    }
 
     func refreshPullRequests() {
         // The first tab speaks for the session — one gh call each.
@@ -476,6 +515,7 @@ final class Store: ObservableObject {
         if mods == [.command, .shift] {
             switch key {
             case "n": newWindow()
+            case "b": toggleDetailedWings()
             default: return false
             }
             return true

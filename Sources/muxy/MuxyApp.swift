@@ -114,6 +114,10 @@ struct MuxyApp: App {
                     store.toggleSidebar()
                 }
                 .keyboardShortcut("b", modifiers: .command)
+                Button(store.detailedWings ? L("Simple Sessions") : L("Detailed Sessions")) {
+                    store.toggleDetailedWings()
+                }
+                .keyboardShortcut("b", modifiers: [.command, .shift])
             }
         }
 
