@@ -91,6 +91,7 @@ fi
 mkdir -p "$APP/Contents/Frameworks"
 ditto "$REPO/Vendor/Sparkle/Sparkle.xcframework/macos-arm64_x86_64/Sparkle.framework" \
     "$APP/Contents/Frameworks/Sparkle.framework"
+cp "$REPO/Vendor/Sparkle/LICENSE" "$APP/Contents/Resources/Sparkle-LICENSE.txt"
 install_name_tool -add_rpath "@executable_path/../Frameworks" "$APP/Contents/MacOS/muxy"
 
 SPARKLE="$APP/Contents/Frameworks/Sparkle.framework/Versions/B"

@@ -96,14 +96,32 @@ clears the quarantine flag after installing; otherwise Gatekeeper would
 block the first launch as "unverified developer". Installing the zip by
 hand instead needs `xattr -dr com.apple.quarantine /Applications/Muxy.app`.
 
+**Updates.** Muxy checks for a new version once a day and asks before it
+installs; *Muxy → Check for Updates…* checks right away, Settings turns the
+daily check off. Updates come from this repository's releases and are
+verified with an EdDSA signature ([Sparkle](https://sparkle-project.org)).
+Muxy 0.4.0 and earlier can't update themselves: `brew upgrade --cask muxy`
+once.
+
 <details>
 <summary><b>Build from source</b></summary>
 <br>
 
 ```sh
 git clone https://github.com/theitger/muxy && cd muxy
-./Scripts/make-app.sh   # fetches the pinned GhosttyKit binary, builds ~/Applications/Muxy.app
+./Scripts/make-app.sh   # fetches the pinned GhosttyKit and Sparkle binaries, builds ~/Applications/Muxy.app
 ```
+
+For a bare `swift build`, run `./Scripts/fetch-ghostty.sh` and
+`./Scripts/fetch-sparkle.sh` once. `MUXY_APP_DIR` builds the app elsewhere.
+
+**Releasing:** `./Scripts/setup-updates.sh` once (creates the update
+signing key in your keychain), then bump the version and build number in
+`Packaging/Info.plist` and run `./Scripts/make-release.sh`; upload both
+`dist/Muxy-<version>.zip` and `dist/appcast.xml` to the GitHub release.
+With `MUXY_SIGN_IDENTITY` (a Developer ID Application identity) and
+`MUXY_NOTARY_PROFILE` (from `xcrun notarytool store-credentials`) the app
+is signed with the hardened runtime and notarized.
 
 Requires macOS 14+, Xcode 15+ command line tools. If Ghostty.app is
 installed, its shell integration and terminfo are bundled into Muxy.
@@ -170,7 +188,8 @@ MIT © Tristan Heitger. Muxy stands on
 [Ghostty](https://ghostty.org) by Mitchell Hashimoto (MIT) and
 [libghostty-spm](https://github.com/Lakr233/libghostty-spm) by
 [@Lakr233](https://github.com/Lakr233) (MIT, license included under
-`Vendor/`). Not affiliated with the Ghostty project.
+`Vendor/`), and updates itself with [Sparkle](https://sparkle-project.org)
+(MIT). Not affiliated with the Ghostty project.
 
 <br>
 
