@@ -112,11 +112,18 @@ installed, its shell integration and terminfo are bundled into Muxy.
 
 ## Setup
 
-1. **Agent status:** `./Scripts/install-claude-hook.sh` adds
-   UserPromptSubmit/PreToolUse/Notification/Stop/StopFailure hooks to your
-   Claude Code settings. They are a no-op outside Muxy and leave other
-   hooks untouched; rerun it after updating Muxy.
-2. **`muxy` on your PATH** (optional):
+1. **Agent status:** `./Scripts/install-claude-hook.sh` and
+   `./Scripts/install-codex-hook.sh` add Muxy's hooks to Claude Code and
+   Codex. They are a no-op outside Muxy and leave other hooks untouched;
+   rerun them after updating Muxy. Codex runs a new hook only once you
+   trust it: type `/hooks` in codex once. The hooks also tell Muxy each
+   conversation's id, so sessions come back after a restart.
+2. **Worktrees** (optional): a `.wtconfig` in a repository tells Muxy how
+   a new worktree becomes ready to work in: ignored files to copy, ports
+   of its own, its own Compose project, a bootstrap command, a teardown.
+   See `Sources/muxy/Worktrees.swift`. Muxy keeps one such worktree ready
+   per repository, so a new session starts at once.
+3. **`muxy` on your PATH** (optional):
    `ln -s "$PWD/Scripts/muxy" ~/.local/bin/muxy`, then `muxy .` opens a
    session in the current directory. Folders dropped on the Dock icon do the
    same.
@@ -125,7 +132,8 @@ installed, its shell integration and terminfo are bundled into Muxy.
 
 | Key | Action |
 | --- | --- |
-| `⌘N` | new session (in home) |
+| `⌘N` | new session: task, repository, agent, own worktree |
+| `⌥⌘N` | new shell in home |
 | `⇧⌘N` | new window |
 | `⌘T` | new tab in the current tab's directory |
 | `⌘W` | close tab → the last tab closes the session → an empty window closes |
