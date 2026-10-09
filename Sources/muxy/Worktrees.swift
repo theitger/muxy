@@ -155,8 +155,10 @@ enum Worktrees {
     }
 
     /// The recipe's teardown (Compose down, …), then the worktree and its
-    /// branch. Blocking.
+    /// branch. Only for checkouts muxy manages: never the main one, whose
+    /// teardown would stop your own containers. Blocking.
     static func remove(_ checkout: String, branch: String?, root: String) {
+        guard isManaged(checkout, root: root) else { return }
         let git = "/usr/bin/git"
         if let teardown = WorktreeRecipe.load(root: root)?.teardown {
             _ = runInLoginShell(teardown, in: checkout, timeout: 300)
