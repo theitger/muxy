@@ -233,5 +233,15 @@ private enum German {
         "Check for Updates…": "Nach Updates suchen …",
         "Check for updates automatically": "Automatisch nach Updates suchen",
         "Once a day. Muxy %@ asks before it installs anything.": "Einmal am Tag. Muxy %@ fragt, bevor es etwas installiert.",
+
+        // Command line tool
+        "Command line tool": "Kommandozeilen-Tool",
+        "The muxy command in any terminal: start sessions, report into them, list them. For scripts and agents.": "Der Befehl muxy in jedem Terminal: Sessions starten, in sie melden, sie auflisten. Für Skripte und Agents.",
+        "Installed as %@.": "Installiert als %@.",
+        "%@ exists and is not a link. Remove it to install.": "%@ existiert und ist kein Link. Entferne die Datei, um zu installieren.",
+        "Your shell doesn't look in %@. Add it to your PATH, or link the tool into a folder it does look in:": "Deine Shell sucht nicht in %@. Nimm den Ordner in deinen PATH auf oder verlinke das Tool in einen Ordner, in dem sie sucht:",
+        "%@ points to %@. Install replaces the link.": "%@ zeigt auf %@. Installieren ersetzt den Link.",
+        "This build doesn't include the tool.": "Dieser Build enthält das Tool nicht.",
+        "Couldn't install: %@": "Installation fehlgeschlagen: %@",
     ]
 }

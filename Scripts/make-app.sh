@@ -56,6 +56,10 @@ cp "$REPO/.build/release/muxy" "$APP/Contents/MacOS/muxy"
 cp "$ICNS" "$APP/Contents/Resources/AppIcon.icns"
 # The agent hook; muxy copies it to ~/.local/share/muxy on install.
 cp "$REPO/Scripts/agent-hook.sh" "$APP/Contents/Resources/agent-hook.sh"
+# The `muxy` command; Settings links it onto your PATH.
+mkdir -p "$APP/Contents/Resources/bin"
+cp "$REPO/Scripts/muxy" "$APP/Contents/Resources/bin/muxy"
+chmod 755 "$APP/Contents/Resources/bin/muxy"
 if [ -f "$REMOTE/dist/index.html" ]; then
     cp "$REMOTE/dist/index.html" "$APP/Contents/Resources/remote.html"
 fi
