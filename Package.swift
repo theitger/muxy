@@ -17,6 +17,11 @@ let package = Package(
                 .product(name: "GhosttyTerminal", package: "libghostty-spm")
             ],
             path: "Sources/muxy"
+        ),
+        .testTarget(
+            name: "muxyTests",
+            dependencies: ["muxy"],
+            path: "Tests/muxyTests"
         )
     ]
 )
