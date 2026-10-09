@@ -96,17 +96,17 @@ struct PRBadge: View {
         switch status {
         case .none: L("No checks")
         case .running: L("Checks running")
-        case .fixing: L("Checks failed — being fixed")
+        case .fixing: L("Checks failed, being fixed")
         case .failed: L("Checks failed")
         case .conflicts: L("Merge conflicts")
         case .draft: L("Draft")
         case let .waiting(reason):
             switch reason {
-            case .behind: L("Checks passed — branch out of date")
-            case .reviewRequired: L("Checks passed — review required")
-            case .changesRequested: L("Checks passed — changes requested")
-            case .blocked: L("Checks passed — merge blocked")
-            case .unknown, .clean, .conflicting: L("Checks passed — mergeability unknown")
+            case .behind: L("Checks passed, branch out of date")
+            case .reviewRequired: L("Checks passed, review required")
+            case .changesRequested: L("Checks passed, changes requested")
+            case .blocked: L("Checks passed, merge blocked")
+            case .unknown, .clean, .conflicting: L("Checks passed, mergeability unknown")
             }
         case .ready: L("Ready to merge")
         }

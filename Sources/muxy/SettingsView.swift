@@ -57,10 +57,10 @@ private struct StayAwakeSettings: View {
             if let problem = awake.problem {
                 Text(problem).font(.system(size: 11.5)).foregroundStyle(Theme.red)
             } else if awake.enabled, awake.lowBattery {
-                Text(L("Paused: battery below %d %% — the Mac may sleep.", StayAwake.batteryFloor))
+                Text(L("Paused: battery below %d %%, the Mac may sleep.", StayAwake.batteryFloor))
                     .font(.system(size: 11.5)).foregroundStyle(Theme.textDim)
             } else if awake.holding {
-                Text(L("On — the Mac won't sleep, lid closed included. Mind the heat in a bag."))
+                Text(L("On: the Mac won't sleep, lid closed included. Mind the heat in a bag."))
                     .font(.system(size: 11.5)).foregroundStyle(Theme.green)
             }
         }

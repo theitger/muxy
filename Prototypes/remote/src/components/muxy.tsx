@@ -73,11 +73,11 @@ export function SessionTile({
 const prLook: Record<PRStatus, [LucideIcon | null, Tone, string]> = {
   none: [null, 'neutral', 'Keine Checks'],
   running: [CircleDashed, 'blue', 'Checks laufen'],
-  fixing: [Wrench, 'yellow', 'Checks rot — wird gefixt'],
+  fixing: [Wrench, 'yellow', 'Checks rot, wird gefixt'],
   failed: [X, 'red', 'Checks fehlgeschlagen'],
   conflicts: [GitMerge, 'red', 'Merge-Konflikte'],
   draft: [Pencil, 'neutral', 'Entwurf'],
-  waiting: [Hourglass, 'neutral', 'Checks grün — Merge blockiert'],
+  waiting: [Hourglass, 'neutral', 'Checks grün, Merge blockiert'],
   ready: [Check, 'green', 'Bereit zum Mergen'],
 }
 
