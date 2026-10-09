@@ -73,10 +73,23 @@ struct ContentView: View {
         .overlay(alignment: .top) {
             if window.showSwitcher {
                 ZStack(alignment: .top) {
-                    Color.black.opacity(0.06)
+                    Color.black.opacity(0.32)
                         .contentShape(Rectangle())
                         .onTapGesture { window.showSwitcher = false }
                     SwitcherView(store: store, window: window)
+                        .padding(.top, 90)
+                        .transition(.scale(scale: 0.97, anchor: .top).combined(with: .offset(y: 8)))
+                }
+                .transition(.opacity)
+            }
+        }
+        .overlay(alignment: .top) {
+            if window.showNewSession {
+                ZStack(alignment: .top) {
+                    Color.black.opacity(0.32)
+                        .contentShape(Rectangle())
+                        .onTapGesture { window.showNewSession = false }
+                    NewSessionView(store: store, window: window)
                         .padding(.top, 90)
                         .transition(.scale(scale: 0.97, anchor: .top).combined(with: .offset(y: 8)))
                 }
@@ -101,6 +114,7 @@ struct ContentView: View {
         }
         .animation(Theme.ease, value: window.toast)
         .animation(Theme.ease, value: window.showSwitcher)
+        .animation(Theme.ease, value: window.showNewSession)
         .animation(.easeOut(duration: 0.2), value: window.attentionWorkspaces.map(\.id))
         .background(WindowConfigurator(model: window))
         .ignoresSafeArea()
@@ -153,13 +167,45 @@ private struct SidebarHandle: View {
 /// The active tab's terminal for one workspace.
 private struct WorkspaceContent: View {
     @ObservedObject var workspace: Workspace
+    var cornerRadius: CGFloat = 0
 
     var body: some View {
         if let session = workspace.selectedSession {
             TerminalHostView(session: session)
                 .id(session.id)
+                .overlay { Preparing(session: session, cornerRadius: cornerRadius) }
         } else {
             Color.clear
+        }
+    }
+}
+
+/// A tab whose folder is still being made: the terminal's own background
+/// and one quiet line, until the agent takes over.
+private struct Preparing: View {
+    @ObservedObject var session: TerminalSession
+    var cornerRadius: CGFloat
+
+    var body: some View {
+        if let text = session.preparing {
+            HStack(spacing: 8) {
+                if session.agent != .none {
+                    ProgressView().controlSize(.small)
+                }
+                Text(text)
+                    .font(Theme.mono(size: 12.5))
+                    .foregroundStyle(session.agent != .none ? Theme.textDim : Theme.redTone.strong)
+                    .textSelection(.enabled)
+            }
+            .padding(24)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .background(
+                UnevenRoundedRectangle(
+                    bottomLeadingRadius: cornerRadius, bottomTrailingRadius: cornerRadius, style: .continuous
+                )
+                .fill(Theme.terminal)
+            )
+            .transition(.opacity)
         }
     }
 }

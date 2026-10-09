@@ -10,6 +10,8 @@ final class Store: ObservableObject {
     @Published private(set) var windows: [WindowModel] = []
     @AppStorage("sidebarVisible") var sidebarVisible = true
     @AppStorage("sidebarWidth") var sidebarWidth: Double = 256
+    /// Agents started by "New Session" skip their permission prompts.
+    @AppStorage("skipPermissions") var skipPermissions = true
 
     static let sidebarWidthRange: ClosedRange<Double> = 200 ... 420
 
@@ -41,7 +43,34 @@ final class Store: ObservableObject {
         prTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.refreshPullRequests() }
         }
+        #if DEBUG
+        launchDebugSessions()
+        #endif
     }
+
+    #if DEBUG
+    /// MUXY_DEBUG_LAUNCH="claude|/dir|prompt|branch;codex|/dir||" — sessions
+    /// to open on launch, for trying the app without clicking. Branch "auto":
+    /// a placeholder, renamed after the prompt.
+    private func launchDebugSessions() {
+        guard let list = ProcessInfo.processInfo.environment["MUXY_DEBUG_LAUNCH"] else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+            guard let window = self.windows.first else { return }
+            for entry in list.split(separator: ";") {
+                let field = entry.split(separator: "|", omittingEmptySubsequences: false).map(String.init)
+                guard field.count >= 2 else { continue }
+                let spec = SessionSpec(
+                    directory: field[1], agent: AgentKind(rawValue: field[0]),
+                    prompt: field.count > 2 ? field[2] : "",
+                    branch: field.count > 3 && !field[3].isEmpty
+                        ? (field[3] == "auto" ? BranchNamer.placeholder() : field[3]) : nil,
+                    autoName: field.count > 3 && field[3] == "auto"
+                )
+                self.launch(spec, in: window)
+            }
+        }
+    }
+    #endif
 
     func refreshPullRequests() {
         // The first tab speaks for the session — one gh call each.
@@ -122,9 +151,9 @@ final class Store: ObservableObject {
 
     // MARK: - Workspaces
 
-    func makeWorkspace(directory: String, in window: WindowModel) -> Workspace {
+    func makeWorkspace(directory: String, in window: WindowModel, session: TerminalSession? = nil) -> Workspace {
         let workspace = Workspace(windowID: window.id)
-        add(TerminalSession(directory: directory), to: workspace)
+        add(session ?? TerminalSession(directory: directory), to: workspace)
         workspaces.append(workspace)
         return workspace
     }
@@ -440,6 +469,10 @@ final class Store: ObservableObject {
             window?.selectWorkspace(index: digit - 1)
             return true
         }
+        if mods == [.command, .option], key == "n" {
+            newShellInFront()
+            return true
+        }
         if mods == [.command, .shift] {
             switch key {
             case "n": newWindow()
@@ -448,12 +481,14 @@ final class Store: ObservableObject {
             return true
         }
         guard mods == .command else { return false }
+        // The ⌘N panel picks repositories with ⌘1…6.
+        if window?.showNewSession == true, digit != nil { return false }
         if let digit {
             window?.selectTab(index: digit - 1)
             return true
         }
         switch key {
-        case "n": targetWindow().newWorkspace()
+        case "n": targetWindow().showNewSession.toggle()
         case "t": targetWindow().newTab()
         case "w": window?.closeCurrent()
         case "j": jumpToAttention()
@@ -468,10 +503,100 @@ final class Store: ObservableObject {
         return true
     }
 
+    // MARK: - Launching
+
+    /// "New Session": a worktree if asked for, then a tab there whose shell
+    /// starts the agent with the prompt. Calls back with an error message,
+    /// or nil once the session is open.
+    /// A new session from the ⌘N panel. Its card and tab appear at once;
+    /// a worktree is made meanwhile and the agent starts in it as soon as
+    /// it exists, as the tab's own program (nothing typed into a shell).
+    func launch(_ spec: SessionSpec, in window: WindowModel) {
+        let prompt = spec.prompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        let session = TerminalSession(
+            directory: spec.directory,
+            command: spec.agent.map {
+                Launcher.shellCommand(running: $0.command(
+                    .new(prompt: !prompt.isEmpty), skipPermissions: skipPermissions
+                ))
+            },
+            environment: prompt.isEmpty ? [:] : ["MUXY_PROMPT": prompt],
+            preparing: spec.branch == nil ? nil : L("Creating worktree …")
+        )
+        session.kind = spec.agent
+        if spec.agent != nil { session.agent = .idle }
+        let workspace = makeWorkspace(directory: spec.directory, in: window, session: session)
+        window.select(workspace)
+        window.bringToFront()
+        guard let branch = spec.branch else { return }
+
+        #if DEBUG
+        let began = Date()
+        #endif
+        Task.detached(priority: .userInitiated) {
+            let result: Result<(path: String, problem: String?), Error>
+            do {
+                result = try .success(await Launcher.makeWorktree(from: spec.directory, branch: branch) { step in
+                    Task { @MainActor in session.updatePreparing(step) }
+                })
+            } catch {
+                result = .failure(error)
+            }
+            #if DEBUG
+            if let path = ProcessInfo.processInfo.environment["MUXY_DEBUG_TIMING"],
+               let handle = FileHandle(forWritingAtPath: path) {
+                handle.seekToEndOfFile()
+                handle.write(Data(String(format: "worktree ready after %.2fs\n", Date().timeIntervalSince(began)).utf8))
+            }
+            #endif
+            await MainActor.run {
+                switch result {
+                case let .success(made):
+                    session.begin(in: made.path)
+                    if let problem = made.problem {
+                        session.markAttentionIfBackground(reason: problem)
+                        self.window(of: workspace)?.show(problem)
+                    }
+                    if spec.autoName, !prompt.isEmpty {
+                        self.nameBranch(of: session, placeholder: branch, task: prompt, agent: spec.agent)
+                    }
+                case let .failure(error):
+                    session.agent = .none
+                    session.failPreparing((error as? Launcher.Failure)?.message ?? error.localizedDescription)
+                }
+            }
+        }
+    }
+
+    /// The session already runs on its placeholder branch; the real name
+    /// follows a few seconds later.
+    private func nameBranch(of session: TerminalSession, placeholder: String, task: String, agent: AgentKind?) {
+        let directory = session.cwd
+        Task.detached(priority: .utility) {
+            let wanted = BranchNamer.suggest(for: task, agent: agent, in: directory)
+            let renamed = wanted.flatMap { BranchNamer.rename(in: directory, from: placeholder, to: $0) }
+            #if DEBUG
+            if let path = ProcessInfo.processInfo.environment["MUXY_DEBUG_TIMING"],
+               let handle = FileHandle(forWritingAtPath: path) {
+                handle.seekToEndOfFile()
+                handle.write(Data("named \(directory): \(wanted ?? "nil") → \(renamed ?? "nil")\n".utf8))
+            }
+            #endif
+            guard renamed != nil else { return }
+            await MainActor.run { session.refreshContext() }
+        }
+    }
+
     // MARK: - Menu commands
 
-    func newWorkspaceInFront() { targetWindow().newWorkspace() }
+    func newWorkspaceInFront() { targetWindow().showNewSession = true }
     func newTabInFront() { targetWindow().newTab() }
+    /// ⌥⌘N: no questions, a shell in home, like any terminal's ⌘N.
+    func newShellInFront() {
+        let window = targetWindow()
+        window.showNewSession = false
+        window.newWorkspace()
+    }
 
     /// `open -a Muxy <dir>`, `Scripts/muxy`, a folder dropped on the Dock
     /// icon: a new session there. The shell a fresh launch opened on its own

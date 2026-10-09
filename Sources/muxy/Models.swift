@@ -15,6 +15,57 @@ enum AgentState {
     case failed
 }
 
+/// Which coding agent runs in a tab.
+enum AgentKind: String, CaseIterable, Identifiable {
+    case claude
+    case codex
+
+    var id: String { rawValue }
+
+    var name: String {
+        switch self {
+        case .claude: "Claude"
+        case .codex: "Codex"
+        }
+    }
+
+    /// Recognised from the shell's title, which shell integration sets to
+    /// the running command line ("claude --resume", "codex").
+    init?(commandLine: String) {
+        let command = commandLine.lowercased().split(separator: " ").first.map(String.init) ?? ""
+        guard let kind = AgentKind(rawValue: (command as NSString).lastPathComponent) else { return nil }
+        self = kind
+    }
+
+    /// How an agent starts: a new conversation (with the prompt from
+    /// MUXY_PROMPT).
+    enum Start {
+        case new(prompt: Bool)
+    }
+
+    /// The command line that starts it, run by your shell. The prompt
+    /// travels in MUXY_PROMPT: `"$MUXY_PROMPT"` reads the same in zsh, bash
+    /// and fish, so no quoting of the prompt itself can go wrong.
+    func command(_ start: Start, skipPermissions: Bool) -> String {
+        var parts = [rawValue]
+        #if DEBUG
+        // MUXY_DEBUG_AGENT=/path/to/fake: try launches without a real agent.
+        if let fake = ProcessInfo.processInfo.environment["MUXY_DEBUG_AGENT"] { parts = [fake] }
+        #endif
+        if skipPermissions {
+            switch self {
+            case .claude: parts.append("--dangerously-skip-permissions")
+            case .codex: parts.append("--dangerously-bypass-approvals-and-sandbox")
+            }
+        }
+        switch start {
+        case let .new(prompt):
+            if prompt { parts.append("\"$MUXY_PROMPT\"") }
+        }
+        return parts.joined(separator: " ")
+    }
+}
+
 /// CI checks of a session's pull request, as GitHub reports them.
 enum Checks: Equatable {
     case none
@@ -63,6 +114,8 @@ enum PRStatus: Equatable {
 struct RepoContext: Equatable {
     /// Main repository name — shared by all its worktrees. nil outside git.
     var repo: String?
+    /// The main checkout's path (where worktrees branch from). nil outside git.
+    var root: String?
     /// Last path component of the working directory's checkout (or the
     /// directory itself outside git).
     var folder: String

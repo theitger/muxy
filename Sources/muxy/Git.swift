@@ -63,6 +63,7 @@ enum Git {
         let branch = lines[2] == "HEAD" ? nil : lines[2]
         return RepoContext(
             repo: repo,
+            root: repoDir.hasSuffix(".git") ? nil : repoDir,
             folder: (toplevel as NSString).lastPathComponent,
             branch: branch,
             pr: nil

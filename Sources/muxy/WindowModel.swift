@@ -13,6 +13,12 @@ final class WindowModel: ObservableObject, Identifiable {
             if oldValue, !showSwitcher { focusTerminal() }
         }
     }
+    /// ⌘N: the "what should happen?" panel.
+    @Published var showNewSession = false {
+        didSet {
+            if oldValue, !showNewSession { focusTerminal() }
+        }
+    }
 
     weak var nsWindow: NSWindow?
     /// A short message at the bottom of the window (e.g. "nobody waits").

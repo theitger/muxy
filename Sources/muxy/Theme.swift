@@ -40,7 +40,7 @@ enum Theme {
     static let red = dyn(light: 0xB3001B, dark: 0xE63946)
     static let dotIdle = dyn(light: 0xC4C4C0, dark: 0x3A3A3A)
     static let claude = dyn(light: 0xBE5A38, dark: 0xD97757)
-    static let codex = dyn(light: 0x0E8A6D, dark: 0x19B98B)
+    static let codex = dyn(light: 0x4A55E0, dark: 0x8E9BFF)
 
     // Status tones: a soft tint for backgrounds, a strong shade for
     // text and icons on it.
@@ -60,6 +60,16 @@ enum Theme {
     static let fillHover = textPrimary.opacity(0.04)
     static let fillActive = textPrimary.opacity(0.075)
     static let hairline = textPrimary.opacity(0.09)
+
+    /// The terminal's own font (Ghostty's `font-family`), for text that
+    /// quotes the terminal; the system monospace when it isn't installed.
+    static func mono(size: CGFloat) -> Font {
+        if let family = GhosttyColors.fontFamily,
+           let font = NSFontManager.shared.font(withFamily: family, traits: [], weight: 5, size: size) {
+            return Font(font)
+        }
+        return .system(size: size, design: .monospaced)
+    }
 
     /// Standard motion curve: fast start, long soft landing.
     static let ease = Animation.timingCurve(0.32, 0.72, 0, 1, duration: 0.25)
@@ -178,6 +188,22 @@ enum GhosttyColors {
         }
         return pair
     }
+
+    /// The first `font-family` of the user's ghostty config.
+    static let fontFamily: String? = {
+        let path = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".config/ghostty/config").path
+        guard let content = try? String(contentsOfFile: path, encoding: .utf8) else { return nil }
+        for rawLine in content.split(separator: "\n") {
+            let line = rawLine.trimmingCharacters(in: .whitespaces)
+            guard line.hasPrefix("font-family"),
+                  let value = line.split(separator: "=", maxSplits: 1).last
+            else { continue }
+            let name = value.trimmingCharacters(in: .whitespaces).trimmingCharacters(in: CharacterSet(charactersIn: "\""))
+            return name.isEmpty ? nil : name
+        }
+        return nil
+    }()
 
     private static func background(theme name: String, in config: URL) -> RGB? {
         let file = config.appendingPathComponent("themes/\(name.trimmingCharacters(in: .whitespaces))")

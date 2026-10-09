@@ -87,6 +87,8 @@ struct MuxyApp: App {
             CommandGroup(replacing: .newItem) {
                 Button(L("New Session")) { store.newWorkspaceInFront() }
                     .keyboardShortcut("n", modifiers: .command)
+                Button(L("New Shell")) { store.newShellInFront() }
+                    .keyboardShortcut("n", modifiers: [.command, .option])
                 Button(L("New Window")) { store.newWindow() }
                     .keyboardShortcut("n", modifiers: [.command, .shift])
                 Button(L("New Tab")) { store.newTabInFront() }

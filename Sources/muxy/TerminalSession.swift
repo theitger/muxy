@@ -40,6 +40,8 @@ final class TerminalSession: NSObject, ObservableObject, Identifiable {
     @Published private(set) var context: RepoContext
     @Published private(set) var status: SessionStatus = .running
     @Published var agent: AgentState = .none
+    /// Which agent runs here, once one does.
+    @Published var kind: AgentKind?
     /// Claude's conversation log, as the hook reports it — the remote
     /// renders it as a chat.
     var transcriptPath: String?
@@ -55,24 +57,60 @@ final class TerminalSession: NSObject, ObservableObject, Identifiable {
     var onContextChange: (() -> Void)?
 
     private var contextToken = 0
+    /// The surface runs an agent directly (see `init`); the first prompt
+    /// of the shell that follows it means the agent has exited.
+    private var runsAgent = false
+    private let environment: [String: String]
+    private let command: String?
 
-    init(directory: String) {
+    /// Its folder is still being made (a new worktree): the tab exists, its
+    /// surface starts with `begin(in:)`.
+    @Published private(set) var preparing: String?
+
+    /// `command` runs instead of a bare shell (an agent, followed by your
+    /// shell when it exits); `environment` reaches every process in the tab.
+    init(directory: String, command: String? = nil, environment: [String: String] = [:], preparing: String? = nil) {
         cwd = directory
         title = Paths.folderName(directory)
         context = .plain(directory)
         terminalView = DropTerminalView(frame: NSRect(x: 0, y: 0, width: 800, height: 600))
+        self.environment = environment
+        self.command = command
+        self.preparing = preparing
+        runsAgent = command != nil
         super.init()
 
         terminalView.delegate = self
-        terminalView.controller = Self.controller
+        if preparing == nil { begin(in: directory) }
+    }
+
+    /// Starts the surface: right away, or once its folder exists.
+    func begin(in directory: String) {
+        preparing = nil
+        if directory != cwd {
+            cwd = directory
+            title = Paths.folderName(directory)
+        }
         terminalView.configuration = TerminalSurfaceOptions(
             backend: .exec,
             workingDirectory: directory,
             // Every process in this terminal inherits the session id — the
             // Claude Code hook uses it to route its events back.
-            envVars: ["MUXY": "1", "MUXY_SESSION": id.uuidString]
+            envVars: environment.merging(["MUXY": "1", "MUXY_SESSION": id.uuidString]) { _, ours in ours },
+            command: command
         )
+        terminalView.controller = Self.controller
         refreshContext()
+    }
+
+    /// What the folder is waiting for now (a checkout, a bootstrap).
+    func updatePreparing(_ step: String) {
+        if preparing != nil { preparing = step }
+    }
+
+    /// The folder never came: the tab says why instead of a terminal.
+    func failPreparing(_ message: String) {
+        preparing = message
     }
 
     /// Ghostty's own logic: confirm only when foreground work is running
@@ -104,7 +142,7 @@ final class TerminalSession: NSObject, ObservableObject, Identifiable {
 
     /// Tab label: what runs here, not the shell's noisy title.
     var tabTitle: String {
-        if agent != .none { return "Claude" }
+        if agent != .none { return kind?.name ?? "Agent" }
         let clean = Self.clean(title)
         // An idle shell titles itself with its path — the folder says it shorter.
         if clean.isEmpty || clean.hasPrefix("~") || clean.hasPrefix("/") {
@@ -118,7 +156,7 @@ final class TerminalSession: NSObject, ObservableObject, Identifiable {
     var agentTitle: String? {
         guard agent != .none else { return nil }
         let clean = Self.clean(title)
-        if clean.isEmpty || clean == "Claude Code" || clean.hasPrefix("claude") || clean.hasPrefix("~")
+        if clean.isEmpty || clean == "Claude Code" || AgentKind(commandLine: clean) != nil || clean.hasPrefix("~")
             || clean.hasPrefix("/") { return nil }
         return clean
     }
@@ -174,18 +212,35 @@ final class TerminalSession: NSObject, ObservableObject, Identifiable {
     }
 }
 
+extension TerminalSession {
+    func agentExited() {
+        agent = .none
+        kind = nil
+        transcriptPath = nil
+    }
+}
+
 extension TerminalSession: TerminalSurfaceTitleDelegate {
     func terminalDidChangeTitle(_ title: String) {
         let clean = Paths.abbreviate(title)
         // Shell integration titles a running command with its command line
         // — the cheapest way to notice an agent started by hand.
-        if agent == .none, clean.lowercased().hasPrefix("claude") { agent = .idle }
+        if agent == .none, let detected = AgentKind(commandLine: clean) {
+            kind = detected
+            agent = .idle
+        }
         self.title = clean
     }
 }
 
 extension TerminalSession: TerminalSurfacePwdDelegate {
     func terminalDidChangeWorkingDirectory(_ path: String) {
+        // Agents report no directory; the shell after one does, on its
+        // first prompt: the agent has exited.
+        if runsAgent {
+            runsAgent = false
+            agentExited()
+        }
         guard path != cwd else { return }
         cwd = path
         refreshContext()
@@ -196,8 +251,7 @@ extension TerminalSession: TerminalSurfaceCommandFinishedDelegate {
     func terminalDidFinishCommand(exitCode _: Int?, durationNanos _: UInt64) {
         // Commands inside claude never reach this shell — a finished
         // command here means claude itself exited.
-        agent = .none
-        transcriptPath = nil
+        agentExited()
     }
 }
 

@@ -25,6 +25,8 @@ struct SettingsView: View {
                 .font(.system(size: 11.5))
                 .foregroundStyle(Theme.textDim)
             Divider().padding(.vertical, 6)
+            AgentSettings()
+            Divider().padding(.vertical, 6)
             StayAwakeSettings()
             Divider().padding(.vertical, 6)
             RemoteSettings()
@@ -63,6 +65,35 @@ private struct StayAwakeSettings: View {
                 Text(L("On: the Mac won't sleep, lid closed included. Mind the heat in a bag."))
                     .font(.system(size: 11.5)).foregroundStyle(Theme.green)
             }
+        }
+    }
+}
+
+/// Settings → how "New Session" starts agents.
+private struct AgentSettings: View {
+    @AppStorage("skipPermissions") private var skipPermissions = true
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            skip
+        }
+    }
+
+    private var skip: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(L("Skip permission prompts"))
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(Theme.textBody)
+                Text(L("New sessions start Claude with --dangerously-skip-permissions and Codex with --dangerously-bypass-approvals-and-sandbox."))
+                    .font(.system(size: 11.5))
+                    .foregroundStyle(Theme.textDim)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer()
+            Toggle("", isOn: $skipPermissions)
+                .labelsHidden()
+                .toggleStyle(.switch)
         }
     }
 }
