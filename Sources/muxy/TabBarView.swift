@@ -32,6 +32,7 @@ struct TabBarView: View {
                 window.newTab()
             }
             Spacer(minLength: 8)
+            ResultButton(window: window, workspace: workspace)
             if !onStage {
                 AttentionPill(store: store, window: window)
             }

@@ -13,6 +13,11 @@ struct WingFace {
     var lines: [String]
     /// One entry per tab running an agent, in tab order.
     var agents: [AgentState]
+    /// What the last turn came to; shown once the agent is done.
+    var result: ResultFace?
+
+    /// The outcome line replaces the activity while nothing runs.
+    var showsResult: Bool { result != nil && (agent == .idle || agent == .none) }
 
     /// Nothing running, nothing new: the card steps back.
     var isQuiet: Bool { agent == .none && !attention }
@@ -118,11 +123,15 @@ struct WingCardFace: View {
             default:
                 EmptyView()
             }
-            Text(face.activity)
-                .font(.system(size: 11, weight: blocked ? .semibold : .regular))
-                .foregroundStyle(tone)
-                .lineLimit(1)
-                .truncationMode(.tail)
+            if face.showsResult, let result = face.result {
+                ResultLine(face: result)
+            } else {
+                Text(face.activity)
+                    .font(.system(size: 11, weight: blocked ? .semibold : .regular))
+                    .foregroundStyle(tone)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+            }
             Spacer(minLength: 4)
             HStack(spacing: 4) {
                 ForEach(Array(face.agents.enumerated()), id: \.offset) { _, state in
@@ -154,11 +163,15 @@ struct WingCardFace: View {
                     .font(.system(size: 13, weight: onStage ? .semibold : .medium))
                     .foregroundStyle(onStage ? Theme.textPrimary : Theme.textBody)
                     .lineLimit(1)
-                Text(face.activity)
-                    .font(.system(size: 11))
-                    .foregroundStyle(tone)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
+                if face.showsResult, let result = face.result {
+                    ResultLine(face: result)
+                } else {
+                    Text(face.activity)
+                        .font(.system(size: 11))
+                        .foregroundStyle(tone)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
             }
             Spacer(minLength: 4)
             PRBadge(pr: face.pr, status: face.prStatus)

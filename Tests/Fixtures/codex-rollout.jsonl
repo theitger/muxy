@@ -1,0 +1,17 @@
+{"timestamp":"2026-10-01T10:00:00Z","type":"session_meta","payload":{"id":"abc","cwd":"/tmp/x","cli_version":"0.157.0"}}
+{"type":"event_msg","payload":{"type":"task_started","turn_id":"turn-old"}}
+{"type":"event_msg","payload":{"type":"item_completed","turn_id":"turn-old","item":{"type":"CommandExecution","id":"exec-0","command":["/bin/zsh","-lc","go test ./..."],"status":"completed","exit_code":0}}}
+{"type":"event_msg","payload":{"type":"task_complete","turn_id":"turn-old","last_agent_message":"Old turn."}}
+{"type":"event_msg","payload":{"type":"task_started","turn_id":"turn-new"}}
+{"type":"turn_context","payload":{"turn_id":"turn-new","cwd":"/tmp/x"}}
+{"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"Fix the parser"}]}}
+{"type":"event_msg","payload":{"type":"item_completed","turn_id":"turn-new","item":{"type":"UserMessage","id":"u","content":[{"type":"text","text":"Fix the parser"}]}}}
+{"type":"response_item","payload":{"type":"reasoning","summary":[],"encrypted_content":"gAAAA"}}
+{"type":"event_msg","payload":{"type":"item_completed","turn_id":"turn-new","item":{"type":"AgentMessage","id":"m1","content":[{"type":"Text","text":"Looking at the parser first."}]}}}
+{"type":"response_item","payload":{"type":"custom_tool_call","name":"exec","call_id":"c1","input":"const r = await tools.exec_command({\"cmd\":\"cargo test\"})"}}
+{"type":"event_msg","payload":{"type":"item_completed","turn_id":"turn-new","item":{"type":"CommandExecution","id":"exec-1","command":["/bin/zsh","-lc","cargo test --all"],"status":"failed","exit_code":101}}}
+{"type":"event_msg","payload":{"type":"item_completed","turn_id":"turn-new","item":{"type":"CommandExecution","id":"exec-2","command":["/bin/zsh","-lc","git status --short"],"status":"completed","exit_code":0}}}
+{"truncated
+{"type":"response_item","payload":{"type":"message","role":"assistant","phase":"final_answer","content":[{"type":"output_text","text":"Fixed the **parser**. One test still fails: `parse_empty`."}]}}
+{"type":"event_msg","payload":{"type":"token_count","info":null}}
+{"type":"event_msg","payload":{"type":"task_complete","turn_id":"turn-new","last_agent_message":"Fixed the **parser**. One test still fails: `parse_empty`."}}

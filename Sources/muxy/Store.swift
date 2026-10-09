@@ -595,6 +595,8 @@ final class Store: ObservableObject {
             if let id = event.agentSession { session.agentSessionID = id }
             // The remote reads Claude's log format only.
             if kind == .claude, let transcript = event.transcript { session.transcriptPath = transcript }
+            // Results read every agent's log.
+            if let transcript = event.transcript { Results.shared.noteLog(transcript, for: session) }
             switch event.name {
             case "start":
                 if session.agent == .none { session.agent = .idle }
@@ -613,6 +615,7 @@ final class Store: ObservableObject {
             default:
                 session.agent = .idle
                 session.markAttentionIfBackground(reason: L("is done"))
+                Results.shared.turnEnded(in: session)
                 // A turn often ends with a push: don't wait for the poll.
                 if let primary = workspace.primary, Git.mayHavePR(primary.context.branch) {
                     primary.refreshContext()
@@ -699,6 +702,7 @@ final class Store: ObservableObject {
         case "t": targetWindow().newTab()
         case "w": window?.closeCurrent()
         case "j": jumpToAttention()
+        case "i": if let window { Results.shared.togglePanel(in: window) }
         case "k": window?.showSwitcher.toggle()
         case "b": toggleSidebar()
         case "f":

@@ -39,6 +39,7 @@ private struct WingCard: View {
     @ObservedObject var store: Store
     @ObservedObject var window: WindowModel
     @ObservedObject var workspace: Workspace
+    @ObservedObject private var results = Results.shared
     @State private var hovered = false
 
     var body: some View {
@@ -83,7 +84,8 @@ extension Workspace {
             prStatus: prStatus,
             activity: activity,
             lines: featured?.snapshot?.lines ?? [],
-            agents: sessions.filter { $0.agent != .none }.map(\.agent)
+            agents: sessions.filter { $0.agent != .none }.map(\.agent),
+            result: resultFace
         )
     }
 }

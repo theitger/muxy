@@ -63,6 +63,7 @@ struct ContentView: View {
                     if let workspace = window.selectedWorkspace {
                         TabBarView(store: store, window: window, workspace: workspace)
                         WorkspaceContent(workspace: workspace)
+                            .overlay { ResultOverlay(window: window, workspace: workspace) }
                     } else {
                         EmptyState()
                     }
@@ -132,6 +133,7 @@ struct ContentView: View {
                 if let workspace = window.selectedWorkspace {
                     TabBarView(store: store, window: window, workspace: workspace, onStage: true)
                     WorkspaceContent(workspace: workspace, cornerRadius: StageMetrics.radius)
+                        .overlay { ResultOverlay(window: window, workspace: workspace) }
                         // What a session fades in over when it takes the stage.
                         .background(
                             UnevenRoundedRectangle(

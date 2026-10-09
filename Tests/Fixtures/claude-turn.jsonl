@@ -1,0 +1,18 @@
+{"type":"permission-mode","permissionMode":"bypassPermissions","sessionId":"s1"}
+{"type":"user","message":{"role":"user","content":"An older task"},"isSidechain":false,"uuid":"u0"}
+{"type":"assistant","message":{"id":"msg_0","role":"assistant","content":[{"type":"tool_use","id":"t0","name":"Bash","input":{"command":"swift test"}}],"stop_reason":"tool_use"},"isSidechain":false}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t0","content":"Exit code 1\nfailed","is_error":true}]},"toolUseResult":"Error: Exit code 1","isSidechain":false}
+{"type":"assistant","message":{"id":"msg_0b","role":"assistant","content":[{"type":"text","text":"The old answer."}],"stop_reason":"end_turn"},"isSidechain":false}
+{"type":"user","message":{"role":"user","content":"Fix the login bug"},"isSidechain":false,"uuid":"u1"}
+{"type":"user","message":{"role":"user","content":[{"type":"text","text":"<system-reminder>meta</system-reminder>"}]},"isMeta":true,"isSidechain":false}
+{"type":"assistant","message":{"id":"msg_1","role":"assistant","content":[{"type":"thinking","thinking":"hmm"}]},"isSidechain":false}
+{"type":"assistant","message":{"id":"msg_1","role":"assistant","content":[{"type":"tool_use","id":"t1","name":"Bash","input":{"command":"cd app && CI=1 npm test"}}],"stop_reason":"tool_use"},"isSidechain":false}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t1","content":"ok 12 tests","is_error":false}]},"toolUseResult":{"stdout":"ok","stderr":"","interrupted":false},"isSidechain":false}
+this line is not json
+{"type":"assistant","message":{"id":"msg_s","role":"assistant","content":[{"type":"text","text":"A subagent's words."}]},"isSidechain":true}
+{"type":"assistant","message":{"id":"msg_2","role":"assistant","content":[{"type":"tool_use","id":"t2","name":"Bash","input":{"command":"grep -rn test src | head"}}],"stop_reason":"tool_use"},"isSidechain":false}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t2","content":"src/a.ts","is_error":false}]},"isSidechain":false}
+{"type":"assistant","message":{"id":"msg_3","role":"assistant","content":[{"type":"text","text":"## Summary\n\nFixed the **login** redirect — added a test.\n\n- Updated `auth.ts`\n- Added [docs](https://example.com)\n\n```ts\nconst x = 1\n```"}]},"isSidechain":false}
+{"type":"assistant","message":{"id":"msg_3","role":"assistant","content":[{"type":"text","text":"All tests pass."}],"stop_reason":"end_turn"},"isSidechain":false}
+{"type":"system","subtype":"turn_duration","durationMs":1234}
+{"type":"last-prompt","lastPrompt":"Fix the login bug"}
