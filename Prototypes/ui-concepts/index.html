@@ -1,0 +1,756 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>muxy UI concepts</title>
+<style>
+:root {
+  --page: #0c0c0c;
+  --bg: #141414;
+  --surface: #1a1a1a;
+  --surface-2: #202020;
+  --hover: rgba(240,240,240,.045);
+  --active: rgba(240,240,240,.08);
+  --hair: rgba(240,240,240,.08);
+  --hair-2: rgba(240,240,240,.13);
+  --t1: #f0f0f0;
+  --t2: #c8c8c8;
+  --t3: #9a9a9a;
+  --t4: #6a6a6a;
+  --t5: #4a4a4a;
+  --orange: #ffb45c;  --orange-soft: rgba(247,140,16,.16);
+  --blue: #9dbaf0;    --blue-soft: rgba(80,128,216,.16);
+  --green: #a9de6e;   --green-soft: rgba(131,205,45,.15);
+  --red: #f87171;     --red-soft: rgba(220,38,38,.16);
+  --yellow: #f5cf5b;  --yellow-soft: rgba(242,183,5,.15);
+  --claude: #d97757;
+  --codex: #19b98b;
+  --mono: "IosevkaTerm Nerd Font Mono", "Iosevka Term", "SF Mono", ui-monospace, Menlo, monospace;
+  --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+  --ease: cubic-bezier(.32,.72,0,1);
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
+body { background: var(--page); color: var(--t2); font: 13px/1.4 var(--sans); -webkit-font-smoothing: antialiased; overflow: hidden; }
+button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
+kbd { font: 11px var(--sans); color: var(--t3); background: rgba(240,240,240,.07); border: 1px solid var(--hair); border-radius: 4px; padding: 0 4px; min-width: 16px; display: inline-block; text-align: center; line-height: 16px; }
+
+/* ---------- page chrome (not part of the app) ---------- */
+.stage { height: 100%; display: flex; flex-direction: column; align-items: center; padding: 14px 16px 16px; gap: 12px; }
+.picker { display: flex; align-items: center; gap: 14px; width: min(1320px, 100%); }
+.variants { display: flex; gap: 4px; background: #151515; border: 1px solid var(--hair); border-radius: 10px; padding: 3px; }
+.variants button { padding: 6px 12px; border-radius: 7px; color: var(--t3); font-weight: 500; }
+.variants button.on { background: #262626; color: var(--t1); }
+.variants button b { color: var(--t4); font-weight: 600; margin-right: 6px; }
+.variants button.on b { color: var(--orange); }
+.pitch { flex: 1; color: var(--t3); font-size: 12.5px; min-width: 0; }
+.pitch strong { color: var(--t1); font-weight: 600; }
+.sim { display: flex; gap: 6px; }
+.sim button { padding: 6px 10px; border-radius: 7px; border: 1px solid var(--hair); color: var(--t3); font-size: 12px; white-space: nowrap; }
+.sim button:hover { color: var(--t1); background: var(--hover); }
+
+/* ---------- the window ---------- */
+.win { position: relative; width: min(1320px, 100%); flex: 1; min-height: 0; max-height: 860px; background: var(--bg); border-radius: 12px; border: 1px solid #2a2a2a; box-shadow: 0 30px 80px rgba(0,0,0,.6), 0 0 0 .5px #000; overflow: hidden; display: flex; }
+.lights { display: flex; gap: 8px; padding: 0 14px; align-items: center; height: 40px; flex: none; }
+.lights i { width: 12px; height: 12px; border-radius: 50%; background: #ff5f57; }
+.lights i:nth-child(2) { background: #febc2e; } .lights i:nth-child(3) { background: #28c840; }
+
+/* agent glyph */
+.ag { width: 18px; height: 18px; border-radius: 5px; display: inline-grid; place-items: center; font: 600 11px var(--mono); flex: none; }
+.ag.claude { color: var(--claude); background: rgba(217,119,87,.14); }
+.ag.codex { color: var(--codex); background: rgba(25,185,139,.13); }
+.ag.shell { color: var(--t3); background: rgba(240,240,240,.06); }
+
+/* state marks */
+.st { display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; font-weight: 500; white-space: nowrap; }
+.st.blocked { color: var(--orange); } .st.working { color: var(--blue); } .st.done { color: var(--green); }
+.st.failed { color: var(--red); } .st.idle, .st.shell { color: var(--t4); }
+.dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; flex: none; }
+.spin { width: 9px; height: 9px; border-radius: 50%; border: 1.5px solid currentColor; border-right-color: transparent; animation: spin 1s linear infinite; flex: none; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spin { animation: none; } }
+
+.pr { font: 500 11px var(--sans); padding: 1px 6px; border-radius: 5px; white-space: nowrap; }
+.pr.running { color: var(--blue); background: var(--blue-soft); }
+.pr.ready { color: var(--green); background: var(--green-soft); }
+.pr.failed { color: var(--red); background: var(--red-soft); }
+.pr.fixing { color: var(--yellow); background: var(--yellow-soft); }
+.pr.draft { color: var(--t3); background: rgba(240,240,240,.06); }
+
+/* ---------- terminal ---------- */
+.term { flex: 1; min-height: 0; overflow: auto; padding: 18px 26px 26px; font: 14px/1.55 var(--mono); color: #d6d6d6; white-space: pre-wrap; }
+.term .u { color: var(--t1); }
+.term .u::before { content: "> "; color: var(--t4); }
+.term .cu::before { content: "› "; color: var(--t4); }
+.term .cu { color: var(--t1); }
+.term .b { color: #d6d6d6; }
+.term .b::before { content: "● "; color: #d6d6d6; }
+.term > div { margin-bottom: .55em; }
+.term > div.r, .term > div.cr { margin-top: -.45em; }
+.term > span + div { margin-top: .55em; }
+.term .tl::before { content: "● "; color: #7ec27e; }
+.term .ctl::before { content: "• "; color: var(--t3); }
+.term .tl b, .term .ctl b { color: var(--t1); font-weight: 700; }
+.term .r { color: var(--t3); padding-left: 2ch; }
+.term .r::before { content: "⎿  "; color: var(--t5); }
+.term .cr { color: var(--t3); padding-left: 2ch; }
+.term .cr::before { content: "└ "; color: var(--t5); }
+.term .sp { color: var(--claude); }
+.term .csp { color: var(--codex); }
+.term .dim { color: var(--t4); }
+.term .err { color: var(--red); }
+.term .ok { color: var(--green); }
+.term .del { background: rgba(220,38,38,.18); color: #f3b0b0; display: block; }
+.term .add { background: rgba(70,160,70,.17); color: #bfe5bf; display: block; }
+.term .ctx { color: var(--t4); display: block; }
+.term .box { border: 1px solid #5a4636; border-radius: 6px; padding: 10px 14px; margin: 8px 0; color: var(--t2); }
+.term .box.cx { border-color: #24564a; }
+.term .box .h { color: var(--claude); font-weight: 700; }
+.term .box.cx .h { color: var(--codex); }
+.term .box .sel { color: var(--t1); }
+.term .prompt::before { content: "~/code/scratch ❯ "; color: var(--codex); }
+.cursor { display: inline-block; width: .6em; height: 1.1em; background: #cfcfcf; vertical-align: text-bottom; }
+
+/* tabs */
+.tabs { display: flex; gap: 2px; padding: 0 12px; height: 34px; align-items: center; flex: none; border-bottom: 1px solid var(--hair); }
+.tab { display: flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 6px; color: var(--t3); font-size: 12.5px; }
+.tab.on { background: var(--active); color: var(--t1); }
+.tab .g { font: 11px var(--mono); color: var(--t4); display: inline-flex; }
+.tab.on .g { color: var(--t2); }
+
+/* ---------- overlays (shared) ---------- */
+.scrim { position: absolute; inset: 0; background: rgba(0,0,0,.35); display: none; z-index: 20; }
+.scrim.show { display: block; }
+.palette { position: absolute; left: 50%; top: 64px; transform: translateX(-50%); width: min(640px, calc(100% - 32px)); background: #1c1c1c; border: 1px solid var(--hair-2); border-radius: 12px; box-shadow: 0 24px 60px rgba(0,0,0,.55); z-index: 21; display: none; overflow: hidden; }
+.palette.show { display: block; animation: pop .18s var(--ease); }
+@keyframes pop { from { opacity: 0; transform: translate(-50%, -6px) scale(.985); } }
+.pal-head { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-bottom: 1px solid var(--hair); }
+.pal-head h3 { font-size: 13px; font-weight: 600; color: var(--t1); flex: 1; }
+.pal-head .count { color: var(--t3); font-size: 12px; }
+.pal-search { width: 100%; background: none; border: 0; outline: 0; color: var(--t1); font: 15px var(--sans); }
+.pal-list { max-height: 460px; overflow: auto; padding: 6px; }
+.pal-foot { display: flex; gap: 14px; padding: 8px 16px; border-top: 1px solid var(--hair); color: var(--t4); font-size: 11.5px; }
+
+.item { border-radius: 9px; padding: 9px 11px; display: grid; grid-template-columns: 18px 1fr auto; gap: 4px 10px; align-items: center; cursor: pointer; }
+.item:hover { background: var(--hover); }
+.item.on { background: var(--active); }
+.item .t { color: var(--t1); font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.item .sub { grid-column: 2 / 4; color: var(--t4); font-size: 12px; }
+.item .detail { grid-column: 2 / 4; display: none; margin-top: 6px; }
+.item.on .detail { display: block; }
+
+.ask { background: #141414; border: 1px solid var(--hair); border-radius: 8px; padding: 10px 12px; font: 12.5px/1.5 var(--mono); color: var(--t2); white-space: pre-wrap; word-break: break-word; }
+.ask .k { color: var(--t4); font: 11px var(--sans); text-transform: uppercase; letter-spacing: .06em; display: block; margin-bottom: 4px; }
+.ask .why { font: 12px/1.45 var(--sans); color: var(--t3); display: block; margin-top: 6px; }
+.ask .add, .ask .del { display: block; }
+.ask .del { background: rgba(220,38,38,.16); color: #f3b0b0; }
+.ask .add { background: rgba(70,160,70,.15); color: #bfe5bf; }
+.acts { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+.btn { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: 7px; background: rgba(240,240,240,.06); border: 1px solid var(--hair); color: var(--t2); font-size: 12px; font-weight: 500; }
+.btn:hover { background: rgba(240,240,240,.1); color: var(--t1); }
+.btn.primary { background: rgba(255,180,92,.14); border-color: rgba(255,180,92,.3); color: var(--orange); }
+.btn.primary:hover { background: rgba(255,180,92,.22); }
+.btn.go { background: var(--green-soft); border-color: rgba(169,222,110,.25); color: var(--green); }
+.btn kbd { font-size: 10px; line-height: 14px; padding: 0 3px; min-width: 14px; }
+.btn.sm { padding: 3px 7px; font-size: 11.5px; }
+
+.toast { position: absolute; right: 16px; bottom: 16px; z-index: 30; background: #222; border: 1px solid var(--hair-2); border-radius: 10px; padding: 10px 12px; display: flex; gap: 10px; align-items: center; box-shadow: 0 16px 40px rgba(0,0,0,.5); transform: translateY(16px); opacity: 0; pointer-events: none; transition: all .25s var(--ease); max-width: 380px; }
+.toast.show { transform: none; opacity: 1; pointer-events: auto; }
+.toast .t { color: var(--t1); font-weight: 500; }
+.toast .s { color: var(--t3); font-size: 12px; }
+
+/* =========================================================
+   A — pure: no sidebar, a strip of sessions in the title bar
+   ========================================================= */
+.A { flex-direction: column; }
+.A .bar { display: flex; align-items: center; height: 40px; flex: none; border-bottom: 1px solid var(--hair); }
+.A .strip { flex: 1; display: flex; gap: 2px; align-items: center; overflow: hidden; min-width: 0; padding-right: 8px; }
+.A .chip { position: relative; display: flex; align-items: center; gap: 7px; height: 28px; padding: 0 10px 0 7px; border-radius: 7px; color: var(--t3); min-width: 0; max-width: 200px; flex: 0 1 auto; }
+.A .chip:hover { background: var(--hover); color: var(--t2); }
+.A .chip.on { background: var(--active); color: var(--t1); }
+.A .chip .n { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; }
+.A .chip .mark { width: 7px; height: 7px; border-radius: 50%; flex: none; }
+.A .chip.blocked .mark { background: var(--orange); box-shadow: 0 0 0 3px rgba(255,180,92,.18); }
+.A .chip.working .mark { background: none; border: 1.5px solid var(--blue); border-right-color: transparent; animation: spin 1s linear infinite; width: 9px; height: 9px; }
+.A .chip.done .mark { background: var(--green); }
+.A .chip.failed .mark { background: var(--red); }
+.A .chip.idle .mark, .A .chip.shell .mark { background: var(--t5); }
+.A .chip.seen .mark { opacity: .45; box-shadow: none; }
+.A .sep { width: 1px; height: 16px; background: var(--hair-2); margin: 0 6px; flex: none; }
+.A .repo { font-size: 10.5px; color: var(--t5); text-transform: uppercase; letter-spacing: .07em; margin: 0 4px 0 2px; flex: none; }
+.A .right { display: flex; align-items: center; gap: 6px; padding-right: 10px; flex: none; }
+.A .needs { display: flex; align-items: center; gap: 7px; height: 26px; padding: 0 10px; border-radius: 999px; background: var(--orange-soft); color: var(--orange); font-weight: 600; font-size: 12px; }
+.A .needs.none { background: rgba(240,240,240,.05); color: var(--t4); font-weight: 500; }
+.A .ctx { display: flex; align-items: center; gap: 10px; padding: 0 14px; height: 30px; flex: none; color: var(--t4); font-size: 12px; border-bottom: 1px solid var(--hair); }
+.A .ctx .tabsmini { display: flex; gap: 2px; margin-left: auto; }
+.A .ctx .tabsmini button { padding: 2px 8px; border-radius: 5px; color: var(--t4); font-size: 12px; }
+.A .ctx .tabsmini button.on { color: var(--t1); background: var(--active); }
+.A .ctx b { color: var(--t2); font-weight: 500; }
+.hovercard { position: absolute; z-index: 15; width: 300px; background: #1e1e1e; border: 1px solid var(--hair-2); border-radius: 10px; padding: 12px; box-shadow: 0 18px 40px rgba(0,0,0,.5); display: none; pointer-events: none; }
+.hovercard.show { display: block; }
+.hovercard .t { color: var(--t1); font-weight: 600; margin-bottom: 2px; }
+.hovercard .s { color: var(--t4); font-size: 12px; margin-bottom: 8px; }
+
+/* =========================================================
+   B — triage sidebar
+   ========================================================= */
+.B .side { width: 300px; flex: none; background: var(--surface); border-right: 1px solid var(--hair); display: flex; flex-direction: column; min-height: 0; }
+.B .side .list { flex: 1; overflow: auto; padding: 4px 8px 12px; }
+.B .main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+.B .main .top { height: 40px; display: flex; align-items: center; padding: 0 14px; gap: 10px; border-bottom: 1px solid var(--hair); flex: none; }
+.B .main .top .crumb { color: var(--t3); font-size: 12.5px; }
+.B .main .top .crumb b { color: var(--t1); font-weight: 600; }
+.B .sec { display: flex; align-items: center; gap: 8px; padding: 14px 8px 6px; font-size: 10.5px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--t4); }
+.B .sec .c { color: var(--t5); }
+.B .sec.blocked { color: var(--orange); }
+.B .row { display: grid; grid-template-columns: 18px 1fr auto; gap: 2px 10px; padding: 8px 9px; border-radius: 9px; cursor: pointer; align-items: center; }
+.B .row:hover { background: var(--hover); }
+.B .row.on { background: var(--active); }
+.B .row .t { color: var(--t1); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.B .row .sub { grid-column: 2 / 4; font-size: 11.5px; color: var(--t4); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.B .row .live { grid-column: 2 / 4; font-size: 11.5px; display: flex; align-items: center; gap: 6px; margin-top: 2px; }
+.B .row .q { grid-column: 1 / 4; margin-top: 6px; }
+.B .row .q .ask { font-size: 11.5px; padding: 7px 9px; }
+.B .row.fresh .t::after { content: ""; display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--orange); margin-left: 7px; vertical-align: middle; }
+.B .quiet .row { opacity: .75; }
+
+/* =========================================================
+   C — overview (A's strip + a zoomed-out grid)
+   ========================================================= */
+.C { flex-direction: column; }
+.grid { position: absolute; inset: 40px 0 0 0; z-index: 10; background: var(--bg); padding: 18px 20px 24px; overflow: auto; display: none; }
+.grid.show { display: block; animation: zoomout .22s var(--ease); }
+@keyframes zoomout { from { opacity: 0; transform: scale(1.03); } }
+.grid h2 { font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--t4); margin: 4px 2px 10px; display: flex; gap: 8px; }
+.grid h2.blocked { color: var(--orange); }
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; margin-bottom: 22px; }
+.card { background: var(--surface); border: 1px solid var(--hair); border-radius: 11px; display: flex; flex-direction: column; overflow: hidden; cursor: pointer; transition: border-color .15s; }
+.card:hover { border-color: var(--hair-2); }
+.card.blocked { border-color: rgba(255,180,92,.35); }
+.card.kbd { outline: 2px solid rgba(157,186,240,.5); outline-offset: 1px; }
+.card .hd { display: flex; align-items: center; gap: 8px; padding: 10px 12px 6px; }
+.card .hd .t { color: var(--t1); font-weight: 600; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.card .meta { padding: 0 12px 8px 38px; color: var(--t4); font-size: 11.5px; display: flex; gap: 8px; align-items: center; }
+.card .snap { margin: 0 10px; padding: 8px 10px; background: #111; border-radius: 7px; font: 11px/1.5 var(--mono); color: var(--t3); height: 104px; overflow: hidden; white-space: pre; position: relative; }
+.card .snap::after { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 26px; background: linear-gradient(#111, transparent); }
+.card .ft { padding: 9px 12px 11px; display: flex; flex-direction: column; gap: 6px; }
+.card .ft .line { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--t3); }
+.C .over-btn { display: flex; align-items: center; gap: 6px; height: 26px; padding: 0 9px; border-radius: 7px; color: var(--t3); font-size: 12px; }
+.C .over-btn:hover { background: var(--hover); color: var(--t1); }
+.C .over-btn.on { background: var(--active); color: var(--t1); }
+.C .mini { display: flex; gap: 5px; align-items: center; padding: 0 6px; }
+.C .mini i { width: 8px; height: 8px; border-radius: 50%; background: var(--t5); cursor: pointer; }
+.C .mini i.blocked { background: var(--orange); } .C .mini i.working { background: var(--blue); }
+.C .mini i.done { background: var(--green); } .C .mini i.failed { background: var(--red); }
+.C .mini i.on { outline: 2px solid rgba(240,240,240,.5); outline-offset: 2px; }
+.C .mini i.seen { opacity: .45; }
+.C .title { flex: 1; display: flex; align-items: center; justify-content: center; gap: 8px; color: var(--t2); font-size: 12.5px; min-width: 0; }
+.C .title b { color: var(--t1); font-weight: 600; }
+.C .title .dim { color: var(--t4); }
+</style>
+</head>
+<body>
+<div class="stage">
+  <div class="picker">
+    <div class="variants" id="variants">
+      <button data-v="A"><b>A</b>Pur</button>
+      <button data-v="B"><b>B</b>Triage-Sidebar</button>
+      <button data-v="C"><b>C</b>Übersicht</button>
+      <a href="merge.html" style="padding:6px 12px;border-radius:7px;color:var(--t3);font-weight:500;text-decoration:none"><b style="color:var(--t4);margin-right:6px">D</b>Merge</a>
+    </div>
+    <div class="pitch" id="pitch"></div>
+    <div class="sim">
+      <button id="simEvent" title="Ein Agent im Hintergrund meldet sich">▶ Event</button>
+      <button id="simReset">↺ Reset</button>
+    </div>
+  </div>
+  <div class="win" id="win"></div>
+</div>
+
+<script>
+// ---------------------------------------------------------------------------
+// Mock data — Claude and Codex side by side, every state once.
+// ---------------------------------------------------------------------------
+const AGENT = { claude: "✳", codex: "◎", shell: "›" };
+const ICON = {
+  claude: `<svg viewBox="0 0 12 12" width="11" height="11" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M6 1.2v9.6M1.8 3.6l8.4 4.8M1.8 8.4l8.4-4.8"/></svg>`,
+  codex: `<svg viewBox="0 0 12 12" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="6" cy="6" r="4.3"/><circle cx="6" cy="6" r="1.4" fill="currentColor" stroke="none"/></svg>`,
+  shell: `<svg viewBox="0 0 12 12" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3.5 6 6 3 8.5M6.5 9h3"/></svg>`,
+};
+const AGENT_NAME = { claude: "Claude", codex: "Codex", shell: "zsh" };
+
+function seed() {
+  return [
+    {
+      id: "s1", repo: "muxy", title: "Inbox overlay", branch: "feat/inbox", agent: "claude",
+      state: "blocked", seen: false, since: "2m", pr: { n: 44, s: "running" }, tabs: ["claude", "swift build", "zsh"],
+      ask: { kind: "Bash", body: "swift build -c release && ./Scripts/make-app.sh", why: "Build and install the app to try the overlay" },
+      term: [
+        ["u", "Add a ⌘J overlay that lists every agent waiting on me and lets me answer with Y/N/A."],
+        ["b", "I'll add an Inbox view fed by the PermissionRequest hook."],
+        ["tl", "<b>Update</b>(Sources/muxy/InboxView.swift)"],
+        ["r", "Created with 142 lines"],
+        ["tl", "<b>Update</b>(Sources/muxy/Store.swift)"],
+        ["r", "Updated with 31 additions and 4 removals"],
+        ["box", `<span class="h">Bash command</span>\n\n  swift build -c release && ./Scripts/make-app.sh\n  <span class="dim">Build and install the app to try the overlay</span>\n\nDo you want to proceed?\n<span class="sel">❯ 1. Yes</span>\n  2. Yes, and don't ask again for swift build commands\n  3. No, and tell Claude what to do differently <span class="dim">(esc)</span>`],
+      ],
+    },
+    {
+      id: "s2", repo: "muxy", title: "Codex adapter", branch: "feat/codex-hooks", agent: "codex",
+      state: "blocked", seen: false, since: "40s", pr: null, tabs: ["codex"],
+      ask: { kind: "Edit", body: "Sources/muxy/Agents/Codex.swift", diff: [["ctx", "  case \"notify\":"], ["del", "-     session.agent = .idle"], ["add", "+     session.agent = event.needsInput ? .blocked : .idle"], ["add", "+     session.question = event.question"]] },
+      term: [
+        ["cu", "Route Codex approval requests through the same event channel as Claude."],
+        ["ctl", "<b>Explored</b>"],
+        ["cr", "Read HookWatcher.swift, Store.swift"],
+        ["ctl", "<b>Proposed change</b> Sources/muxy/Agents/Codex.swift"],
+        ["ctx", "  case \"notify\":"],
+        ["del", "-     session.agent = .idle"],
+        ["add", "+     session.agent = event.needsInput ? .blocked : .idle"],
+        ["add", "+     session.question = event.question"],
+        ["boxcx", `<span class="h">Allow Codex to apply this change?</span>\n\n<span class="sel">❯ Yes</span>   <span class="dim">y</span>\n  Always for this session   <span class="dim">a</span>\n  No, tell Codex what to do   <span class="dim">n</span>`],
+      ],
+    },
+    {
+      id: "s3", repo: "muxy", title: "Resume on launch", branch: "feat/resume", agent: "claude",
+      state: "working", seen: true, since: "4m", activity: "Running swift test", pr: { n: 45, s: "draft" }, tabs: ["claude", "zsh"],
+      term: [
+        ["u", "On launch, reopen every session and resume its agent with its saved session id."],
+        ["b", "I'll persist layout + session ids on every hook event."],
+        ["tl", "<b>Update</b>(Sources/muxy/Persistence.swift)"],
+        ["r", "Created with 96 lines"],
+        ["tl", "<b>Bash</b>(swift test --filter Resume)"],
+        ["r", "Running…"],
+        ["sp", "✳ Testing resume… <span class=\"dim\">(1m 12s · esc to interrupt)</span>"],
+      ],
+    },
+    {
+      id: "s4", repo: "website", title: "Pricing copy", branch: "copy/pricing", agent: "codex",
+      state: "working", seen: true, since: "1m", activity: "Editing 3 files", pr: { n: 12, s: "fixing" }, tabs: ["codex", "pnpm dev"],
+      term: [
+        ["cu", "CI fails on the pricing page snapshot. Fix it, keep the copy."],
+        ["ctl", "<b>Ran</b> pnpm test pricing"],
+        ["cr", "1 failed · snapshot mismatch in Pricing.test.tsx"],
+        ["ctl", "<b>Edited</b> src/pages/pricing.tsx (+4 −2)"],
+        ["csp", "• Working <span class=\"dim\">(48s • esc to interrupt)</span>"],
+      ],
+    },
+    {
+      id: "s5", repo: "website", title: "Dark mode tokens", branch: "feat/dark-tokens", agent: "claude",
+      state: "done", seen: false, since: "6m", summary: "+84 −12 · 6 files", pr: { n: 14, s: "ready" }, tabs: ["claude"],
+      term: [
+        ["u", "Move every color to tokens and add the dark set."],
+        ["tl", "<b>Update</b>(src/styles/tokens.css)"],
+        ["r", "Updated with 61 additions and 9 removals"],
+        ["tl", "<b>Bash</b>(gh pr create --fill)"],
+        ["r", "https://github.com/theitger/website/pull/14"],
+        ["b", "Done. Tokens live in tokens.css, the dark set follows the system. PR #14 is open and green."],
+      ],
+    },
+    {
+      id: "s6", repo: "relay", title: "Relay reconnect", branch: "fix/reconnect", agent: "codex",
+      state: "failed", seen: false, since: "9m", error: "429 · rate limit, retry in 4m", pr: { n: 41, s: "failed" }, tabs: ["codex"],
+      term: [
+        ["cu", "Reconnect with backoff when the relay drops the socket."],
+        ["ctl", "<b>Edited</b> main.go (+22 −5)"],
+        ["err", "■ stream error: 429 Too Many Requests — retry in 4m"],
+      ],
+    },
+    {
+      id: "s7", repo: null, title: "scratch", branch: null, agent: "shell",
+      state: "shell", seen: true, since: "", tabs: ["zsh"],
+      term: [["prompt", "<span class=\"cursor\"></span>"]],
+    },
+  ];
+}
+
+// Events the "▶ Event" button plays, in order.
+const EVENTS = [
+  s => { const x = s.find(x => x.id === "s3"); Object.assign(x, { state: "blocked", seen: false, since: "now",
+      ask: { kind: "Bash", body: "rm -rf ~/Library/Application\\ Support/muxy/state.json", why: "Clear stale state before the resume test" } });
+    x.term.splice(-1, 1, ["box", `<span class="h">Bash command</span>\n\n  rm -rf ~/Library/Application\\ Support/muxy/state.json\n  <span class="dim">Clear stale state before the resume test</span>\n\nDo you want to proceed?\n<span class="sel">❯ 1. Yes</span>\n  2. Yes, and don't ask again\n  3. No <span class="dim">(esc)</span>`]);
+    return x; },
+  s => { const x = s.find(x => x.id === "s4"); Object.assign(x, { state: "done", seen: false, since: "now", summary: "+4 −2 · 1 file", pr: { n: 12, s: "running" } });
+    x.term.splice(-1, 1, ["ctl", "<b>Ran</b> pnpm test pricing"], ["cr", "✓ 18 passed"], ["b", "Snapshot updated, copy unchanged. Pushed; CI is running."]);
+    return x; },
+];
+
+let sessions, current, variant, evIndex, inboxIndex, palette, gridOpen, gridFocus, toastTimer;
+
+function reset() {
+  sessions = seed();
+  current = "s3";
+  evIndex = 0;
+  inboxIndex = 0;
+  palette = null;
+  gridOpen = variant === "C";
+}
+
+// ---------------------------------------------------------------------------
+// helpers
+// ---------------------------------------------------------------------------
+const $ = s => document.querySelector(s);
+const esc = s => s.replace(/&/g, "&amp;").replace(/</g, "&lt;");
+const cur = () => sessions.find(s => s.id === current);
+const ORDER = { blocked: 0, failed: 1, done: 2, working: 3, idle: 4, shell: 5 };
+const urgent = s => s.state === "blocked" || ((s.state === "done" || s.state === "failed") && !s.seen);
+const inbox = () => sessions.filter(urgent).sort((a, b) => ORDER[a.state] - ORDER[b.state]);
+const sub = s => [s.repo, s.branch].filter(Boolean).join(" · ") || "~/code/scratch";
+
+function stateMark(s, withText = true) {
+  const text = { blocked: "needs you", working: s.activity || "working", done: "done", failed: "failed", idle: "idle", shell: "shell" }[s.state];
+  const icon = s.state === "working" ? `<span class="spin"></span>` : `<span class="dot"></span>`;
+  return `<span class="st ${s.state}">${icon}${withText ? esc(text) : ""}</span>`;
+}
+const glyph = s => `<span class="ag ${s.agent}" title="${AGENT_NAME[s.agent]}">${ICON[s.agent]}</span>`;
+const prBadge = s => s.pr ? `<span class="pr ${s.pr.s}">${{ running: "◌", ready: "✓", failed: "✕", fixing: "⚒", draft: "◇" }[s.pr.s]} #${s.pr.n}</span>` : "";
+
+function askBlock(s) {
+  if (!s.ask) return "";
+  const diff = s.ask.diff ? "\n" + s.ask.diff.map(([k, t]) => `<span class="${k === "ctx" ? "" : k}">${esc(t)}</span>`).join("") : "";
+  return `<div class="ask"><span class="k">${AGENT_NAME[s.agent]} wants to · ${s.ask.kind}</span>${esc(s.ask.body)}${diff}${s.ask.why ? `<span class="why">${esc(s.ask.why)}</span>` : ""}</div>`;
+}
+
+function actions(s, size = "") {
+  if (s.state === "blocked") return `<div class="acts">
+    <button class="btn primary ${size}" data-act="allow" data-id="${s.id}"><kbd>Y</kbd>Allow</button>
+    <button class="btn ${size}" data-act="always" data-id="${s.id}"><kbd>A</kbd>Always</button>
+    <button class="btn ${size}" data-act="deny" data-id="${s.id}"><kbd>N</kbd>Deny…</button>
+    ${size ? "" : `<button class="btn" data-act="open" data-id="${s.id}"><kbd>↵</kbd>Open</button>`}</div>`;
+  if (s.state === "done") return `<div class="acts">
+    <button class="btn go ${size}" data-act="open" data-id="${s.id}"><kbd>↵</kbd>Open</button>
+    <button class="btn ${size}" data-act="seen" data-id="${s.id}"><kbd>E</kbd>Mark seen</button></div>`;
+  if (s.state === "failed") return `<div class="acts">
+    <button class="btn primary ${size}" data-act="retry" data-id="${s.id}"><kbd>R</kbd>Retry</button>
+    <button class="btn ${size}" data-act="open" data-id="${s.id}"><kbd>↵</kbd>Open</button></div>`;
+  return "";
+}
+
+function renderTerm(s) {
+  return s.term.map(([k, h]) => {
+    if (k === "box") return `<div class="box">${h}</div>`;
+    if (k === "boxcx") return `<div class="box cx">${h}</div>`;
+    if (k === "del" || k === "add" || k === "ctx") return `<span class="${k}">${esc(h)}</span>`;
+    return `<div class="${k}">${h}</div>`;
+  }).join("");
+}
+
+function snap(s) {
+  return s.term.slice(-6).map(([k, h]) => {
+    const txt = h.replace(/<[^>]+>/g, "");
+    const pre = { u: "> ", cu: "› ", b: "● ", tl: "● ", ctl: "• ", r: "  ⎿ ", cr: "  └ " }[k] || "";
+    return esc((pre + txt).split("\n").slice(0, 3).join("\n"));
+  }).join("\n");
+}
+
+// ---------------------------------------------------------------------------
+// actions
+// ---------------------------------------------------------------------------
+function act(kind, id) {
+  const s = sessions.find(x => x.id === id);
+  if (!s) return;
+  if (kind === "open") { select(id); closePalette(); gridOpen = false; render(); return; }
+  if (kind === "allow" || kind === "always") {
+    const prev = s.ask;
+    s.state = "working"; s.seen = true; s.activity = prev.kind === "Bash" ? "Running command" : "Applying edit";
+    s.term = s.term.filter(([k]) => k !== "box" && k !== "boxcx");
+    s.term.push([s.agent === "codex" ? "ctl" : "tl", `<b>${prev.kind}</b>(${esc(prev.body)})`]);
+    s.term.push([s.agent === "codex" ? "csp" : "sp", s.agent === "codex" ? "• Working <span class=\"dim\">(0s • esc to interrupt)</span>" : "✳ Working… <span class=\"dim\">(0s · esc to interrupt)</span>"]);
+    s.ask = null;
+    toast(s, kind === "always" ? `Allowed — and always for ${prev.kind}` : "Allowed", "working");
+  } else if (kind === "deny") {
+    const reason = prompt(`Tell ${AGENT_NAME[s.agent]} what to do instead (optional):`, "");
+    if (reason === null) return;
+    s.state = "working"; s.seen = true; s.activity = "Rethinking";
+    s.term = s.term.filter(([k]) => k !== "box" && k !== "boxcx");
+    s.term.push([s.agent === "codex" ? "cu" : "u", reason ? esc(reason) : "<span class=\"dim\">(denied)</span>"]);
+    s.ask = null;
+    toast(s, "Denied", "working");
+  } else if (kind === "seen") {
+    s.seen = true;
+  } else if (kind === "retry") {
+    s.state = "working"; s.seen = true; s.activity = "Retrying"; s.error = null;
+    s.term.push([s.agent === "codex" ? "csp" : "sp", "• Working <span class=\"dim\">(0s • esc to interrupt)</span>"]);
+  }
+  const left = inbox();
+  inboxIndex = Math.min(inboxIndex, Math.max(0, left.length - 1));
+  if (palette === "inbox" && left.length === 0) { closePalette(); toastPlain("Nobody is waiting right now"); }
+  render();
+}
+
+function select(id) {
+  current = id;
+  const s = cur();
+  if (s.state === "done" || s.state === "failed") s.seen = true;
+  render();
+}
+
+function fireEvent() {
+  if (evIndex >= EVENTS.length) { toastPlain("No more scripted events — ↺ Reset"); return; }
+  const s = EVENTS[evIndex++](sessions);
+  if (s.id === current && !gridOpen) s.seen = true;
+  render();
+  toast(s, s.state === "blocked" ? "needs you" : "is done", s.state);
+}
+
+function toast(s, text, state) {
+  const el = $("#toast");
+  el.innerHTML = `${glyph(s)}<div><div class="t">${esc(s.title)} <span class="st ${state}" style="margin-left:4px">${esc(text)}</span></div><div class="s">${esc(sub(s))}</div></div>
+    ${state === "blocked" ? `<button class="btn sm primary" data-act="open-inbox"><kbd>⌘J</kbd></button>` : ""}`;
+  el.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove("show"), 3200);
+}
+function toastPlain(text) {
+  const el = $("#toast");
+  el.innerHTML = `<div class="t">${esc(text)}</div>`;
+  el.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove("show"), 2200);
+}
+
+function openPalette(kind) {
+  palette = kind; inboxIndex = 0; renderOverlay();
+  if (kind === "switch") setTimeout(() => $("#q")?.focus(), 0);
+}
+function closePalette() { palette = null; renderOverlay(); }
+
+// ---------------------------------------------------------------------------
+// overlays: ⌘J inbox, ⌘K switcher (identical in every variant)
+// ---------------------------------------------------------------------------
+function renderOverlay() {
+  const scrim = $("#scrim"), pal = $("#palette");
+  if (!palette) { scrim.classList.remove("show"); pal.classList.remove("show"); return; }
+  scrim.classList.add("show"); pal.classList.add("show");
+  if (palette === "inbox") {
+    const items = inbox();
+    pal.innerHTML = `<div class="pal-head"><h3>Inbox</h3><span class="count">${items.filter(s => s.state === "blocked").length} need you · ${items.length} total</span></div>
+      <div class="pal-list">${items.length ? items.map((s, i) => `
+        <div class="item ${i === inboxIndex ? "on" : ""}" data-inbox="${i}">
+          ${glyph(s)}<div class="t">${esc(s.title)}</div>${stateMark(s)}
+          <div class="sub">${esc(sub(s))} · ${s.since}${s.summary ? " · " + s.summary : ""}${s.error ? " · " + esc(s.error) : ""}</div>
+          <div class="detail">${askBlock(s)}${actions(s)}</div>
+        </div>`).join("") : `<div style="padding:28px;text-align:center;color:var(--t4)">Nobody is waiting right now</div>`}</div>
+      <div class="pal-foot"><span><kbd>↑</kbd><kbd>↓</kbd> move</span><span><kbd>Y</kbd> allow</span><span><kbd>A</kbd> always</span><span><kbd>N</kbd> deny</span><span><kbd>↵</kbd> open</span><span><kbd>esc</kbd> close</span></div>`;
+    pal.querySelector(".item.on")?.scrollIntoView({ block: "nearest" });
+  } else {
+    const q = ($("#q")?.value || "").toLowerCase();
+    const list = sessions.filter(s => (s.title + " " + sub(s)).toLowerCase().includes(q)).sort((a, b) => ORDER[a.state] - ORDER[b.state]);
+    const keep = $("#q")?.value || "";
+    pal.innerHTML = `<div class="pal-head"><input id="q" class="pal-search" placeholder="Jump to a session…" value="${esc(keep)}" autocomplete="off"></div>
+      <div class="pal-list">${list.map((s, i) => `
+        <div class="item ${i === inboxIndex ? "on" : ""}" data-open="${s.id}">${glyph(s)}<div class="t">${esc(s.title)}</div>${stateMark(s)}<div class="sub">${esc(sub(s))}</div></div>`).join("")}</div>
+      <div class="pal-foot"><span><kbd>↑</kbd><kbd>↓</kbd> move</span><span><kbd>↵</kbd> open</span><span><kbd>esc</kbd> close</span></div>`;
+    const input = $("#q");
+    input.focus(); input.setSelectionRange(keep.length, keep.length);
+    input.oninput = () => { inboxIndex = 0; renderOverlay(); };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// variants
+// ---------------------------------------------------------------------------
+const PITCH = {
+  A: `<strong>Ein nacktes Ghostty-Fenster.</strong> Keine Sidebar — die Sessions sitzen als Chips in der Titelleiste, der Punkt sagt den Zustand. Alles andere ist ein Overlay: <kbd>⌘J</kbd> Inbox, <kbd>⌘K</kbd> springen.`,
+  B: `<strong>Ein Posteingang statt eines Dateibaums.</strong> Die Sidebar sortiert nach Dringlichkeit, nicht nach Repo. Fragen stehen in der Zeile und lassen sich dort beantworten.`,
+  C: `<strong>A plus Vogelperspektive.</strong> <kbd>⌘E</kbd> zoomt heraus: jede Session als Karte mit ihren letzten Zeilen und der offenen Frage. Klick zoomt hinein.`,
+};
+
+function terminalPane(s) {
+  return `<div class="term" id="term">${renderTerm(s)}</div>`;
+}
+
+function renderA() {
+  const s = cur();
+  const groups = [];
+  for (const x of sessions) {
+    const g = x.repo || "~";
+    if (!groups.length || groups[groups.length - 1].name !== g) groups.push({ name: g, items: [] });
+    groups[groups.length - 1].items.push(x);
+  }
+  const n = sessions.filter(x => x.state === "blocked").length;
+  const fresh = inbox().length;
+  return `
+  <div class="bar">
+    <div class="lights"><i></i><i></i><i></i></div>
+    <div class="strip">${groups.map((g, gi) => `${gi ? `<span class="sep"></span>` : ""}<span class="repo">${esc(g.name)}</span>` +
+      g.items.map(x => `<button class="chip ${x.state} ${x.seen && x.state !== "blocked" ? "seen" : ""} ${x.id === current ? "on" : ""}" data-sel="${x.id}" data-hover="${x.id}">
+        <span class="mark"></span><span class="n">${esc(x.title)}</span></button>`).join("")).join("")}
+    </div>
+    <div class="right">
+      <button class="needs ${fresh ? "" : "none"}" data-act="open-inbox">${fresh ? `${n ? n + " need you" : fresh + " new"}` : "All quiet"} <kbd>⌘J</kbd></button>
+    </div>
+  </div>
+  <div class="ctx">${glyph(s)}<b>${esc(s.title)}</b><span>${esc(sub(s))}</span>${prBadge(s)}${stateMark(s)}
+    <div class="tabsmini">${s.tabs.map((t, i) => `<button class="${i ? "" : "on"}">${esc(t)}</button>`).join("")}</div>
+  </div>
+  ${terminalPane(s)}
+  <div class="hovercard" id="hover"></div>`;
+}
+
+function renderB() {
+  const s = cur();
+  const sections = [
+    ["blocked", "Needs you", x => x.state === "blocked"],
+    ["fresh", "New", x => (x.state === "done" || x.state === "failed") && !x.seen],
+    ["working", "Working", x => x.state === "working"],
+    ["quiet", "Quiet", x => (x.state === "done" || x.state === "failed") && x.seen || x.state === "idle" || x.state === "shell"],
+  ];
+  const row = x => {
+    const live = x.state === "working" ? `<div class="live">${stateMark(x)}<span style="color:var(--t5)">· ${x.since}</span></div>`
+      : x.state === "done" ? `<div class="live"><span class="st done"><span class="dot"></span>done</span><span style="color:var(--t4)">· ${x.summary || ""}</span></div>`
+      : x.state === "failed" ? `<div class="live"><span class="st failed"><span class="dot"></span>${esc(x.error || "failed")}</span></div>` : "";
+    const q = x.state === "blocked" ? `<div class="q">${askBlock(x)}${actions(x, "sm")}</div>` : "";
+    return `<div class="row ${x.id === current ? "on" : ""} ${(x.state === "done" || x.state === "failed") && !x.seen ? "fresh" : ""}" data-sel="${x.id}">
+      ${glyph(x)}<div class="t">${esc(x.title)}</div>${prBadge(x)}<div class="sub">${esc(sub(x))}</div>${live}${q}</div>`;
+  };
+  return `
+  <div class="side">
+    <div class="lights"><i></i><i></i><i></i></div>
+    <div class="list">${sections.map(([k, label, f]) => {
+      const xs = sessions.filter(f);
+      if (!xs.length) return "";
+      return `<div class="${k === "quiet" ? "quiet" : ""}"><div class="sec ${k}">${label}<span class="c">${xs.length}</span></div>${xs.map(row).join("")}</div>`;
+    }).join("")}</div>
+  </div>
+  <div class="main">
+    <div class="top"><div class="crumb">${glyph(s)} <b>${esc(s.title)}</b> <span style="color:var(--t4)">· ${esc(sub(s))}</span></div><div style="flex:1"></div>${prBadge(s)}</div>
+    <div class="tabs">${s.tabs.map((t, i) => `<div class="tab ${i ? "" : "on"}"><span class="g">${i ? ">" : ICON[s.agent]}</span>${esc(t)}</div>`).join("")}</div>
+    ${terminalPane(s)}
+  </div>`;
+}
+
+function renderC() {
+  const s = cur();
+  const sorted = [...sessions].sort((a, b) => (urgent(b) - urgent(a)) || ORDER[a.state] - ORDER[b.state]);
+  const fresh = inbox().length;
+  const groups = [
+    ["blocked", "Needs you", x => x.state === "blocked"],
+    ["fresh", "New", x => (x.state === "done" || x.state === "failed") && !x.seen],
+    ["rest", "Everything else", x => !urgent(x)],
+  ];
+  const flat = groups.flatMap(([, , f]) => sorted.filter(f));
+  const card = x => `<div class="card ${x.state} ${flat[gridFocus]?.id === x.id ? "kbd" : ""}" data-open="${x.id}">
+      <div class="hd">${glyph(x)}<span class="t">${esc(x.title)}</span>${prBadge(x)}</div>
+      <div class="meta">${esc(sub(x))}</div>
+      <div class="snap">${snap(x)}</div>
+      <div class="ft">
+        <div class="line">${stateMark(x)}<span style="color:var(--t5)">${x.since ? "· " + x.since : ""}</span>${x.summary && x.state === "done" ? `<span>· ${x.summary}</span>` : ""}${x.error ? `<span style="color:var(--t4)">· ${esc(x.error)}</span>` : ""}</div>
+        ${x.state === "blocked" ? askBlock(x) : ""}
+        ${urgent(x) ? actions(x, "sm") : ""}
+      </div></div>`;
+  return `
+  <div class="A" style="display:contents">
+  <div class="bar" style="display:flex;align-items:center;height:40px;border-bottom:1px solid var(--hair);flex:none">
+    <div class="lights"><i></i><i></i><i></i></div>
+    <button class="over-btn ${gridOpen ? "on" : ""}" data-act="grid">▦ Overview <kbd>⌘E</kbd></button>
+    <div class="mini">${sessions.map(x => `<i class="${x.state} ${x.id === current && !gridOpen ? "on" : ""} ${x.seen && x.state !== "blocked" ? "seen" : ""}" data-sel="${x.id}" title="${esc(x.title)}"></i>`).join("")}</div>
+    <div class="title">${gridOpen ? `<b>${sessions.length} sessions</b><span class="dim">· ${sessions.filter(x => x.state === "working").length} working</span>` : `${glyph(s)}<b>${esc(s.title)}</b><span class="dim">${esc(sub(s))}</span>${prBadge(s)}`}</div>
+    <div style="padding-right:10px"><button class="needs ${fresh ? "" : "none"}" data-act="open-inbox" style="display:flex;align-items:center;gap:7px;height:26px;padding:0 10px;border-radius:999px;font-size:12px;${fresh ? "background:var(--orange-soft);color:var(--orange);font-weight:600" : "background:rgba(240,240,240,.05);color:var(--t4)"}">${fresh ? fresh + " waiting" : "All quiet"} <kbd>⌘J</kbd></button></div>
+  </div>
+  </div>
+  <div class="tabs">${s.tabs.map((t, i) => `<div class="tab ${i ? "" : "on"}"><span class="g">${i ? ">" : ICON[s.agent]}</span>${esc(t)}</div>`).join("")}</div>
+  ${terminalPane(s)}
+  <div class="grid ${gridOpen ? "show" : ""}">${groups.map(([k, label, f]) => {
+    const xs = sorted.filter(f);
+    return xs.length ? `<h2 class="${k}">${label} <span style="color:var(--t5)">${xs.length}</span></h2><div class="cards">${xs.map(card).join("")}</div>` : "";
+  }).join("")}</div>`;
+}
+
+function render() {
+  const win = $("#win");
+  win.className = "win " + variant;
+  win.innerHTML = ({ A: renderA, B: renderB, C: renderC })[variant]() +
+    `<div class="scrim" id="scrim"></div><div class="palette" id="palette"></div><div class="toast" id="toast"></div>`;
+  $("#pitch").innerHTML = PITCH[variant];
+  document.querySelectorAll("#variants button").forEach(b => b.classList.toggle("on", b.dataset.v === variant));
+  const term = $("#term"); if (term) term.scrollTop = term.scrollHeight;
+  renderOverlay();
+}
+
+// ---------------------------------------------------------------------------
+// input
+// ---------------------------------------------------------------------------
+document.addEventListener("click", e => {
+  const v = e.target.closest("[data-v]");
+  if (v) { variant = v.dataset.v; gridOpen = variant === "C"; gridFocus = 0; try { localStorage.setItem("muxy-ui-variant", variant); } catch {} render(); return; }
+  const a = e.target.closest("[data-act]");
+  if (a) {
+    e.stopPropagation();
+    const k = a.dataset.act;
+    if (k === "open-inbox") return openPalette("inbox");
+    if (k === "grid") { gridOpen = !gridOpen; gridFocus = 0; return render(); }
+    return act(k, a.dataset.id);
+  }
+  const ib = e.target.closest("[data-inbox]");
+  if (ib) { inboxIndex = +ib.dataset.inbox; return renderOverlay(); }
+  const op = e.target.closest("[data-open]");
+  if (op) return act("open", op.dataset.open);
+  const sel = e.target.closest("[data-sel]");
+  if (sel) { gridOpen = false; return select(sel.dataset.sel); }
+  if (e.target.id === "scrim") closePalette();
+});
+
+document.addEventListener("mouseover", e => {
+  const h = e.target.closest("[data-hover]");
+  const card = $("#hover");
+  if (!card) return;
+  if (!h) { card.classList.remove("show"); return; }
+  const s = sessions.find(x => x.id === h.dataset.hover);
+  const r = h.getBoundingClientRect(), w = $("#win").getBoundingClientRect();
+  card.innerHTML = `<div class="t">${glyph(s)} ${esc(s.title)}</div><div class="s">${esc(sub(s))} ${prBadge(s)}</div>${stateMark(s)}${s.state === "blocked" ? `<div style="margin-top:8px">${askBlock(s)}</div><div style="margin-top:6px;color:var(--t4);font-size:11.5px">Click to open · <kbd>⌘J</kbd> to answer</div>` : ""}`;
+  card.style.left = Math.min(r.left - w.left, w.width - 316) + "px";
+  card.style.top = (r.bottom - w.top + 8) + "px";
+  card.classList.add("show");
+});
+
+document.addEventListener("keydown", e => {
+  const meta = e.metaKey || e.ctrlKey;
+  const key = e.key.toLowerCase();
+  if (meta && key === "j") { e.preventDefault(); return palette === "inbox" ? closePalette() : openPalette("inbox"); }
+  if (meta && key === "k") { e.preventDefault(); return palette === "switch" ? closePalette() : openPalette("switch"); }
+  if (meta && key === "e" && variant === "C") { e.preventDefault(); gridOpen = !gridOpen; gridFocus = 0; return render(); }
+  if (meta && /^[1-7]$/.test(key)) { e.preventDefault(); gridOpen = false; return select(sessions[+key - 1].id); }
+  if (key === "escape") { if (palette) return closePalette(); if (variant === "C" && gridOpen) { gridOpen = false; return render(); } }
+
+  if (palette === "inbox") {
+    const items = inbox(), s = items[inboxIndex];
+    if (key === "arrowdown") { e.preventDefault(); inboxIndex = Math.min(inboxIndex + 1, items.length - 1); return renderOverlay(); }
+    if (key === "arrowup") { e.preventDefault(); inboxIndex = Math.max(inboxIndex - 1, 0); return renderOverlay(); }
+    if (!s) return;
+    if (key === "enter") return act("open", s.id);
+    if (s.state === "blocked" && key === "y") return act("allow", s.id);
+    if (s.state === "blocked" && key === "a") return act("always", s.id);
+    if (s.state === "blocked" && key === "n") { e.preventDefault(); return act("deny", s.id); }
+    if (s.state === "done" && key === "e") return act("seen", s.id);
+    if (s.state === "failed" && key === "r") return act("retry", s.id);
+  }
+  if (palette === "switch") {
+    const n = document.querySelectorAll("#palette .item").length;
+    if (key === "arrowdown") { e.preventDefault(); inboxIndex = Math.min(inboxIndex + 1, n - 1); return renderOverlay(); }
+    if (key === "arrowup") { e.preventDefault(); inboxIndex = Math.max(inboxIndex - 1, 0); return renderOverlay(); }
+    if (key === "enter") { const el = document.querySelectorAll("#palette .item")[inboxIndex]; if (el) act("open", el.dataset.open); }
+  }
+  if (!palette && variant === "C" && gridOpen) {
+    const cards = [...document.querySelectorAll(".card")];
+    const cols = Math.max(1, Math.round($(".cards").getBoundingClientRect().width / 312));
+    const move = { arrowright: 1, arrowleft: -1, arrowdown: cols, arrowup: -cols }[key];
+    if (move) { e.preventDefault(); gridFocus = Math.max(0, Math.min(cards.length - 1, (gridFocus || 0) + move)); return render(); }
+    const s = sessions.find(x => x.id === cards[gridFocus]?.dataset.open);
+    if (s && key === "enter") return act("open", s.id);
+    if (s && s.state === "blocked" && "yan".includes(key)) { e.preventDefault(); return act({ y: "allow", a: "always", n: "deny" }[key], s.id); }
+  }
+});
+
+$("#simEvent").onclick = fireEvent;
+$("#simReset").onclick = () => { reset(); render(); };
+
+try { variant = localStorage.getItem("muxy-ui-variant") || "A"; } catch { variant = "A"; }
+if (!"ABC".includes(variant)) variant = "A";
+gridFocus = 0;
+reset();
+render();
+</script>
+</body>
+</html>

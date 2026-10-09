@@ -1,0 +1,613 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>muxy stage concept</title>
+<style>
+:root {
+  --page: #0a0a0a;
+  --win: #101010;
+  --stage: #151515;
+  --card: #1b1b1b;
+  --hover: rgba(240,240,240,.05);
+  --active: rgba(240,240,240,.09);
+  --hair: rgba(240,240,240,.08);
+  --hair-2: rgba(240,240,240,.14);
+  --t1: #f0f0f0; --t2: #c8c8c8; --t3: #9a9a9a; --t4: #6a6a6a; --t5: #454545;
+  --orange: #ffb45c; --orange-soft: rgba(247,140,16,.15);
+  --blue: #9dbaf0;   --blue-soft: rgba(80,128,216,.16);
+  --green: #a9de6e;  --green-soft: rgba(131,205,45,.14);
+  --red: #f87171;    --red-soft: rgba(220,38,38,.16);
+  --yellow: #f5cf5b; --yellow-soft: rgba(242,183,5,.15);
+  --claude: #d97757; --codex: #19b98b; --quorum: #b79cf2;
+  --mono: "IosevkaTerm Nerd Font Mono", "Iosevka Term", "SF Mono", ui-monospace, Menlo, monospace;
+  --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+  --ease: cubic-bezier(.32,.72,0,1);
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
+body { background: var(--page); color: var(--t2); font: 13px/1.4 var(--sans); -webkit-font-smoothing: antialiased; overflow: hidden; }
+button, input { font: inherit; color: inherit; background: none; border: 0; outline: 0; }
+button { cursor: pointer; }
+kbd { font: 10.5px var(--sans); opacity: .8; background: rgba(240,240,240,.07); border: 1px solid var(--hair); border-radius: 4px; padding: 0 4px; line-height: 15px; display: inline-block; }
+
+/* page chrome */
+.stagepage { height: 100%; display: flex; flex-direction: column; align-items: center; padding: 14px 16px 16px; gap: 10px; }
+.picker { display: flex; align-items: center; gap: 14px; width: min(1360px, 100%); }
+.variants { display: flex; gap: 4px; background: #151515; border: 1px solid var(--hair); border-radius: 10px; padding: 3px; }
+.variants a { padding: 6px 12px; border-radius: 7px; color: var(--t4); font-weight: 500; text-decoration: none; white-space: nowrap; }
+.variants a:hover { color: var(--t2); }
+.variants a.on { background: #262626; color: var(--t1); }
+.variants a b { margin-right: 6px; } .variants a.on b { color: var(--orange); }
+.pitch { flex: 1; color: var(--t3); font-size: 12.5px; min-width: 0; }
+.pitch strong { color: var(--t1); font-weight: 600; }
+.sim { display: flex; gap: 6px; }
+.sim button { padding: 6px 10px; border-radius: 7px; border: 1px solid var(--hair); color: var(--t3); font-size: 12px; white-space: nowrap; }
+.sim button:hover { color: var(--t1); background: var(--hover); }
+.try { width: min(1360px, 100%); display: flex; gap: 18px; color: var(--t4); font-size: 11.5px; flex-wrap: wrap; }
+.try span b { color: var(--t2); font-weight: 500; }
+
+/* window */
+.win { position: relative; width: min(1360px, 100%); flex: 1; min-height: 0; max-height: 880px; background: var(--win); border-radius: 12px; border: 1px solid #262626; box-shadow: 0 30px 80px rgba(0,0,0,.6); overflow: hidden; display: grid; grid-template-columns: 236px 1fr; grid-template-rows: 44px 1fr; }
+.top { grid-column: 1 / 3; display: flex; align-items: center; gap: 12px; padding: 0 12px 0 14px; }
+.lights { display: flex; gap: 8px; }
+.lights i { width: 12px; height: 12px; border-radius: 50%; background: #ff5f57; }
+.lights i:nth-child(2) { background: #febc2e; } .lights i:nth-child(3) { background: #28c840; }
+.top .title { flex: 1; display: flex; justify-content: center; align-items: center; gap: 8px; color: var(--t3); font-size: 12.5px; min-width: 0; }
+.top .title b { color: var(--t1); font-weight: 600; }
+.newbtn { display: flex; align-items: center; gap: 7px; height: 28px; padding: 0 11px; border-radius: 8px; color: var(--t2); border: 1px solid var(--hair); }
+.newbtn:hover { background: var(--hover); color: var(--t1); }
+.g { display: inline-grid; place-items: center; flex: none; }
+.g.claude { color: var(--claude); } .g.codex { color: var(--codex); } .g.quorum { color: var(--quorum); } .g.shell { color: var(--t3); }
+.pr { font: 500 11px var(--sans); padding: 1px 6px; border-radius: 5px; white-space: nowrap; }
+.pr.running { color: var(--blue); background: var(--blue-soft); } .pr.ready { color: var(--green); background: var(--green-soft); }
+.pr.failed { color: var(--red); background: var(--red-soft); } .pr.fixing { color: var(--yellow); background: var(--yellow-soft); }
+.pr.draft { color: var(--t3); background: rgba(240,240,240,.06); }
+
+/* ---------- wings: the other sessions, live ---------- */
+.wings { overflow-y: auto; overflow-x: hidden; padding: 6px 4px 20px 14px; perspective: 900px; }
+.wgrp { font-size: 10px; font-weight: 600; letter-spacing: .09em; text-transform: uppercase; color: var(--t5); margin: 12px 4px 7px; }
+.wing { position: relative; display: block; width: 100%; text-align: left; margin-bottom: 10px; border-radius: 10px; background: var(--card); border: 1px solid var(--hair); transform: rotateY(13deg) scale(.97); transform-origin: left center; transition: transform .28s var(--ease), box-shadow .28s var(--ease), border-color .2s, opacity .2s; box-shadow: 0 8px 22px rgba(0,0,0,.45); overflow: hidden; }
+.wing:hover, .wing.peeked { transform: rotateY(0) scale(1); border-color: var(--hair-2); }
+.wing.quiet { opacity: .62; }
+.wing.quiet:hover, .wing.quiet.peeked { opacity: 1; }
+.wing.blocked { border-color: rgba(255,180,92,.5); box-shadow: 0 0 0 1px rgba(255,180,92,.25), 0 0 26px rgba(247,140,16,.22), 0 8px 22px rgba(0,0,0,.45); }
+.wing.drop { border-color: var(--blue); box-shadow: 0 0 0 2px rgba(157,186,240,.5), 0 8px 22px rgba(0,0,0,.45); transform: rotateY(0) scale(1.03); }
+.wing .hd { display: flex; align-items: center; gap: 7px; padding: 8px 10px 4px; }
+.wing .hd .t { color: var(--t1); font-weight: 600; font-size: 12px; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wing .hd .new { width: 6px; height: 6px; border-radius: 50%; background: var(--green); }
+.wing .snap { margin: 0 8px; padding: 6px 7px; background: #0e0e0e; border-radius: 6px; font: 9.5px/1.45 var(--mono); color: var(--t4); height: 58px; overflow: hidden; white-space: pre; }
+.wing .tick { display: flex; align-items: center; gap: 6px; padding: 6px 10px 8px; font-size: 11px; color: var(--t3); min-width: 0; }
+.wing .tick span.x { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 1; }
+.wing .tick.blocked { color: var(--orange); font-family: var(--mono); font-size: 10.5px; }
+.wing .tick.failed { color: var(--red); } .wing .tick.done { color: var(--green); }
+.wing .agents { display: flex; gap: 4px; }
+.spin { width: 9px; height: 9px; border-radius: 50%; border: 1.5px solid var(--blue); border-right-color: transparent; animation: spin 1s linear infinite; flex: none; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; flex: none; }
+.hint { margin: 16px 6px 0; padding: 10px; border: 1px dashed var(--hair-2); border-radius: 10px; color: var(--t4); font-size: 11px; line-height: 1.45; }
+
+/* ---------- the stage ---------- */
+.stage { position: relative; margin: 2px 14px 14px 8px; background: var(--stage); border: 1px solid var(--hair); border-radius: 11px; box-shadow: 0 18px 50px rgba(0,0,0,.5); display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+.stage.enter { animation: enter .32s var(--ease); }
+@keyframes enter { from { transform: translateX(-30px) scale(.94); opacity: .3; } }
+.tabs { display: flex; gap: 2px; padding: 7px 10px; border-bottom: 1px solid var(--hair); flex: none; align-items: center; }
+.tab { display: flex; align-items: center; gap: 7px; height: 28px; padding: 0 10px; border-radius: 7px; color: var(--t3); font-size: 12.5px; }
+.tab:hover { background: var(--hover); } .tab.on { background: var(--active); color: var(--t1); }
+.tab .d { width: 6px; height: 6px; border-radius: 50%; }
+.tab .d.blocked { background: var(--orange); } .tab .d.done { background: var(--green); } .tab .d.failed { background: var(--red); }
+.termwrap { position: relative; flex: 1; min-height: 0; display: flex; }
+.term { flex: 1; min-height: 0; overflow: auto; padding: 16px 40px 26px 24px; font: 14px/1.55 var(--mono); color: #d6d6d6; white-space: pre-wrap; scrollbar-width: none; }
+.term::-webkit-scrollbar { display: none; }
+.term ::selection { background: rgba(157,186,240,.35); }
+.term > div { margin-bottom: .55em; }
+.term > div.r, .term > div.cr { margin-top: -.45em; }
+.term .u { color: var(--t1); } .term .u::before { content: "> "; color: var(--t4); }
+.term .cu { color: var(--t1); } .term .cu::before { content: "› "; color: var(--t4); }
+.term .b::before { content: "● "; }
+.term .tl::before { content: "● "; color: #7ec27e; }
+.term .ctl::before { content: "• "; color: var(--t3); }
+.term b { color: var(--t1); }
+.term .r { color: var(--t3); padding-left: 2ch; } .term .r::before { content: "⎿  "; color: var(--t5); }
+.term .cr { color: var(--t3); padding-left: 2ch; } .term .cr::before { content: "└ "; color: var(--t5); }
+.term .sp { color: var(--claude); } .term .csp { color: var(--codex); } .term .qsp { color: var(--quorum); }
+.term .dim { color: var(--t4); } .term .err { color: var(--red); } .term .ok { color: var(--green); }
+.term .del { background: rgba(220,38,38,.18); color: #f3b0b0; display: block; margin: 0; }
+.term .add { background: rgba(70,160,70,.17); color: #bfe5bf; display: block; margin: 0; }
+.term .ctx { color: var(--t4); display: block; margin: 0; }
+.term .box { border: 1px solid #5a4636; border-radius: 6px; padding: 10px 14px; color: var(--t2); }
+.term .box.cx { border-color: #24564a; }
+.term .box .h { color: var(--claude); font-weight: 700; } .term .box.cx .h { color: var(--codex); }
+.term .box .sel { color: var(--t1); }
+.term .handoff { border-left: 2px solid var(--blue); padding-left: 10px; color: var(--t2); }
+.term .handoff .from { color: var(--blue); font: 11px var(--sans); display: block; margin-bottom: 2px; }
+.term .prompt::before { content: "❯ "; color: var(--codex); }
+.term .flash { animation: flash 1.4s var(--ease); border-radius: 4px; }
+@keyframes flash { 0%, 30% { background: rgba(157,186,240,.22); } 100% { background: transparent; } }
+.cursor { display: inline-block; width: .6em; height: 1.1em; background: #cfcfcf; vertical-align: text-bottom; }
+
+/* the scrollbar is a timeline */
+.rail { position: absolute; right: 10px; top: 10px; bottom: 10px; width: 14px; }
+.rail::before { content: ""; position: absolute; left: 6px; top: 0; bottom: 0; width: 2px; border-radius: 2px; background: rgba(240,240,240,.06); }
+.rail .view { position: absolute; left: 4px; width: 6px; border-radius: 3px; background: rgba(240,240,240,.14); }
+.rail .m { position: absolute; left: 2px; width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--stage); cursor: pointer; transform: translateY(-50%); transition: transform .15s; }
+.rail .m:hover { transform: translateY(-50%) scale(1.35); }
+.rail .m.prompt { background: var(--t1); } .rail .m.edit { background: var(--green); } .rail .m.fail { background: var(--red); }
+.rail .m.ask { background: var(--orange); } .rail .m.run { background: var(--blue); } .rail .m.done { background: var(--green); box-shadow: 0 0 0 2px rgba(169,222,110,.3); }
+.railtip { position: absolute; right: 30px; z-index: 6; background: #232323; border: 1px solid var(--hair-2); border-radius: 8px; padding: 6px 9px; font-size: 12px; color: var(--t1); white-space: nowrap; pointer-events: none; display: none; transform: translateY(-50%); box-shadow: 0 10px 24px rgba(0,0,0,.4); }
+.railtip span { color: var(--t4); margin-right: 6px; font-variant-numeric: tabular-nums; }
+
+/* ---------- peek: a live look at another session, without leaving yours ---------- */
+.peek { position: absolute; z-index: 20; width: 600px; max-width: calc(100% - 260px); height: 440px; background: #191919; border: 1px solid var(--hair-2); border-radius: 12px; box-shadow: 0 30px 70px rgba(0,0,0,.65), 0 0 0 .5px #000; display: none; flex-direction: column; overflow: hidden; }
+.peek.show { display: flex; animation: peek .2s var(--ease); }
+@keyframes peek { from { opacity: 0; transform: translateX(-14px) scale(.97); } }
+.peek .ph { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--hair); }
+.peek .ph .t { color: var(--t1); font-weight: 600; }
+.peek .ph .s { color: var(--t4); font-size: 12px; flex: 1; }
+.peek .ph .label { font-size: 10.5px; color: var(--t4); text-transform: uppercase; letter-spacing: .08em; }
+.peek .term { font-size: 12.5px; padding: 12px 16px; }
+.askbar { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; background: rgba(247,140,16,.09); border-bottom: 1px solid rgba(255,180,92,.22); }
+.askbar .body { flex: 1; min-width: 0; }
+.askbar .what { color: var(--t1); font-weight: 600; font-size: 12.5px; }
+.askbar code { display: block; margin-top: 4px; font: 12px/1.45 var(--mono); color: var(--t1); background: rgba(0,0,0,.28); border-radius: 6px; padding: 5px 8px; white-space: pre-wrap; word-break: break-word; }
+.askbar code .del { color: #f3b0b0; background: rgba(220,38,38,.16); display: block; }
+.askbar code .add { color: #bfe5bf; background: rgba(70,160,70,.15); display: block; }
+.askbar code .ctx { color: var(--t4); display: block; }
+.askbar .acts { display: flex; gap: 6px; }
+.btn { display: inline-flex; align-items: center; gap: 7px; height: 28px; padding: 0 11px; border-radius: 7px; background: rgba(240,240,240,.06); border: 1px solid var(--hair); color: var(--t2); font-size: 12px; font-weight: 500; white-space: nowrap; }
+.btn:hover { background: rgba(240,240,240,.1); color: var(--t1); }
+.btn.primary { background: var(--orange); border-color: var(--orange); color: #241400; }
+.btn.primary kbd { color: #241400; background: rgba(0,0,0,.1); border-color: rgba(0,0,0,.15); }
+.btn.ghost { background: none; border-color: transparent; color: var(--t3); }
+.reply { display: flex; align-items: center; gap: 8px; padding: 9px 12px; border-top: 1px solid var(--hair); }
+.reply input { flex: 1; color: var(--t1); font: 13px var(--mono); }
+.reply input::placeholder { color: var(--t5); }
+.reply .k { color: var(--t5); font-size: 11px; white-space: nowrap; }
+.peek .foot { padding: 0 12px 8px; color: var(--t5); font-size: 11px; }
+
+/* ---------- ⌘N: a session starts with the task, not with a shell ---------- */
+.scrim { position: absolute; inset: 0; background: rgba(0,0,0,.45); z-index: 30; display: none; backdrop-filter: blur(2px); }
+.scrim.show { display: block; }
+.task { position: absolute; left: 50%; top: 92px; transform: translateX(-50%); width: min(640px, calc(100% - 32px)); z-index: 31; background: #1d1d1d; border: 1px solid var(--hair-2); border-radius: 14px; box-shadow: 0 30px 80px rgba(0,0,0,.6); display: none; overflow: hidden; }
+.task.show { display: block; animation: pop .2s var(--ease); }
+@keyframes pop { from { opacity: 0; transform: translate(-50%, -8px) scale(.98); } }
+.task .q { padding: 18px 20px 6px; color: var(--t4); font-size: 12px; }
+.task textarea { width: 100%; border: 0; outline: 0; background: none; resize: none; padding: 0 20px 14px; color: var(--t1); font: 18px/1.45 var(--sans); height: 84px; }
+.task textarea::placeholder { color: var(--t5); }
+.task .opts { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-top: 1px solid var(--hair); background: #191919; flex-wrap: wrap; }
+.chipx { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 9px; border-radius: 7px; border: 1px solid var(--hair); color: var(--t2); font-size: 12px; }
+.chipx.on { background: #2a2a2a; color: var(--t1); border-color: var(--hair-2); }
+.task .wt { color: var(--t4); font: 11.5px var(--mono); margin-left: auto; }
+.task .go { padding: 10px 14px; display: flex; justify-content: space-between; align-items: center; color: var(--t5); font-size: 11.5px; border-top: 1px solid var(--hair); }
+
+.toast { position: absolute; left: 50%; bottom: 22px; transform: translate(-50%, 14px); z-index: 40; background: #242424; border: 1px solid var(--hair-2); border-radius: 10px; padding: 9px 14px; color: var(--t1); opacity: 0; transition: all .25s var(--ease); pointer-events: none; box-shadow: 0 16px 40px rgba(0,0,0,.5); white-space: nowrap; }
+.toast.show { opacity: 1; transform: translate(-50%, 0); }
+.toast span { color: var(--t3); margin-left: 6px; }
+@media (prefers-reduced-motion: reduce) { .spin { animation: none; } .wing { transition: none; } }
+</style>
+</head>
+<body>
+<div class="stagepage">
+  <div class="picker">
+    <nav class="variants">
+      <a href="index.html" onclick="try{localStorage.setItem('muxy-ui-variant','A')}catch{}"><b>A</b></a>
+      <a href="index.html" onclick="try{localStorage.setItem('muxy-ui-variant','B')}catch{}"><b>B</b></a>
+      <a href="index.html" onclick="try{localStorage.setItem('muxy-ui-variant','C')}catch{}"><b>C</b></a>
+      <a href="merge.html"><b>D</b></a>
+      <a class="on" href="stage.html"><b>E</b>Stage</a>
+    </nav>
+    <div class="pitch"><strong>Deine Session auf der Bühne, alle anderen live in den Kulissen.</strong> Wie Stage Manager — nur dass die Fenster Agents sind, die dich ansprechen.</div>
+    <div class="sim"><button id="simEvent">▶ Event</button><button id="simReset">↺ Reset</button></div>
+  </div>
+  <div class="try">
+    <span><b>Hover</b> eine Kulisse → Peek, live, mit Antwortzeile</span>
+    <span><kbd>⌘J</kbd> <b>peekt den Nächsten, der wartet</b> · <kbd>⌘↩</kbd> erlauben</span>
+    <span><b>Text markieren und auf eine Kulisse ziehen</b> → Übergabe</span>
+    <span><b>Punkte am rechten Rand</b> = Timeline</span>
+    <span><kbd>⌘N</kbd> <b>neue Aufgabe</b></span>
+  </div>
+  <div class="win" id="win"></div>
+</div>
+
+<script>
+const ICON = {
+  claude: (s = 12) => `<svg viewBox="0 0 12 12" width="${s}" height="${s}" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M6 1.2v9.6M1.8 3.6l8.4 4.8M1.8 8.4l8.4-4.8"/></svg>`,
+  codex: (s = 12) => `<svg viewBox="0 0 12 12" width="${s}" height="${s}" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="6" cy="6" r="4.3"/><circle cx="6" cy="6" r="1.4" fill="currentColor" stroke="none"/></svg>`,
+  quorum: (s = 12) => `<svg viewBox="0 0 12 12" width="${s}" height="${s}" fill="currentColor"><circle cx="3" cy="4" r="1.5"/><circle cx="9" cy="4" r="1.5"/><circle cx="6" cy="8.6" r="1.5"/></svg>`,
+  shell: (s = 12) => `<svg viewBox="0 0 12 12" width="${s}" height="${s}" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3.5 6 6 3 8.5M6.5 9h3"/></svg>`,
+  plus: `<svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M8 3v10M3 8h10"/></svg>`,
+};
+const NAME = { claude: "Claude", codex: "Codex", quorum: "quorum", shell: "zsh" };
+
+// Lines: [kind, html, marker?]. Markers feed the timeline rail.
+function seed() {
+  return [
+    { id: "w1", repo: "muxy", title: "Inbox overlay", branch: "feat/inbox", pr: { n: 44, s: "running" }, seen: true, tab: 0, tabs: [
+      { kind: "claude", state: "blocked",
+        ask: { verb: "run a command", code: "swift build -c release && ./Scripts/make-app.sh" },
+        term: [["u", "Add a ⌘J overlay that lists every agent waiting on me.", { m: "prompt", t: "11:52", l: "You asked for the ⌘J overlay" }], ["b", "I'll feed it from the PermissionRequest hook."], ["tl", "<b>Update</b>(Sources/muxy/InboxView.swift)", { m: "edit", t: "11:55", l: "Created InboxView.swift" }], ["r", "Created with 142 lines"], ["tl", "<b>Update</b>(Sources/muxy/Store.swift)", { m: "edit", t: "11:57", l: "Edited Store.swift" }], ["r", "Updated with 31 additions and 4 removals"],
+          ["box", `<span class="h">Bash command</span>\n\n  swift build -c release && ./Scripts/make-app.sh\n\nDo you want to proceed?\n<span class="sel">❯ 1. Yes</span>\n  2. Yes, and don't ask again\n  3. No <span class="dim">(esc)</span>`, { m: "ask", t: "11:58", l: "Waiting for you: swift build" }]] },
+      { kind: "quorum", state: "working", label: "quorum babysit", term: [["b", "quorum · PR #44 · 6 reviewers"], ["b", "<span class=\"ok\">✓</span> pass 1–3 · 3 findings"], ["qsp", "◌ pass 4–6 running … 3m 10s"]] },
+      { kind: "shell", state: "idle", label: "zsh", term: [["prompt", "<span class=\"cursor\"></span>"]] },
+    ]},
+    { id: "w2", repo: "muxy", title: "Codex adapter", branch: "feat/codex-hooks", pr: null, seen: true, tab: 0, tabs: [
+      { kind: "codex", state: "blocked",
+        ask: { verb: "apply a change", file: "Agents/Codex.swift", diff: [["ctx", "  case \"notify\":"], ["del", "-     session.agent = .idle"], ["add", "+     session.agent = event.needsInput ? .blocked : .idle"]] },
+        term: [["cu", "Route Codex approval requests through the same event channel as Claude."], ["ctl", "<b>Explored</b>"], ["cr", "Read HookWatcher.swift, Store.swift"], ["ctl", "<b>Proposed change</b> Agents/Codex.swift"], ["del", "-     session.agent = .idle"], ["add", "+     session.agent = event.needsInput ? .blocked : .idle"],
+          ["boxcx", `<span class="h">Allow Codex to apply this change?</span>\n\n<span class="sel">❯ Yes</span>   <span class="dim">y</span>\n  Always for this session   <span class="dim">a</span>\n  No, tell Codex what to do   <span class="dim">n</span>`]] },
+    ]},
+    { id: "w3", repo: "muxy", title: "Resume on launch", branch: "feat/resume", pr: { n: 45, s: "draft" }, seen: true, tab: 0, tabs: [
+      { kind: "claude", state: "working",
+        term: [
+          ["u", "On launch, reopen every session and resume its agent with its saved session id. Codex too.", { m: "prompt", t: "11:31", l: "You: resume every session on launch" }],
+          ["b", "I'll look at how sessions are created first."],
+          ["tl", "<b>Read</b>(Sources/muxy/Store.swift)"], ["r", "Read 491 lines"],
+          ["tl", "<b>Read</b>(Sources/muxy/TerminalSession.swift)"], ["r", "Read 241 lines"],
+          ["b", "Sessions are never written anywhere. I'll persist layout + agent session ids on every hook event and replay them on launch."],
+          ["tl", "<b>Write</b>(Sources/muxy/Persistence.swift)", { m: "edit", t: "11:36", l: "Created Persistence.swift" }], ["r", "Created with 96 lines"],
+          ["tl", "<b>Update</b>(Sources/muxy/Store.swift)", { m: "edit", t: "11:38", l: "Edited Store.swift" }], ["r", "Updated with 22 additions and 3 removals"],
+          ["tl", "<b>Bash</b>(swift build)", { m: "run", t: "11:39", l: "swift build" }], ["r", "Build complete! (5.12s)"],
+          ["tl", "<b>Bash</b>(swift test --filter Resume)", { m: "fail", t: "11:41", l: "2 tests failed" }],
+          ["r", "<span class=\"err\">✗ testResumesCodexSession — no session id for codex</span>\n<span class=\"err\">✗ testRestoresTabOrder — expected [claude, zsh], got [zsh, claude]</span>"],
+          ["b", "Codex reports its session id in a different field, and tabs are restored in dictionary order. Fixing both."],
+          ["tl", "<b>Update</b>(Sources/muxy/Persistence.swift)", { m: "edit", t: "11:44", l: "Fixed codex id + tab order" }], ["r", "Updated with 14 additions and 6 removals"],
+          ["u", "Also keep the scrollback if Ghostty can give it to us.", { m: "prompt", t: "11:45", l: "You: keep scrollback too" }],
+          ["b", "Ghostty can dump the screen as text; I'll store the last 2,000 lines per tab and print them dimmed above the resumed agent."],
+          ["tl", "<b>Update</b>(Sources/muxy/Persistence.swift)", { m: "edit", t: "11:48", l: "Scrollback snapshot" }], ["r", "Updated with 41 additions"],
+          ["tl", "<b>Bash</b>(swift test --filter Resume)", { m: "run", t: "11:50", l: "Running tests again" }], ["r", "Running…"],
+          ["sp", "✳ Testing resume… <span class=\"dim\">(1m 12s · esc to interrupt)</span>"],
+        ] },
+      { kind: "shell", state: "idle", label: "zsh", term: [["prompt", "swift build 2>&1 | tail -3"], ["b", "<span class=\"err\">error: cannot find 'SessionStore' in scope</span>\n  --> Sources/muxy/Persistence.swift:41:9"], ["prompt", "<span class=\"cursor\"></span>"]] },
+    ]},
+    { id: "w4", repo: "website", title: "Pricing copy", branch: "copy/pricing", pr: { n: 12, s: "fixing" }, seen: true, tab: 0, tabs: [
+      { kind: "codex", state: "working", term: [["cu", "CI fails on the pricing snapshot. Fix it, keep the copy."], ["ctl", "<b>Ran</b> pnpm test pricing"], ["cr", "1 failed · snapshot mismatch"], ["ctl", "<b>Edited</b> src/pages/pricing.tsx (+4 −2)"], ["csp", "• Working <span class=\"dim\">(48s • esc to interrupt)</span>"]] },
+      { kind: "quorum", state: "done", label: "quorum babysit", term: [["b", "<span class=\"ok\">✓</span> 6/6 passes · 2 findings posted to #12"]] },
+      { kind: "shell", state: "working", label: "pnpm dev", term: [["b", "VITE v7.1  ready in 312 ms\n➜  Local:   http://localhost:5173/"]] },
+    ]},
+    { id: "w5", repo: "website", title: "Dark mode tokens", branch: "feat/dark-tokens", pr: { n: 14, s: "ready" }, seen: false, tab: 0, tabs: [
+      { kind: "claude", state: "done", term: [["u", "Move every color to tokens and add the dark set."], ["tl", "<b>Update</b>(src/styles/tokens.css)"], ["r", "Updated with 61 additions and 9 removals"], ["tl", "<b>Bash</b>(gh pr create --fill)"], ["r", "github.com/theitger/website/pull/14"], ["b", "Done. PR #14 is open and green."]] },
+    ]},
+    { id: "w6", repo: "relay", title: "Relay reconnect", branch: "fix/reconnect", pr: { n: 41, s: "failed" }, seen: false, tab: 0, tabs: [
+      { kind: "codex", state: "failed", error: "429 · rate limit, retry in 4m", term: [["cu", "Reconnect with backoff when the relay drops the socket."], ["ctl", "<b>Edited</b> main.go (+22 −5)"], ["err", "■ stream error: 429 Too Many Requests — retry in 4m"]] },
+    ]},
+  ];
+}
+
+const EVENTS = [
+  d => { const w = d.find(x => x.id === "w4"), t = w.tabs[0];
+    Object.assign(t, { state: "blocked", ask: { verb: "run a command", code: "pnpm test -u pricing" } });
+    t.term.splice(-1, 1, ["boxcx", `<span class="h">Allow Codex to run this command?</span>\n\n  pnpm test -u pricing\n\n<span class="sel">❯ Yes</span>   <span class="dim">y</span>\n  No   <span class="dim">n</span>`]);
+    return [w, "Pricing copy needs you", "⌘J to peek"]; },
+  d => { const w = d.find(x => x.id === "w1"), t = w.tabs[1];
+    t.state = "done"; t.term.splice(-1, 1, ["b", "<span class=\"ok\">✓</span> 6/6 passes · 3 findings posted to #44"]); w.seen = false;
+    return [w, "quorum finished on #44", "3 findings"]; },
+];
+
+let data, current, peekId, peekTimer, closeTimer, taskOpen, taskAgent = "claude", evIndex, toastTimer, enterAnim;
+
+const RANK = { blocked: 0, failed: 1, working: 2, done: 3, idle: 4 };
+const esc = s => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;");
+const $ = s => document.querySelector(s);
+const byId = id => data.find(w => w.id === id);
+const cur = () => byId(current);
+const agentTabs = w => w.tabs.filter(t => t.kind !== "shell");
+const blockedTab = w => w.tabs.find(t => t.state === "blocked");
+function wState(w) {
+  const s = w.tabs.filter(t => t.kind !== "shell" || t.state === "working").map(t => t.state).sort((a, b) => RANK[a] - RANK[b])[0];
+  return s || "idle";
+}
+const prBadge = w => w.pr ? `<span class="pr ${w.pr.s}">${{ running: "◌", ready: "✓", failed: "✕", fixing: "⚒", draft: "◇" }[w.pr.s]} #${w.pr.n}</span>` : "";
+const plain = h => h.replace(/<[^>]+>/g, "").replace(/&amp;/g, "&").replace(/&lt;/g, "<");
+
+function ticker(w) {
+  const s = wState(w), bt = blockedTab(w);
+  if (bt) return `<div class="tick blocked"><span class="dot"></span><span class="x">${esc(bt.ask.code || "edit " + bt.ask.file)}</span></div>`;
+  if (s === "failed") return `<div class="tick failed"><span class="dot"></span><span class="x">${esc(w.tabs.find(t => t.state === "failed").error)}</span></div>`;
+  if (s === "working") {
+    const t = w.tabs.find(t => t.state === "working" && t.kind !== "shell") || w.tabs.find(t => t.state === "working");
+    const last = plain(t.term[t.term.length - 1][1]).replace(/^[✳•◌]\s*/, "").split("(")[0].trim();
+    return `<div class="tick"><span class="spin"></span><span class="x">${esc(last || "working")}</span>${agentsMini(w)}</div>`;
+  }
+  if (s === "done") return `<div class="tick done"><span class="dot"></span><span class="x">done${w.pr?.s === "ready" ? " · PR green" : ""}</span>${agentsMini(w)}</div>`;
+  return `<div class="tick"><span class="x" style="color:var(--t5)">${esc(w.branch || "idle")}</span>${agentsMini(w)}</div>`;
+}
+const agentsMini = w => `<span class="agents">${agentTabs(w).map(t => `<span class="g ${t.kind}">${ICON[t.kind](10)}</span>`).join("")}</span>`;
+
+function snap(w) {
+  const t = w.tabs.find(t => t.kind !== "shell") || w.tabs[0];
+  return t.term.filter(l => !["box", "boxcx"].includes(l[0])).slice(-4).map(([k, h]) => esc(plain(h).split("\n")[0])).join("\n");
+}
+
+function renderTerm(t, withIds) {
+  return t.term.map(([k, h, m], i) => {
+    const id = withIds ? ` data-line="${i}"` : "";
+    if (k === "box") return `<div class="box"${id}>${h}</div>`;
+    if (k === "boxcx") return `<div class="box cx"${id}>${h}</div>`;
+    if (k === "del" || k === "add" || k === "ctx") return `<span class="${k}"${id}>${esc(h)}</span>`;
+    if (k === "handoff") return `<div class="handoff"${id}>${h}</div>`;
+    return `<div class="${k}"${id}>${h}</div>`;
+  }).join("");
+}
+
+// ---------------------------------------------------------------------------
+function render() {
+  const w = cur(), t = w.tabs[w.tab];
+  const others = data.filter(x => x.id !== current);
+  const groups = [];
+  for (const x of others) {
+    let g = groups.find(y => y.name === (x.repo || "~"));
+    if (!g) groups.push(g = { name: x.repo || "~", items: [] });
+    g.items.push(x);
+  }
+  const wings = groups.map(g => `<div class="wgrp">${esc(g.name)}</div>` + g.items.map(x => {
+    const s = wState(x);
+    return `<button class="wing ${s} ${s === "idle" || (s === "done" && x.seen) ? "quiet" : ""} ${peekId === x.id ? "peeked" : ""}" data-wing="${x.id}" draggable="false">
+      <div class="hd"><span class="g ${agentTabs(x)[0]?.kind || "shell"}">${ICON[agentTabs(x)[0]?.kind || "shell"](12)}</span><span class="t">${esc(x.title)}</span>${!x.seen ? `<span class="new"></span>` : ""}${prBadge(x)}</div>
+      <div class="snap">${snap(x)}</div>${ticker(x)}</button>`;
+  }).join("")).join("");
+
+  const tabs = w.tabs.map((x, i) => {
+    const mark = x.state === "working" ? `<span class="spin"></span>` : x.kind !== "shell" && ["blocked", "done", "failed"].includes(x.state) ? `<span class="d ${x.state}"></span>` : "";
+    return `<button class="tab ${i === w.tab ? "on" : ""}" data-tab="${i}"><span class="g ${x.kind}">${ICON[x.kind](12)}</span>${esc(x.label || NAME[x.kind])}${mark}</button>`;
+  }).join("");
+
+  $("#win").innerHTML = `
+    <div class="top"><div class="lights"><i></i><i></i><i></i></div>
+      <div class="title"><b>${esc(w.title)}</b><span>${esc([w.repo, w.branch].filter(Boolean).join(" · "))}</span>${prBadge(w)}</div>
+      <button class="newbtn" data-act="task">${ICON.plus} New task <kbd>⌘N</kbd></button></div>
+    <div class="wings" id="wings">${wings}
+      <div class="hint">Markiere Text auf der Bühne und zieh ihn auf eine Kulisse — der Agent dort bekommt ihn als Kontext.</div></div>
+    <section class="stage ${enterAnim ? "enter" : ""}" id="stage">
+      <div class="tabs">${tabs}</div>
+      <div class="termwrap"><div class="term" id="term">${renderTerm(t, true)}</div><div class="rail" id="rail"></div><div class="railtip" id="railtip"></div></div>
+    </section>
+    <div class="peek" id="peek"></div>
+    <div class="scrim ${taskOpen ? "show" : ""}" data-act="closetask"></div>
+    <div class="task ${taskOpen ? "show" : ""}" id="task">${taskHTML()}</div>
+    <div class="toast" id="toast"></div>`;
+  enterAnim = false;
+  const term = $("#term"); term.scrollTop = term.scrollHeight;
+  requestAnimationFrame(drawRail);
+  term.addEventListener("scroll", drawRail);
+  if (peekId) renderPeek();
+  if (taskOpen) setTimeout(() => $("#taskText")?.focus(), 0);
+}
+
+// The scrollbar is a timeline: one dot per moment that mattered.
+function drawRail() {
+  const term = $("#term"), rail = $("#rail");
+  if (!term || !rail) return;
+  const t = cur().tabs[cur().tab], H = rail.clientHeight, total = term.scrollHeight;
+  const view = `<div class="view" style="top:${term.scrollTop / total * H}px;height:${Math.max(18, term.clientHeight / total * H)}px"></div>`;
+  const marks = t.term.map(([, , m], i) => {
+    if (!m) return "";
+    const el = term.querySelector(`[data-line="${i}"]`);
+    if (!el) return "";
+    return `<div class="m ${m.m}" style="top:${(el.offsetTop + 8) / total * H}px" data-mark="${i}" data-tip="<span>${m.t}</span>${esc(m.l)}"></div>`;
+  }).join("");
+  rail.innerHTML = view + marks;
+}
+
+function renderPeek() {
+  const w = byId(peekId), el = $("#peek");
+  if (!w || !el) return;
+  const t = blockedTab(w) || w.tabs.find(t => t.kind !== "shell") || w.tabs[0];
+  const ask = t.state === "blocked" ? `<div class="askbar"><span class="g ${t.kind}" style="margin-top:2px">${ICON[t.kind](14)}</span>
+      <div class="body"><div class="what">${NAME[t.kind]} wants to ${t.ask.verb}</div><code>${t.ask.code ? esc(t.ask.code) : t.ask.diff.map(([k, l]) => `<span class="${k}">${esc(l)}</span>`).join("")}</code></div>
+      <div class="acts"><button class="btn ghost" data-act="deny">Deny <kbd>⌘.</kbd></button><button class="btn primary" data-act="allow">Allow <kbd>⌘↩</kbd></button></div></div>` : "";
+  el.innerHTML = `<div class="ph"><span class="g ${t.kind}">${ICON[t.kind](13)}</span><span class="t">${esc(w.title)}</span><span class="s">${esc([w.repo, w.branch].filter(Boolean).join(" · "))}</span><span class="label">peek · live</span></div>
+    ${ask}<div class="term" id="peekterm">${renderTerm(t)}</div>
+    <div class="reply"><span class="g ${t.kind}">${ICON[t.kind](12)}</span><input id="peekInput" placeholder="Reply to ${NAME[t.kind]} without leaving ${esc(cur().title)}…" autocomplete="off"><span class="k">↩ send · click to go there</span></div>`;
+  const wing = document.querySelector(`[data-wing="${peekId}"]`), win = $("#win").getBoundingClientRect();
+  const r = wing.getBoundingClientRect();
+  el.style.left = (r.right - win.left + 10) + "px";
+  el.style.top = Math.max(50, Math.min(r.top - win.top - 20, win.height - 454)) + "px";
+  el.classList.add("show");
+  const pt = $("#peekterm"); pt.scrollTop = pt.scrollHeight;
+  document.querySelectorAll(".wing").forEach(x => x.classList.toggle("peeked", x.dataset.wing === peekId));
+}
+
+function openPeek(id) { clearTimeout(closeTimer); peekId = id; renderPeek(); }
+function closePeek() {
+  if ($("#peekInput") && ($("#peekInput") === document.activeElement && $("#peekInput").value)) return;
+  peekId = null; $("#peek")?.classList.remove("show");
+  document.querySelectorAll(".wing").forEach(x => x.classList.remove("peeked"));
+}
+
+function taskHTML() {
+  const repo = cur().repo || "muxy";
+  const text = $("#taskText")?.value || "";
+  const slug = (text.toLowerCase().replace(/[^a-z0-9äöüß ]/g, "").trim().split(/\s+/).slice(0, 4).join("-") || "…");
+  return `<div class="q">What should happen? — a new worktree, a branch, an agent on it.</div>
+    <textarea id="taskText" placeholder="Show a toast when quorum posts findings…">${esc(text)}</textarea>
+    <div class="opts">
+      <button class="chipx">${esc(repo)} ▾</button>
+      ${["claude", "codex"].map(k => `<button class="chipx ${taskAgent === k ? "on" : ""}" data-agent="${k}"><span class="g ${k}">${ICON[k](12)}</span>${NAME[k]}</button>`).join("")}
+      <span class="wt" id="wt">feat/${esc(slug)} · ../${esc(repo)}-${esc(slug)}</span>
+    </div>
+    <div class="go"><span><kbd>⇥</kbd> switch agent · <kbd>esc</kbd> cancel</span><span><kbd>↩</kbd> start</span></div>`;
+}
+
+// ---------------------------------------------------------------------------
+function swap(id, tabIndex) {
+  if (!byId(id)) return;
+  current = id;
+  const w = cur();
+  if (tabIndex != null) w.tab = tabIndex;
+  w.seen = true;
+  peekId = null; enterAnim = true;
+  render();
+}
+
+function answer(kind) {
+  const w = byId(peekId) || cur();
+  const t = blockedTab(w);
+  if (!t) return;
+  t.term = t.term.filter(([k]) => k !== "box" && k !== "boxcx");
+  if (kind === "deny") t.term.push([t.kind === "codex" ? "cu" : "u", "<span class=\"dim\">(denied)</span>"]);
+  else t.term.push([t.kind === "codex" ? "ctl" : "tl", `<b>${t.ask.code ? "Bash" : "Edit"}</b>(${esc(t.ask.code || t.ask.file)})`]);
+  t.term.push(t.kind === "codex" ? ["csp", "• Working <span class=\"dim\">(0s • esc to interrupt)</span>"] : ["sp", "✳ Working… <span class=\"dim\">(0s · esc to interrupt)</span>"]);
+  t.state = "working"; t.ask = null;
+  const left = data.filter(blockedTab).length;
+  render();
+  if (peekId) renderPeek();
+  toast(kind === "deny" ? "Denied" : "Allowed", left ? `${left} more waiting · ⌘J` : "nobody else is waiting");
+}
+
+function sendReply(text) {
+  const w = byId(peekId), t = blockedTab(w) || w.tabs.find(t => t.kind !== "shell") || w.tabs[0];
+  t.term = t.term.filter(([k]) => k !== "box" && k !== "boxcx");
+  t.term.push([t.kind === "codex" ? "cu" : "u", esc(text)]);
+  t.term.push(t.kind === "codex" ? ["csp", "• Working <span class=\"dim\">(0s • esc to interrupt)</span>"] : ["sp", "✳ Working… <span class=\"dim\">(0s · esc to interrupt)</span>"]);
+  t.state = "working"; t.ask = null; w.seen = true;
+  render(); renderPeek();
+  toast(`Sent to ${w.title}`, "you never left " + cur().title);
+}
+
+function handoff(id, text) {
+  const w = byId(id), t = w.tabs.find(t => t.kind !== "shell") || w.tabs[0];
+  t.term = t.term.filter(([k]) => k !== "box" && k !== "boxcx");
+  t.term.push(["handoff", `<span class="from">↘ from ${esc(cur().title)} · ${esc(cur().tabs[cur().tab].label || NAME[cur().tabs[cur().tab].kind])}</span>${esc(text.trim().slice(0, 600))}`]);
+  t.term.push(t.kind === "codex" ? ["csp", "• Working <span class=\"dim\">(0s • esc to interrupt)</span>"] : ["sp", "✳ Looking at it… <span class=\"dim\">(0s · esc to interrupt)</span>"]);
+  t.state = "working"; t.ask = null;
+  render();
+  toast(`Handed to ${w.title}`, `${NAME[t.kind]} has it as context`);
+}
+
+function jump() {
+  const order = data.filter(x => x.id !== current);
+  const next = order.find(blockedTab) || order.find(x => !x.seen);
+  if (!next) return toast("Nobody is waiting", "");
+  openPeek(next.id);
+}
+
+function createTask() {
+  const text = $("#taskText").value.trim();
+  if (!text) return;
+  const repo = cur().repo || "muxy";
+  const slug = text.toLowerCase().replace(/[^a-z0-9 ]/g, "").trim().split(/\s+/).slice(0, 4).join("-");
+  const id = "w" + Date.now(), k = taskAgent;
+  const title = text.split(/[.,—]/)[0].slice(0, 32);
+  data.push({ id, repo, title, branch: "feat/" + slug, pr: null, seen: true, tab: 0, tabs: [
+    { kind: k, state: "working", term: [
+      ["b", `<span class="dim">git worktree add ../${esc(repo)}-${esc(slug)} -b feat/${esc(slug)}</span>`],
+      ["b", `<span class="dim">.muxy/setup · done in 3.8s</span>`],
+      [k === "codex" ? "cu" : "u", esc(text)],
+      k === "codex" ? ["csp", "• Working <span class=\"dim\">(0s • esc to interrupt)</span>"] : ["sp", "✳ Thinking… <span class=\"dim\">(0s · esc to interrupt)</span>"],
+    ] },
+    { kind: "shell", state: "idle", label: "zsh", term: [["prompt", "<span class=\"cursor\"></span>"]] },
+  ]});
+  taskOpen = false;
+  swap(id, 0);
+  toast("Worktree created", `${NAME[k]} is on it · feat/${slug}`);
+}
+
+function fire() {
+  if (evIndex >= EVENTS.length) return toast("No more scripted events", "↺ Reset");
+  const [w, a, b] = EVENTS[evIndex++](data);
+  render();
+  toast(a, b);
+}
+
+function toast(a, b) {
+  const el = $("#toast");
+  el.innerHTML = esc(a) + (b ? `<span>${esc(b)}</span>` : "");
+  el.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove("show"), 2600);
+}
+
+function reset() { data = seed(); current = "w3"; peekId = null; taskOpen = false; evIndex = 0; enterAnim = false; }
+
+// ---------------------------------------------------------------------------
+document.addEventListener("mouseover", e => {
+  const wing = e.target.closest("[data-wing]");
+  const inPeek = e.target.closest("#peek");
+  if (wing) {
+    clearTimeout(closeTimer); clearTimeout(peekTimer);
+    if (peekId !== wing.dataset.wing) peekTimer = setTimeout(() => openPeek(wing.dataset.wing), peekId ? 60 : 280);
+  } else if (inPeek) {
+    clearTimeout(closeTimer); clearTimeout(peekTimer);
+  } else {
+    clearTimeout(peekTimer);
+    if (peekId) { clearTimeout(closeTimer); closeTimer = setTimeout(closePeek, 260); }
+  }
+  const mark = e.target.closest("[data-mark]"), tip = $("#railtip");
+  if (tip) {
+    if (mark) { tip.innerHTML = mark.dataset.tip; tip.style.top = mark.style.top; tip.style.display = "block"; tip.style.marginTop = "10px"; }
+    else tip.style.display = "none";
+  }
+});
+
+document.addEventListener("click", e => {
+  const ag = e.target.closest("[data-agent]");
+  if (ag) { taskAgent = ag.dataset.agent; $("#task").innerHTML = taskHTML(); $("#taskText").focus(); return; }
+  const a = e.target.closest("[data-act]");
+  if (a) {
+    switch (a.dataset.act) {
+      case "allow": case "deny": return answer(a.dataset.act);
+      case "task": taskOpen = true; return render();
+      case "closetask": taskOpen = false; return render();
+    }
+  }
+  const mark = e.target.closest("[data-mark]");
+  if (mark) { const el = document.querySelector(`#term [data-line="${mark.dataset.mark}"]`); el.scrollIntoView({ block: "center", behavior: "smooth" }); el.classList.remove("flash"); void el.offsetWidth; el.classList.add("flash"); return; }
+  const wing = e.target.closest("[data-wing]");
+  if (wing) return swap(wing.dataset.wing, (() => { const w = byId(wing.dataset.wing), i = w.tabs.findIndex(t => t.state === "blocked"); return i < 0 ? w.tab : i; })());
+  if (e.target.closest("#peek .ph") || e.target.closest("#peekterm")) return swap(peekId);
+  const tab = e.target.closest("[data-tab]");
+  if (tab) { cur().tab = +tab.dataset.tab; return render(); }
+});
+
+// Hand-off: drag selected text from the stage onto a wing.
+document.addEventListener("dragover", e => {
+  const wing = e.target.closest("[data-wing]");
+  document.querySelectorAll(".wing.drop").forEach(x => x !== wing && x.classList.remove("drop"));
+  if (wing) { e.preventDefault(); wing.classList.add("drop"); }
+});
+document.addEventListener("drop", e => {
+  const wing = e.target.closest("[data-wing]");
+  if (!wing) return;
+  e.preventDefault();
+  const text = e.dataTransfer.getData("text/plain");
+  if (text) handoff(wing.dataset.wing, text);
+});
+document.addEventListener("dragend", () => document.querySelectorAll(".wing.drop").forEach(x => x.classList.remove("drop")));
+
+document.addEventListener("input", e => {
+  if (e.target.id === "taskText") {
+    const repo = cur().repo || "muxy";
+    const slug = e.target.value.toLowerCase().replace(/[^a-z0-9 ]/g, "").trim().split(/\s+/).slice(0, 4).join("-") || "…";
+    $("#wt").textContent = `feat/${slug} · ../${repo}-${slug}`;
+  }
+});
+
+document.addEventListener("keydown", e => {
+  const k = e.key.toLowerCase(), meta = e.metaKey || e.ctrlKey;
+  if (taskOpen) {
+    if (k === "escape") { taskOpen = false; return render(); }
+    if (k === "tab") { e.preventDefault(); taskAgent = taskAgent === "claude" ? "codex" : "claude"; const v = $("#taskText").value; $("#task").innerHTML = taskHTML(); $("#taskText").value = v; $("#taskText").focus(); return; }
+    if (k === "enter" && !e.shiftKey) { e.preventDefault(); return createTask(); }
+    return;
+  }
+  if (e.target.id === "peekInput") {
+    if (k === "enter" && !meta && e.target.value.trim()) { e.preventDefault(); return sendReply(e.target.value.trim()); }
+    if (k === "escape") { e.target.value = ""; e.target.blur(); return closePeek(); }
+  }
+  if (meta && k === "n") { e.preventDefault(); taskOpen = true; return render(); }
+  if (meta && k === "j") { e.preventDefault(); return jump(); }
+  if (meta && k === "enter") { e.preventDefault(); return answer("allow"); }
+  if (meta && k === ".") { e.preventDefault(); return answer("deny"); }
+  if (k === "escape" && peekId) { peekId = null; return closePeek(); }
+  if (meta && /^[1-9]$/.test(k) && e.target.id !== "peekInput") { e.preventDefault(); if (cur().tabs[+k - 1]) { cur().tab = +k - 1; render(); } }
+});
+
+window.addEventListener("resize", () => requestAnimationFrame(drawRail));
+$("#simEvent").onclick = fire;
+$("#simReset").onclick = () => { reset(); render(); };
+reset();
+render();
+</script>
+</body>
+</html>
