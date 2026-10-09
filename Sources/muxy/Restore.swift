@@ -10,6 +10,8 @@ struct SavedSessions: Codable, Equatable {
         var agent: String?
         var conversation: String?
         var skipPermissions: Bool?
+        /// The issue the tab works on; absent in files from before issues.
+        var issue: Issue?
     }
 
     struct Workspace: Codable, Equatable {
@@ -53,6 +55,7 @@ extension SavedSessions.Tab {
         // A worktree still being made has no folder of its own yet.
         guard session.preparing == nil else { return nil }
         directory = session.cwd
+        issue = session.issue?.saved
         if session.agent != .none, let kind = session.kind {
             agent = kind.rawValue
             conversation = session.agentSessionID
@@ -69,7 +72,9 @@ extension SavedSessions.Tab {
             return nil
         }
         guard let kind = agent.flatMap(AgentKind.init(rawValue:)) else {
-            return TerminalSession(directory: directory)
+            let shell = TerminalSession(directory: directory)
+            shell.issue = issue
+            return shell
         }
         let skip = skipPermissions ?? false
         let session = TerminalSession(
@@ -80,6 +85,7 @@ extension SavedSessions.Tab {
         session.agent = .idle
         session.agentSessionID = conversation
         session.skipsPermissions = skip
+        session.issue = issue
         return session
     }
 }

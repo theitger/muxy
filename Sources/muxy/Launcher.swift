@@ -10,6 +10,8 @@ struct SessionSpec {
     var branch: String?
     /// `branch` is a placeholder: renamed after the task once it runs.
     var autoName = false
+    /// The GitHub issue the task is; `prompt` already says it.
+    var issue: Issue?
 }
 
 extension SessionSpec {

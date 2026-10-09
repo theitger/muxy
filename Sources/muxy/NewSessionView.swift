@@ -4,7 +4,8 @@ import AppKit
 /// ⌘N: a session starts with what should happen. Task, repository, agent
 /// and, by default, its own worktree and branch; one sentence beside the
 /// button says exactly what Start will do. ⌘1…6 picks a repository, ⇥ the
-/// agent, ↩ starts.
+/// agent, ↩ starts. The task can be a GitHub issue ("#123", its URL): the
+/// agent then gets the issue and the branch its number (see IssueField).
 struct NewSessionView: View {
     @ObservedObject var store: Store
     @ObservedObject var window: WindowModel
@@ -15,6 +16,7 @@ struct NewSessionView: View {
     @State private var repos: [Repos.Repo] = []
     @State private var directory: String?
     @State private var branch = ""
+    @StateObject private var issues = IssueField()
     @FocusState private var focused: Bool
 
     init(store: Store, window: WindowModel, repos: [Repos.Repo] = []) {
@@ -46,7 +48,10 @@ struct NewSessionView: View {
         VStack(alignment: .leading, spacing: 0) {
             header
             VStack(alignment: .leading, spacing: 18) {
-                section(L("Task")) { taskField }
+                section(L("Task"), keys: "#") {
+                    taskField
+                    IssueAccessory(field: issues, place: repo?.name ?? Paths.folderName(target), pick: pick)
+                }
                 section(L("Repository"), keys: "⌘1–6") { repoRow }
                 section(L("Agent"), keys: "⇥") { agentRow }
                 if repo != nil { worktreeRow }
@@ -72,6 +77,13 @@ struct NewSessionView: View {
         .onAppear(perform: prepare)
         .onChange(of: repo?.path, initial: true) { _, path in
             if let path { Launcher.prefetch(path, spare: useWorktree) }
+        }
+        .onChange(of: [prompt, target, repo?.path ?? ""], initial: true) {
+            issues.update(text: prompt, directory: target, root: repo?.path)
+        }
+        .onChange(of: repos) { issues.learn(repos) }
+        .onChange(of: issues.matchedRepo) { _, path in
+            if let path { select(path) }
         }
         .onExitCommand { window.showNewSession = false }
     }
@@ -118,7 +130,7 @@ struct NewSessionView: View {
     }
 
     private var taskField: some View {
-        TextField(L("What should the agent do? Optional"), text: $prompt, axis: .vertical)
+        TextField(L("What should the agent do? Or #123 for an issue"), text: $prompt, axis: .vertical)
             .textFieldStyle(.plain)
             .font(.system(size: 15))
             .foregroundStyle(Theme.textPrimary)
@@ -127,6 +139,14 @@ struct NewSessionView: View {
             .onSubmit(start)
             .onKeyPress(.tab) {
                 cycleAgent()
+                return .handled
+            }
+            // The issue list after a "#": ↑↓ walk it, ↩ takes one.
+            .onKeyPress(.upArrow) { issues.move(-1) ? .handled : .ignored }
+            .onKeyPress(.downArrow) { issues.move(1) ? .handled : .ignored }
+            .onKeyPress(.return) {
+                guard let issue = issues.highlighted else { return .ignored }
+                pick(issue)
                 return .handled
             }
             .padding(.horizontal, 12)
@@ -258,11 +278,21 @@ struct NewSessionView: View {
         .overlay(alignment: .top) { Rectangle().fill(Theme.hairline).frame(height: 1) }
     }
 
+    /// The issue the task names, once found.
+    private var issue: Issue? { issues.resolved?.issue }
+    /// An issue names its own branch.
+    private var issueBranch: String? { issue.map(Issues.branchName) }
+
     /// What Start will do, in one sentence.
     private var summary: String {
         let place = repo?.name ?? Paths.folderName(target)
         var text: String
         switch (agent, worktree) {
+        case let (agent?, true) where issue != nil:
+            text = L("%@ works on #%d in %@ on the new branch %@.",
+                     agent.name, issue?.number ?? 0, place, typedBranch ?? issueBranch ?? "")
+        case let (agent?, false) where issue != nil:
+            text = L("%@ works on #%d directly in %@.", agent.name, issue?.number ?? 0, Paths.abbreviate(target))
         case let (agent?, true):
             text = typedBranch.map { L("%@ starts in %@ on the new branch %@.", agent.name, place, $0) }
                 ?? L("%@ starts in %@ on a new branch, named after the task.", agent.name, place)
@@ -317,6 +347,12 @@ struct NewSessionView: View {
         }
     }
 
+    /// An issue from the list: the field names it, the lookup fills in the rest.
+    private func pick(_ issue: Issue) {
+        prompt = "#\(issue.number)"
+        focused = true
+    }
+
     private func select(_ path: String) {
         directory = path
         focused = true
@@ -343,7 +379,15 @@ struct NewSessionView: View {
     }
 
     private func start() {
-        let spec = SessionSpec(directory: target, agent: agent, prompt: prompt, worktree: worktree, branch: typedBranch)
+        let resolved = issues.resolved
+        var spec = SessionSpec(
+            directory: target, agent: agent,
+            prompt: resolved.map { Issues.prompt(for: $0.issue, note: $0.note, localRepo: issues.targetRepo) } ?? prompt,
+            worktree: worktree, branch: typedBranch ?? issueBranch
+        )
+        // An issue already named it.
+        if resolved != nil { spec.autoName = false }
+        spec.issue = resolved?.issue
         store.launch(spec, in: window)
         window.showNewSession = false
     }

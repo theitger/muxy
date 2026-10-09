@@ -51,9 +51,11 @@ final class Workspace: ObservableObject, Identifiable {
         primary?.cwd ?? Paths.home
     }
 
-    /// Claude's conversation title when there is one, else the folder.
+    /// The issue it works on until there is a PR, else Claude's
+    /// conversation title when there is one, else the folder.
     var title: String {
-        sessions.lazy.compactMap(\.agentTitle).first ?? context.shortFolder
+        if context.pr == nil, let issue = sessions.lazy.compactMap(\.issue).first { return issue.heading }
+        return sessions.lazy.compactMap(\.agentTitle).first ?? context.shortFolder
     }
 
     /// Branch in a git checkout, the parent path anywhere else.

@@ -52,6 +52,8 @@ final class TerminalSession: NSObject, ObservableObject, Identifiable {
     var reportsByHook = false
     /// muxy started the agent without permission prompts: resumed alike.
     var skipsPermissions = false
+    /// The GitHub issue this tab was started on (see Issues).
+    var issue: Issue?
     /// Something happened here while you were looking elsewhere — the
     /// single orange signal.
     @Published var needsAttention = false {

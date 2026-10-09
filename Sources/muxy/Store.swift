@@ -743,6 +743,7 @@ final class Store: ObservableObject {
         session.kind = spec.agent
         session.agentSessionID = conversation
         session.skipsPermissions = spec.agent != nil && skipPermissions
+        session.issue = spec.issue
         if spec.agent != nil { session.agent = .idle }
         let workspace = makeWorkspace(directory: spec.directory, in: window, session: session)
         window.select(workspace)

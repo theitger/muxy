@@ -187,7 +187,7 @@ enum BranchNamer {
         return name.split(separator: "/").count > 1 ? name : nil
     }
 
-    private static func slug(_ text: String) -> String {
+    static func slug(_ text: String) -> String {
         text.lowercased()
             .folding(options: .diacriticInsensitive, locale: .current)
             .split { !$0.isLetter && !$0.isNumber }
