@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Adds muxy's agent hooks to Claude Code's settings. Idempotent: muxy's own
-# entries are replaced on every run (so updates reach existing installs),
-# everything else is left untouched. The hook is a no-op for claude
-# sessions running outside muxy.
+# Adds muxy's agent hooks to Claude Code's settings, as the app does from
+# Settings → Agents. Idempotent: muxy's own entries are replaced on every
+# run (so updates reach existing installs), everything else is left
+# untouched. The hook is a no-op for claude sessions running outside muxy.
 set -euo pipefail
 
 SETTINGS="$HOME/.claude/settings.json"
@@ -10,7 +10,14 @@ SETTINGS="$HOME/.claude/settings.json"
 if [ -L "$SETTINGS" ]; then
     SETTINGS="$(readlink -f "$SETTINGS")"
 fi
-HOOK="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/agent-hook.sh"
+# The same stable copy the app installs (Settings → Agents), so moving or
+# deleting this checkout never breaks the agent's settings.
+SOURCE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/agent-hook.sh"
+HOOK="$HOME/.local/share/muxy/agent-hook.sh"
+if [ "$SOURCE" != "$HOOK" ]; then
+    mkdir -p "$(dirname "$HOOK")"
+    cp "$SOURCE" "$HOOK.tmp" && chmod 755 "$HOOK.tmp" && mv "$HOOK.tmp" "$HOOK"
+fi
 
 python3 - "$SETTINGS" "$HOOK" <<'PY'
 import json, os, sys

@@ -77,6 +77,7 @@ private struct AgentSettings: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
+            HookSettings()
             skip
             HStack {
                 VStack(alignment: .leading, spacing: 2) {

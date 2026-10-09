@@ -5,6 +5,7 @@ import UserNotifications
 final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate {
     func applicationDidFinishLaunching(_: Notification) {
         Notifier.requestPermission(delegate: self)
+        AgentSetup.shared.maintain()
     }
 
     /// Like Ghostty with `quit-after-last-window-closed = false`: closing the

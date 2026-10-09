@@ -37,6 +37,8 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$REPO/Packaging/Info.plist" "$APP/Contents/Info.plist"
 cp "$REPO/.build/release/muxy" "$APP/Contents/MacOS/muxy"
 cp "$ICNS" "$APP/Contents/Resources/AppIcon.icns"
+# The agent hook; muxy copies it to ~/.local/share/muxy on install.
+cp "$REPO/Scripts/agent-hook.sh" "$APP/Contents/Resources/agent-hook.sh"
 if [ -f "$REMOTE/dist/index.html" ]; then
     cp "$REMOTE/dist/index.html" "$APP/Contents/Resources/remote.html"
 fi

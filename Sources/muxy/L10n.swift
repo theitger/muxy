@@ -180,5 +180,18 @@ private enum German {
         "%@ failed.": "%@ fehlgeschlagen.",
         "Setup failed, the session runs without it.": "Setup fehlgeschlagen, die Session läuft ohne.",
         "#%d merged: session closed, worktree removed": "#%d gemergt: Session geschlossen, Worktree entfernt",
+
+        // Setup and agent hooks
+        "Not installed on this Mac": "Auf diesem Mac nicht installiert",
+        "Agent hooks": "Agent-Hooks",
+        "How muxy knows an agent is working, done or needs you.": "Woher muxy weiß, ob ein Agent arbeitet, fertig ist oder dich braucht.",
+        "Hooks installed": "Hooks installiert",
+        "Hooks not installed": "Hooks nicht installiert",
+        "Hooks outdated": "Hooks veraltet",
+        "Install": "Installieren",
+        "Update": "Aktualisieren",
+        "%@ isn't valid JSON, muxy leaves it alone.": "%@ ist kein gültiges JSON, muxy lässt die Datei in Ruhe.",
+        "Codex runs new hooks only once you trust them: type /hooks in Codex and trust muxy's.": "Codex führt neue Hooks erst aus, wenn du ihnen vertraust: tipp /hooks in Codex und vertrau denen von muxy.",
+        "Hooks are switched off in Codex: remove hooks = false under [features] in its config.toml.": "Hooks sind in Codex abgeschaltet: entfern hooks = false unter [features] in der config.toml.",
     ]
 }

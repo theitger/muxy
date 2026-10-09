@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Adds muxy's agent hooks to Codex (~/.codex/hooks.json). Idempotent: muxy's
-# own entries are replaced on every run, everything else is left untouched.
+# Adds muxy's agent hooks to Codex (~/.codex/hooks.json), as the app does
+# from Settings → Agents. Idempotent: muxy's own entries are replaced on
+# every run, everything else is left untouched.
 # The hook is a no-op for codex sessions running outside muxy.
 #
 # Codex runs a new hook only once you trust it: open codex, type /hooks and
@@ -12,7 +13,14 @@ HOOKS="${CODEX_HOME:-$HOME/.codex}/hooks.json"
 if [ -L "$HOOKS" ]; then
     HOOKS="$(readlink -f "$HOOKS")"
 fi
-HOOK="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/agent-hook.sh"
+# The same stable copy the app installs (Settings → Agents), so moving or
+# deleting this checkout never breaks the agent's settings.
+SOURCE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/agent-hook.sh"
+HOOK="$HOME/.local/share/muxy/agent-hook.sh"
+if [ "$SOURCE" != "$HOOK" ]; then
+    mkdir -p "$(dirname "$HOOK")"
+    cp "$SOURCE" "$HOOK.tmp" && chmod 755 "$HOOK.tmp" && mv "$HOOK.tmp" "$HOOK"
+fi
 
 python3 - "$HOOKS" "$HOOK" <<'PY'
 import json, os, sys
