@@ -30,6 +30,8 @@ struct SettingsView: View {
             StayAwakeSettings()
             Divider().padding(.vertical, 6)
             RemoteSettings()
+            Divider().padding(.vertical, 6)
+            Button(L("Set Up muxy Again…")) { Onboarding.show() }
         }
         .padding(20)
         .frame(width: 440)

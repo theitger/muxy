@@ -4,8 +4,11 @@ import UserNotifications
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate {
     func applicationDidFinishLaunching(_: Notification) {
-        Notifier.requestPermission(delegate: self)
+        Notifier.setUp(delegate: self)
+        // On the first launch the setup asks, with a reason, instead.
+        if !Onboarding.isDue { Notifier.requestPermission() }
         AgentSetup.shared.maintain()
+        Onboarding.showIfDue()
     }
 
     /// Like Ghostty with `quit-after-last-window-closed = false`: closing the
@@ -123,6 +126,9 @@ struct MuxyApp: App {
                     store.toggleDetailedWings()
                 }
                 .keyboardShortcut("b", modifiers: [.command, .shift])
+            }
+            CommandGroup(after: .help) {
+                Button(L("Set Up muxy Again…")) { Onboarding.show() }
             }
         }
 

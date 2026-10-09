@@ -112,12 +112,16 @@ installed, its shell integration and terminfo are bundled into Muxy.
 
 ## Setup
 
-1. **Agent status:** `./Scripts/install-claude-hook.sh` and
-   `./Scripts/install-codex-hook.sh` add Muxy's hooks to Claude Code and
-   Codex. They are a no-op outside Muxy and leave other hooks untouched;
-   rerun them after updating Muxy. Codex runs a new hook only once you
-   trust it: type `/hooks` in codex once. The hooks also tell Muxy each
-   conversation's id, so sessions come back after a restart.
+1. **Agent status:** the first launch walks you through it (again any
+   time from Settings or the Help menu). Muxy copies its hook to
+   `~/.local/share/muxy/agent-hook.sh` and adds it to Claude Code's
+   `settings.json` and Codex's `hooks.json`, leaving everything else in
+   them untouched, and keeps it current after updates. The hook is a no-op
+   outside Muxy. Codex runs a new hook only once you trust it: type
+   `/hooks` in codex once. The hooks also tell Muxy each conversation's id,
+   so sessions come back after a restart. Without the app:
+   `./Scripts/install-claude-hook.sh` and `./Scripts/install-codex-hook.sh`
+   do the same.
 2. **Worktrees** (optional): a `.wtconfig` in a repository tells Muxy how
    a new worktree becomes ready to work in: ignored files to copy, ports
    of its own, its own Compose project, a bootstrap command, a teardown.

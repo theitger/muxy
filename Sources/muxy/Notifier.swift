@@ -10,11 +10,15 @@ enum Notifier {
         Bundle.main.bundleIdentifier != nil
     }
 
-    static func requestPermission(delegate: UNUserNotificationCenterDelegate) {
+    static func setUp(delegate: UNUserNotificationCenterDelegate) {
         guard available else { return }
-        let center = UNUserNotificationCenter.current()
-        center.delegate = delegate
-        center.requestAuthorization(options: [.alert, .sound]) { _, _ in }
+        UNUserNotificationCenter.current().delegate = delegate
+    }
+
+    /// macOS asks only the first time; later calls change nothing.
+    static func requestPermission() {
+        guard available else { return }
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
     }
 
     /// Banner only when muxy is not the active app — inside the app the

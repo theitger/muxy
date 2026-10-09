@@ -24,12 +24,25 @@ enum Repos {
         return result
     }
 
-    /// Main checkouts one or two levels under home, with the time git last
-    /// touched them (HEAD's log moves on commit and checkout).
-    private static func scan() -> [(String, Date)] {
+    /// The folders your repositories live in, chosen on first launch;
+    /// home until then.
+    static let foldersKey = "repoFolders"
+
+    static var folders: [String] {
+        get {
+            let saved = UserDefaults.standard.stringArray(forKey: foldersKey) ?? []
+            return saved.isEmpty ? [Paths.home] : saved
+        }
+        set { UserDefaults.standard.set(newValue, forKey: foldersKey) }
+    }
+
+    /// Main checkouts one or two levels under each folder, with the time
+    /// git last touched them (HEAD's log moves on commit and checkout).
+    static func scan(in folders: [String] = folders) -> [(String, Date)] {
         let fm = FileManager.default
         let skip: Set = ["Library", "Applications", "Pictures", "Music", "Movies", "Public", "Downloads"]
         var found: [(String, Date)] = []
+        var seen = Set<String>()
         func check(_ path: String) -> Bool {
             var isDir: ObjCBool = false
             let git = path + "/.git"
@@ -37,17 +50,19 @@ enum Repos {
             let stamps = [git + "/logs/HEAD", git + "/index", git + "/HEAD"].compactMap {
                 (try? fm.attributesOfItem(atPath: $0))?[.modificationDate] as? Date
             }
-            found.append((path, stamps.max() ?? .distantPast))
+            if seen.insert(path).inserted { found.append((path, stamps.max() ?? .distantPast)) }
             return true
         }
-        let home = Paths.home
-        for name in (try? fm.contentsOfDirectory(atPath: home)) ?? [] where !name.hasPrefix(".") && !skip.contains(name) {
-            let path = home + "/" + name
-            if check(path) { continue }
-            var isDir: ObjCBool = false
-            guard fm.fileExists(atPath: path, isDirectory: &isDir), isDir.boolValue else { continue }
-            for child in (try? fm.contentsOfDirectory(atPath: path)) ?? [] where !child.hasPrefix(".") {
-                _ = check(path + "/" + child)
+        for folder in folders {
+            if check(folder) { continue }
+            for name in (try? fm.contentsOfDirectory(atPath: folder)) ?? [] where !name.hasPrefix(".") && !skip.contains(name) {
+                let path = folder + "/" + name
+                if check(path) { continue }
+                var isDir: ObjCBool = false
+                guard fm.fileExists(atPath: path, isDirectory: &isDir), isDir.boolValue else { continue }
+                for child in (try? fm.contentsOfDirectory(atPath: path)) ?? [] where !child.hasPrefix(".") {
+                    _ = check(path + "/" + child)
+                }
             }
         }
         return found
