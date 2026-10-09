@@ -42,6 +42,11 @@ final class IssueField: ObservableObject {
 
     var showsSuggestions: Bool { query != nil && !suggestions.isEmpty }
 
+    var isLoading: Bool {
+        if case .loading = status { return true }
+        return false
+    }
+
     /// Learns which GitHub repository each local one is, to follow URLs.
     func learn(_ repos: [Repos.Repo]) {
         let paths = repos.map(\.path)

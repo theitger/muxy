@@ -17,6 +17,7 @@ struct NewSessionView: View {
     @State private var directory: String?
     @State private var branch = ""
     @StateObject private var issues = IssueField()
+    @State private var waitingToStart = false
     @FocusState private var focused: Bool
 
     init(store: Store, window: WindowModel, repos: [Repos.Repo] = []) {
@@ -81,7 +82,14 @@ struct NewSessionView: View {
         .onChange(of: [prompt, target, repo?.path ?? ""], initial: true) {
             issues.update(text: prompt, directory: target, root: repo?.path)
         }
-        .onChange(of: repos) { issues.learn(repos) }
+        .onChange(of: repos, initial: true) { issues.learn(repos) }
+        // ↩ while the issue was still being looked up: start once it's in.
+        .onChange(of: issues.status) {
+            if waitingToStart, !issues.isLoading {
+                waitingToStart = false
+                start()
+            }
+        }
         .onChange(of: issues.matchedRepo) { _, path in
             if let path { select(path) }
         }
@@ -379,6 +387,10 @@ struct NewSessionView: View {
     }
 
     private func start() {
+        if issues.isLoading {
+            waitingToStart = true
+            return
+        }
         let resolved = issues.resolved
         var spec = SessionSpec(
             directory: target, agent: agent,
