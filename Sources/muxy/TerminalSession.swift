@@ -50,6 +50,8 @@ final class TerminalSession: NSObject, ObservableObject, Identifiable {
     var agentSessionID: String?
     /// muxy's hook speaks for this agent; Codex needs no screen reading.
     var reportsByHook = false
+    /// muxy started the agent without permission prompts: resumed alike.
+    var skipsPermissions = false
     /// Something happened here while you were looking elsewhere — the
     /// single orange signal.
     @Published var needsAttention = false {
@@ -251,6 +253,8 @@ extension TerminalSession {
         transcriptPath = nil
         agentSessionID = nil
         reportsByHook = false
+        skipsPermissions = false
+        Store.shared.sessionsChanged()
     }
 }
 

@@ -69,13 +69,30 @@ private struct StayAwakeSettings: View {
     }
 }
 
-/// Settings → how "New Session" starts agents.
+/// Settings → how "New Session" starts agents, and whether they survive
+/// a restart.
 private struct AgentSettings: View {
     @AppStorage("skipPermissions") private var skipPermissions = true
+    @AppStorage("restoreSessions") private var restoreSessions = true
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             skip
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(L("Restore sessions"))
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(Theme.textBody)
+                    Text(L("After a quit, a crash or an update, every session comes back: agents with their conversation, shells in their folder."))
+                        .font(.system(size: 11.5))
+                        .foregroundStyle(Theme.textDim)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer()
+                Toggle("", isOn: $restoreSessions)
+                    .labelsHidden()
+                    .toggleStyle(.switch)
+            }
         }
     }
 

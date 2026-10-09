@@ -36,6 +36,9 @@ struct WindowRoot: View {
                 model.claimed = true
                 windowID = model.id
                 if model.workspaces.isEmpty {
+                    store.restoreSessions(into: model)
+                }
+                if model.workspaces.isEmpty {
                     model.newWorkspace()
                     model.workspaces.first?.isLaunchDefault = true
                 }

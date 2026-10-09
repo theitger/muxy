@@ -14,6 +14,8 @@ final class Store: ObservableObject {
     @AppStorage("detailedWings") var detailedWings = true
     /// Agents started by "New Session" skip their permission prompts.
     @AppStorage("skipPermissions") var skipPermissions = true
+    /// Sessions come back after a quit, a crash or an update.
+    @AppStorage("restoreSessions") var restoreOnLaunch = true
 
     static let sidebarWidthRange: ClosedRange<Double> = 200 ... 420
 
@@ -26,6 +28,11 @@ final class Store: ObservableObject {
     private var hookWatcher: HookWatcher?
     private var prTimer: Timer?
     private var snapshotTimer: Timer?
+    private var saveTimer: Timer?
+    /// Nothing is saved before the last launch's sessions had their
+    /// chance to come back: the first window's fresh shell would erase them.
+    private var restoreAttempted = false
+    private var saved: SavedSessions?
 
     func toggleSidebar() {
         withAnimation(Theme.ease) { sidebarVisible.toggle() }
@@ -56,6 +63,13 @@ final class Store: ObservableObject {
         // Lets macOS coalesce the wakeup with others.
         snapshots.tolerance = 0.3
         snapshotTimer = snapshots
+        // Folders and conversations change all the time; a crash must not
+        // lose more than a few seconds of them.
+        let saves = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.saveSessions() }
+        }
+        saves.tolerance = 1
+        saveTimer = saves
         #if DEBUG
         launchDebugSessions()
         #endif
@@ -119,6 +133,82 @@ final class Store: ObservableObject {
                 primary.refreshContext()
             }
         }
+    }
+
+    // MARK: - Restore
+
+    /// The last launch's sessions, into `first` and as many more windows as
+    /// there were. False when there was nothing to bring back.
+    @discardableResult
+    func restoreSessions(into first: WindowModel) -> Bool {
+        guard !restoreAttempted else { return false }
+        restoreAttempted = true
+        guard restoreOnLaunch, let state = SavedSessions.load() else { return false }
+        var restoredAny = false
+        for savedWindow in state.windows {
+            let window = restoredAny ? makeWindow() : first
+            var made: [Workspace?] = []
+            for savedWorkspace in savedWindow.workspaces {
+                let tabs = savedWorkspace.tabs.map { $0.session() }
+                guard let head = tabs.compactMap({ $0 }).first else {
+                    made.append(nil)
+                    continue
+                }
+                let workspace = makeWorkspace(directory: head.cwd, in: window, session: head)
+                tabs.compactMap { $0 }.dropFirst().forEach { add($0, to: workspace) }
+                if let index = savedWorkspace.selected, tabs.indices.contains(index), let tab = tabs[index] {
+                    workspace.selectedSessionID = tab.id
+                }
+                made.append(workspace)
+            }
+            let present = made.compactMap { $0 }
+            guard let fallback = present.first else {
+                if window !== first { windows.removeAll { $0.id == window.id } }
+                continue
+            }
+            let chosen = savedWindow.selected.flatMap { made.indices.contains($0) ? made[$0] : nil }
+            window.select(chosen ?? fallback)
+            if window !== first { openWindow?(id: "main", value: window.id) }
+            restoredAny = true
+        }
+        saved = state
+        return restoredAny
+    }
+
+    /// Every window's sessions as they are now.
+    private var currentSessions: SavedSessions {
+        SavedSessions(windows: windows.compactMap { window in
+            let ordered = window.orderedWorkspaces
+            var list: [SavedSessions.Workspace] = []
+            var selected: Int?
+            for workspace in ordered {
+                let pairs = workspace.sessions.compactMap { session in
+                    SavedSessions.Tab(session).map { (session.id, $0) }
+                }
+                guard !pairs.isEmpty else { continue }
+                if workspace.id == window.selectedWorkspaceID { selected = list.count }
+                list.append(SavedSessions.Workspace(
+                    tabs: pairs.map(\.1),
+                    selected: pairs.firstIndex { $0.0 == workspace.selectedSessionID }
+                ))
+            }
+            return list.isEmpty ? nil : SavedSessions.Window(workspaces: list, selected: selected)
+        })
+    }
+
+    /// Writes the sessions when they changed since the last write.
+    func saveSessions() {
+        guard restoreAttempted else { return }
+        let state = currentSessions
+        guard state != saved else { return }
+        state.write()
+        saved = state
+    }
+
+    /// Something worth keeping changed (a conversation began or ended):
+    /// saved right away rather than on the next tick.
+    func sessionsChanged() {
+        DispatchQueue.main.async { self.saveSessions() }
     }
 
     // MARK: - Windows
@@ -290,7 +380,10 @@ final class Store: ObservableObject {
     /// ⌘Q — one keystroke must never silently kill every agent.
     /// Always asks while any session is open — every agent ends with it.
     func shouldQuit() -> Bool {
-        guard !workspaces.isEmpty else { return true }
+        guard !workspaces.isEmpty else {
+            saveSessions()
+            return true
+        }
         let running = workspaces.flatMap(\.sessions).filter(\.needsCloseConfirmation)
         let alert = NSAlert()
         alert.messageText = L("Quit muxy?")
@@ -301,9 +394,14 @@ final class Store: ObservableObject {
         case 1: L("Something is still running in one tab.")
         default: L("Something is still running in %d tabs.", running.count)
         }
+        if restoreOnLaunch {
+            alert.informativeText += " " + L("They come back when muxy opens again.")
+        }
         alert.addButton(withTitle: L("Quit"))
         alert.addButton(withTitle: L("Cancel"))
-        return alert.runModal() == .alertFirstButtonReturn
+        guard alert.runModal() == .alertFirstButtonReturn else { return false }
+        saveSessions()
+        return true
     }
 
     private func confirm(running: Bool, title: String, detail: String, then action: @escaping () -> Void) {
@@ -465,6 +563,7 @@ final class Store: ObservableObject {
                     primary.refreshContext()
                 }
             }
+            sessionsChanged()
             return true
         }
         return false
@@ -576,6 +675,7 @@ final class Store: ObservableObject {
         )
         session.kind = spec.agent
         session.agentSessionID = conversation
+        session.skipsPermissions = spec.agent != nil && skipPermissions
         if spec.agent != nil { session.agent = .idle }
         let workspace = makeWorkspace(directory: spec.directory, in: window, session: session)
         window.select(workspace)
@@ -612,6 +712,7 @@ final class Store: ObservableObject {
                     if spec.autoName, !prompt.isEmpty {
                         self.nameBranch(of: session, placeholder: branch, task: prompt, agent: spec.agent)
                     }
+                    self.sessionsChanged()
                 case let .failure(error):
                     session.agent = .none
                     session.failPreparing((error as? Launcher.Failure)?.message ?? error.localizedDescription)

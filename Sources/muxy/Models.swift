@@ -38,9 +38,11 @@ enum AgentKind: String, CaseIterable, Identifiable {
     }
 
     /// How an agent starts: a new conversation (with the prompt from
-    /// MUXY_PROMPT, under an id muxy chose when the agent takes one).
+    /// MUXY_PROMPT, under an id muxy chose when the agent takes one), or an
+    /// earlier one picked up again (the last one in that folder without id).
     enum Start {
         case new(prompt: Bool, id: String?)
+        case resume(id: String?)
     }
 
     /// The command line that starts it, run by your shell. The prompt
@@ -52,6 +54,7 @@ enum AgentKind: String, CaseIterable, Identifiable {
         // MUXY_DEBUG_AGENT=/path/to/fake: try launches without a real agent.
         if let fake = ProcessInfo.processInfo.environment["MUXY_DEBUG_AGENT"] { parts = [fake] }
         #endif
+        if case .resume = start, self == .codex { parts.append("resume") }
         if skipPermissions {
             switch self {
             case .claude: parts.append("--dangerously-skip-permissions")
@@ -62,6 +65,13 @@ enum AgentKind: String, CaseIterable, Identifiable {
         case let .new(prompt, id):
             if self == .claude, let id = id.flatMap(Self.safe) { parts += ["--session-id", id] }
             if prompt { parts.append("\"$MUXY_PROMPT\"") }
+        case let .resume(id):
+            switch (self, id.flatMap(Self.safe)) {
+            case let (.claude, id?): parts += ["--resume", id]
+            case (.claude, nil): parts.append("--continue")
+            case let (.codex, id?): parts.append(id)
+            case (.codex, nil): parts.append("--last")
+            }
         }
         return parts.joined(separator: " ")
     }
