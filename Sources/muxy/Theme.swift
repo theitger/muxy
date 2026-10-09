@@ -54,6 +54,7 @@ enum Theme {
     static let yellow = tone(soft: 0xFEF7DC, strong: 0x8A6100, base: 0xF2B705, darkStrong: 0xF5CF5B)
     static let orange = tone(soft: 0xFFF3E5, strong: 0x9B5609, base: 0xF78C10, darkStrong: 0xFFB45C)
     static let redTone = tone(soft: 0xFEF2F2, strong: 0xB91C1C, base: 0xDC2626, darkStrong: 0xF87171)
+    static let purple = tone(soft: 0xF4EEFD, strong: 0x6B3FB8, base: 0x8957E5, darkStrong: 0xC2A5F5)
     static let neutral = Tone(soft: textPrimary.opacity(0.06), strong: textMuted)
 
     /// Hover / selection fills — ink at low opacity works on any theme.

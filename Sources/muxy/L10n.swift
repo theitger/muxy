@@ -174,8 +174,11 @@ private enum German {
         "They come back when muxy opens again.": "Sie kommen zurück, sobald muxy wieder öffnet.",
         "Restore sessions": "Sessions wiederherstellen",
         "After a quit, a crash or an update, every session comes back: agents with their conversation, shells in their folder.": "Nach Beenden, Absturz oder Update kommt jede Session zurück: Agents mit ihrer Unterhaltung, Shells in ihrem Ordner.",
+        "Merged": "Gemergt",
+        "Closed without merging": "Geschlossen, nicht gemergt",
         "Setting up: %@": "Richte ein: %@",
         "%@ failed.": "%@ fehlgeschlagen.",
         "Setup failed, the session runs without it.": "Setup fehlgeschlagen, die Session läuft ohne.",
+        "#%d merged: session closed, worktree removed": "#%d gemergt: Session geschlossen, Worktree entfernt",
     ]
 }

@@ -124,6 +124,10 @@ enum PRStatus: Equatable {
     case waiting(Mergeability)
     /// Checks passed, not a draft, mergeable — ready.
     case ready
+    /// Merged: the work is in.
+    case merged
+    /// Closed without merging.
+    case closed
 }
 
 /// Where a session currently is, derived from its working directory.
@@ -135,8 +139,13 @@ struct RepoContext: Equatable {
     /// Last path component of the working directory's checkout (or the
     /// directory itself outside git).
     var folder: String
+    /// The checkout's top folder (a worktree's own). nil outside git.
+    var checkout: String?
     var branch: String?
     var pr: Int?
+    var prState: Git.PullRequest.State = .open
+    /// The PR's head commit as GitHub has it.
+    var prHead: String?
     var checks: Checks = .none
     var isDraft = false
     var mergeability: Mergeability = .unknown

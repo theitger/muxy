@@ -215,6 +215,8 @@ final class TerminalSession: NSObject, ObservableObject, Identifiable {
                 // Keep the known PR while it's the same branch.
                 if context.branch == self.context.branch {
                     context.pr = self.context.pr
+                    context.prState = self.context.prState
+                    context.prHead = self.context.prHead
                     context.checks = self.context.checks
                     context.isDraft = self.context.isDraft
                     context.mergeability = self.context.mergeability
@@ -223,23 +225,40 @@ final class TerminalSession: NSObject, ObservableObject, Identifiable {
                 self.onContextChange?()
             }
             guard includePR, Git.mayHavePR(resolved.branch) else { return }
-            let pr = Git.pullRequest(in: directory)
+            let lookup = Git.pullRequest(in: directory)
             await MainActor.run {
                 guard token == self.contextToken else { return }
-                let before = self.context.checks
+                let pr: Git.PullRequest?
+                switch lookup {
+                // gh couldn't tell: what was known stays, no flicker.
+                case .unknown: return
+                case .none: pr = nil
+                case let .found(found): pr = found
+                }
+                let before = self.context
                 self.context.pr = pr?.number
+                self.context.prState = pr?.state ?? .open
+                self.context.prHead = pr?.head
                 self.context.checks = pr?.checks ?? .none
                 self.context.isDraft = pr?.isDraft ?? false
-                self.context.mergeability = pr?.mergeability ?? .unknown
+                // Still being computed after a push: the last answer stands.
+                let mergeability = pr?.mergeability ?? .unknown
+                self.context.mergeability = mergeability == .unknown && before.pr == pr?.number
+                    ? before.mergeability : mergeability
                 self.onContextChange?()
-                if before == .pending, let number = pr?.number {
+                guard let number = pr?.number else { return }
+                let workspace = Store.shared.workspace(of: self)
+                if before.checks == .pending, before.pr == number {
                     switch self.context.checks {
                     case .passed: self.markAttentionIfBackground(reason: L("· #%d passed", number))
                     // Red while something is fixing it is expected — stay quiet.
-                    case .failed where Store.shared.workspace(of: self)?.isBusy != true:
+                    case .failed where workspace?.isBeingFixed != true:
                         self.markAttentionIfBackground(reason: L("· #%d failed", number))
                     default: break
                     }
+                }
+                if self.context.prState == .merged, let workspace {
+                    Store.shared.pullRequestMerged(in: workspace)
                 }
             }
         }

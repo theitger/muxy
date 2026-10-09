@@ -55,6 +55,8 @@ enum RemoteState {
         case .draft: "draft"
         case .waiting: "waiting"
         case .ready: "ready"
+        case .merged: "merged"
+        case .closed: "closed"
         }
     }
 

@@ -87,6 +87,8 @@ struct PRBadge: View {
                 case .draft: Badge(text: label, symbol: "pencil")
                 case .waiting: Badge(text: label, symbol: "hourglass")
                 case .ready: Badge(text: label, tone: Theme.greenTone, symbol: "checkmark")
+                case .merged: Badge(text: label, tone: Theme.purple, symbol: "arrow.triangle.merge")
+                case .closed: Badge(text: label, symbol: "xmark.circle")
                 }
             }
             .help(help)
@@ -110,6 +112,8 @@ struct PRBadge: View {
             case .unknown, .clean, .conflicting: L("Checks passed, mergeability unknown")
             }
         case .ready: L("Ready to merge")
+        case .merged: L("Merged")
+        case .closed: L("Closed without merging")
         }
     }
 }

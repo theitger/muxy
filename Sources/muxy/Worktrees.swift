@@ -29,6 +29,8 @@ struct WorktreeRecipe {
     var compose = false
     var bootstrap: String?
     var teardown: String?
+    /// Paths setup and builds make: never "work" that would be lost.
+    var disposable: [String] = []
 
     static let file = ".wtconfig"
     /// Ports with their own start live here (direnv loads it, git ignores it).
@@ -51,6 +53,7 @@ struct WorktreeRecipe {
             case "wt.compose": recipe.compose = ["true", "yes", "on", "1"].contains(value.lowercased())
             case "wt.bootstrap": recipe.bootstrap = value
             case "wt.teardown": recipe.teardown = value
+            case "wt.disposable": recipe.disposable.append(value)
             case "wt.port":
                 let parts = value.split(separator: ":", maxSplits: 1).map(String.init)
                 guard Worktrees.isVariableName(parts[0]) else { continue }
@@ -103,6 +106,57 @@ enum Worktrees {
                     .split(separator: "\n").suffix(3).joined(separator: "\n")
                 throw Launcher.Failure(message: L("%@ failed.", bootstrap) + (tail.isEmpty ? "" : "\n" + tail))
             }
+        }
+    }
+
+    // MARK: Cleanup
+
+    /// A checkout in `<root>/.worktrees/`: one muxy (or wt) made, and may
+    /// remove again.
+    static func isManaged(_ checkout: String, root: String) -> Bool {
+        checkout.hasPrefix((root as NSString).appendingPathComponent(Launcher.worktreesFolder) + "/")
+    }
+
+    /// Nothing in it would be lost: no changes, no files git doesn't
+    /// ignore (but the recipe's disposable ones), and no commit beyond `reference` (the merged PR's head, or
+    /// where the branch started). Ignored files (copied env files, installed
+    /// dependencies, build output) don't count. Blocking.
+    static func isFinished(_ checkout: String, pullRequest: Int?, root: String) -> Bool {
+        let git = "/usr/bin/git"
+        let recipe = WorktreeRecipe.load(root: root)
+        guard let status = Shell.run(git, ["status", "--porcelain", "--untracked-files=all"], in: checkout)
+        else { return false }
+        let disposable = recipe?.disposable ?? []
+        // "XY path"; the first line comes trimmed, so split, don't count.
+        let changed = status.split(separator: "\n").compactMap {
+            $0.split(separator: " ", maxSplits: 1).last.map(String.init)
+        }.filter { path in
+            !disposable.contains { path == $0 || path.hasPrefix($0.hasSuffix("/") ? $0 : $0 + "/") }
+        }
+        guard changed.isEmpty else { return false }
+        let reference: String
+        if let pullRequest {
+            // What GitHub merged, even when the agent's last push came from
+            // somewhere else.
+            guard Shell.execute(git, ["fetch", "--quiet", "origin", "refs/pull/\(pullRequest)/head"],
+                                in: checkout, timeout: 30).status == 0 else { return false }
+            reference = "FETCH_HEAD"
+        } else {
+            reference = Launcher.startPoint(in: root, recipe: recipe)
+        }
+        return Shell.run(git, ["rev-list", "--count", "\(reference)..HEAD"], in: checkout) == "0"
+    }
+
+    /// The recipe's teardown (Compose down, …), then the worktree and its
+    /// branch. Blocking.
+    static func remove(_ checkout: String, branch: String?, root: String) {
+        let git = "/usr/bin/git"
+        if let teardown = WorktreeRecipe.load(root: root)?.teardown {
+            _ = runInLoginShell(teardown, in: checkout, timeout: 300)
+        }
+        guard Shell.execute(git, ["worktree", "remove", "--force", checkout], in: root).status == 0 else { return }
+        if let branch {
+            _ = Shell.execute(git, ["branch", "-D", branch], in: root)
         }
     }
 

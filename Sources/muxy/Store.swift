@@ -343,12 +343,66 @@ final class Store: ObservableObject {
     // MARK: - Closing
 
     private func closeWorkspace(_ workspace: Workspace) {
+        let context = workspace.context
         let window = window(of: workspace)
         let index = window?.orderedWorkspaces.firstIndex { $0.id == workspace.id } ?? 0
         workspace.sessions.forEach { $0.terminate() }
         workspaces.removeAll { $0.id == workspace.id }
         window?.repairSelection(near: index)
         updateBadge()
+        cleanUp(after: context)
+    }
+
+    // MARK: - Worktree cleanup
+
+    private var cleaning: Set<Workspace.ID> = []
+
+    /// A session's PR got merged: once nothing runs in it and you aren't
+    /// looking at it, it closes and its worktree goes (when nothing in it
+    /// would be lost). Asked again on every PR poll until then.
+    func pullRequestMerged(in workspace: Workspace) {
+        let context = workspace.context
+        guard !cleaning.contains(workspace.id), !workspace.isBusy,
+              !workspace.sessions.contains(where: { $0.agent == .blocked || $0.agent == .working }),
+              window(of: workspace)?.selectedWorkspaceID != workspace.id,
+              let root = context.root, let checkout = context.checkout,
+              Worktrees.isManaged(checkout, root: root), !sharesCheckout(workspace)
+        else { return }
+        cleaning.insert(workspace.id)
+        let pr = context.pr
+        Task.detached(priority: .utility) {
+            let finished = Worktrees.isFinished(checkout, pullRequest: pr, root: root)
+            await MainActor.run {
+                self.cleaning.remove(workspace.id)
+                guard finished, self.workspaces.contains(where: { $0.id == workspace.id }),
+                      !workspace.isBusy, self.window(of: workspace)?.selectedWorkspaceID != workspace.id
+                else { return }
+                let window = self.window(of: workspace)
+                self.closeWorkspace(workspace)
+                window?.show(L("#%d merged: session closed, worktree removed", pr ?? 0))
+            }
+        }
+    }
+
+    /// A closed session's worktree goes too when it holds nothing: merged,
+    /// or never touched (a session you tried and dropped). Otherwise it
+    /// stays, to be opened again.
+    private func cleanUp(after context: RepoContext) {
+        guard let root = context.root, let checkout = context.checkout,
+              Worktrees.isManaged(checkout, root: root),
+              !workspaces.contains(where: { $0.context.checkout == checkout })
+        else { return }
+        let merged = context.prState == .merged ? context.pr : nil
+        let branch = context.branch
+        Task.detached(priority: .utility) {
+            guard Worktrees.isFinished(checkout, pullRequest: merged, root: root) else { return }
+            Worktrees.remove(checkout, branch: branch, root: root)
+        }
+    }
+
+    /// Another open session works in the same checkout.
+    private func sharesCheckout(_ workspace: Workspace) -> Bool {
+        workspaces.contains { $0 !== workspace && $0.context.checkout == workspace.context.checkout }
     }
 
     func close(_ session: TerminalSession, in workspace: Workspace) {

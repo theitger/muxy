@@ -79,11 +79,13 @@ const prLook: Record<PRStatus, [LucideIcon | null, Tone, string]> = {
   draft: [Pencil, 'neutral', 'Entwurf'],
   waiting: [Hourglass, 'neutral', 'Checks grün, Merge blockiert'],
   ready: [Check, 'green', 'Bereit zum Mergen'],
+  merged: [GitMerge, 'green', 'Gemergt'],
+  closed: [X, 'neutral', 'Geschlossen, nicht gemergt'],
 }
 
 /** Muxy's PRBadge: the PR number, tinted by how close it is to mergeable. */
 export function PRBadge({ number, status }: { number: number; status: PRStatus }) {
-  const [Icon, tone, help] = prLook[status]
+  const [Icon, tone, help] = prLook[status] ?? prLook.none
   return (
     <span
       title={help}

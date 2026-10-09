@@ -86,10 +86,25 @@ final class Workspace: ObservableObject, Identifiable {
         sessions.contains { $0.isBusy }
     }
 
+    /// Something is at work on this branch: here, or in another session on
+    /// the same branch (a review loop running in its own tab, say).
+    var isBeingFixed: Bool {
+        if isBusy { return true }
+        guard let repo = context.repo, let branch = context.branch else { return false }
+        return Store.shared.workspaces.contains {
+            $0 !== self && $0.context.repo == repo && $0.context.branch == branch && $0.isBusy
+        }
+    }
+
     /// Green only when GitHub would merge it now: checks passed, not a
     /// draft, no conflicts, nothing branch protection still wants.
     var prStatus: PRStatus {
-        if context.checks == .failed { return isBusy ? .fixing : .failed }
+        switch context.prState {
+        case .merged: return .merged
+        case .closed: return .closed
+        case .open: break
+        }
+        if context.checks == .failed { return isBeingFixed ? .fixing : .failed }
         if context.mergeability == .conflicting { return .conflicts }
         if context.checks == .pending { return .running }
         if context.isDraft { return .draft }
