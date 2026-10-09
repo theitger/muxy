@@ -124,14 +124,17 @@ enum Worktrees {
     static func isFinished(_ checkout: String, pullRequest: Int?, root: String) -> Bool {
         let git = "/usr/bin/git"
         let recipe = WorktreeRecipe.load(root: root)
-        guard let status = Shell.run(git, ["status", "--porcelain", "--untracked-files=all"], in: checkout)
+        // -z: paths unquoted (spaces and all), entries end in NUL.
+        guard let status = Shell.run(git, ["status", "--porcelain", "-z", "--untracked-files=all"], in: checkout)
         else { return false }
         let disposable = recipe?.disposable ?? []
-        // "XY path"; the first line comes trimmed, so split, don't count.
-        let changed = status.split(separator: "\n").compactMap {
-            $0.split(separator: " ", maxSplits: 1).last.map(String.init)
-        }.filter { path in
-            !disposable.contains { path == $0 || path.hasPrefix($0.hasSuffix("/") ? $0 : $0 + "/") }
+        // "XY path". Only untracked files ("??") can be disposable: a change
+        // to a tracked file is work, wherever it is. (The first entry comes
+        // trimmed: " M a" reads "M a", still no "??".)
+        let changed = status.split(separator: "\0").filter { entry in
+            guard entry.hasPrefix("?? ") else { return true }
+            let path = String(entry.dropFirst(3))
+            return !disposable.contains { path == $0 || path.hasPrefix($0.hasSuffix("/") ? $0 : $0 + "/") }
         }
         guard changed.isEmpty else { return false }
         let reference: String
