@@ -38,9 +38,9 @@ enum AgentKind: String, CaseIterable, Identifiable {
     }
 
     /// How an agent starts: a new conversation (with the prompt from
-    /// MUXY_PROMPT).
+    /// MUXY_PROMPT, under an id muxy chose when the agent takes one).
     enum Start {
-        case new(prompt: Bool)
+        case new(prompt: Bool, id: String?)
     }
 
     /// The command line that starts it, run by your shell. The prompt
@@ -59,10 +59,16 @@ enum AgentKind: String, CaseIterable, Identifiable {
             }
         }
         switch start {
-        case let .new(prompt):
+        case let .new(prompt, id):
+            if self == .claude, let id = id.flatMap(Self.safe) { parts += ["--session-id", id] }
             if prompt { parts.append("\"$MUXY_PROMPT\"") }
         }
         return parts.joined(separator: " ")
+    }
+
+    /// Ids go into a command line unquoted: only plain ones do.
+    private static func safe(_ id: String) -> String? {
+        id.range(of: "^[A-Za-z0-9._-]{1,128}$", options: .regularExpression) != nil ? id : nil
     }
 }
 

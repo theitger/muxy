@@ -45,6 +45,11 @@ final class TerminalSession: NSObject, ObservableObject, Identifiable {
     /// Claude's conversation log, as the hook reports it — the remote
     /// renders it as a chat.
     var transcriptPath: String?
+    /// The agent's own id for its conversation: `claude --resume` and
+    /// `codex resume` take it, so a restart picks up where it was.
+    var agentSessionID: String?
+    /// muxy's hook speaks for this agent; Codex needs no screen reading.
+    var reportsByHook = false
     /// Something happened here while you were looking elsewhere — the
     /// single orange signal.
     @Published var needsAttention = false {
@@ -140,7 +145,7 @@ final class TerminalSession: NSObject, ObservableObject, Identifiable {
         SnapshotLog.write(session: self, raw: text, snapshot: fresh)
         #endif
         if fresh != snapshot { snapshot = fresh }
-        if kind == .codex { followCodex(fresh) }
+        if kind == .codex, !reportsByHook { followCodex(fresh) }
     }
 
     /// Codex reports no turns to muxy (yet): its own progress line is the
@@ -244,6 +249,8 @@ extension TerminalSession {
         agent = .none
         kind = nil
         transcriptPath = nil
+        agentSessionID = nil
+        reportsByHook = false
     }
 }
 

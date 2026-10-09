@@ -10,7 +10,7 @@ SETTINGS="$HOME/.claude/settings.json"
 if [ -L "$SETTINGS" ]; then
     SETTINGS="$(readlink -f "$SETTINGS")"
 fi
-HOOK="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/claude-hook.sh"
+HOOK="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/agent-hook.sh"
 
 python3 - "$SETTINGS" "$HOOK" <<'PY'
 import json, os, sys
@@ -24,6 +24,7 @@ hooks = data.setdefault("hooks", {})
 # (event, matcher, argument). Notification types not listed (auth_success,
 # agent_completed, quota_*, …) say nothing about whether Claude needs you.
 WANTED = [
+    ("SessionStart", None, "start"),
     ("UserPromptSubmit", None, "prompt"),
     ("PreToolUse", None, "tool"),
     ("Notification", "permission_prompt|elicitation_dialog|elicitation_url_dialog|agent_needs_input", "notify"),
@@ -37,12 +38,13 @@ for event in list(hooks):
     kept = []
     for entry in hooks[event]:
         entry["hooks"] = [h for h in entry.get("hooks", [])
-                          if "claude-hook.sh" not in h.get("command", "")]
+                          if "claude-hook.sh" not in h.get("command", "")
+                          and "agent-hook.sh" not in h.get("command", "")]
         if entry["hooks"]:
             kept.append(entry)
     hooks[event] = kept
 for event, matcher, arg in WANTED:
-    entry = {"hooks": [{"type": "command", "command": f"{hook} {arg}"}]}
+    entry = {"hooks": [{"type": "command", "command": f"{hook} {arg} claude"}]}
     if matcher:
         entry = {"matcher": matcher, **entry}
     hooks.setdefault(event, []).append(entry)

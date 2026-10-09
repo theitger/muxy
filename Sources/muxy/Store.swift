@@ -95,8 +95,9 @@ final class Store: ObservableObject {
             return
         }
         #endif
-        // Codex: its state is read off its screen, always, seen or not.
-        for session in workspaces.flatMap(\.sessions) where session.kind == .codex {
+        // Codex without muxy's hook: its state is read off its screen,
+        // always, seen or not.
+        for session in workspaces.flatMap(\.sessions) where session.kind == .codex && !session.reportsByHook {
             session.refreshSnapshot()
         }
         guard detailedWings, sidebarVisible else { return }
@@ -104,7 +105,7 @@ final class Store: ObservableObject {
             guard let nsWindow = window.nsWindow, nsWindow.occlusionState.contains(.visible) else { continue }
             // The one on stage too: its card keeps its size and lines.
             for workspace in window.workspaces {
-                if let featured = workspace.featured, featured.kind != .codex {
+                if let featured = workspace.featured, featured.kind != .codex || featured.reportsByHook {
                     featured.refreshSnapshot()
                 }
             }
@@ -424,25 +425,33 @@ final class Store: ObservableObject {
 
     // MARK: - Agent events
 
-    /// Claude Code hook: `prompt` (started working), `tool` (working —
+    /// Agent hook (Claude Code and Codex): `start` (a conversation began
+    /// or was resumed: its id), `prompt` (started working), `tool` (working,
     /// also when it resumes on its own), `notify` (needs you), `idle`
-    /// (waiting for input — ends a turn that was interrupted), `error`
-    /// (turn died on an API error), `stop` (turn finished). False when the
+    /// (waiting for input: ends a turn that was interrupted), `error` (turn
+    /// died on an API error), `stop` (turn finished). False when the
     /// session isn't ours.
     @discardableResult
-    func handleHookEvent(sessionUUID: String, event: String, transcript: String? = nil) -> Bool {
+    func handleHookEvent(_ event: HookWatcher.Event) -> Bool {
         for workspace in workspaces {
-            guard let session = workspace.sessions.first(where: { $0.id.uuidString == sessionUUID })
+            guard let session = workspace.sessions.first(where: { $0.id.uuidString == event.session })
             else { continue }
-            if let transcript { session.transcriptPath = transcript }
-            switch event {
+            let kind = AgentKind(rawValue: event.agent) ?? session.kind
+            session.kind = kind
+            session.reportsByHook = true
+            if let id = event.agentSession { session.agentSessionID = id }
+            // The remote reads Claude's log format only.
+            if kind == .claude, let transcript = event.transcript { session.transcriptPath = transcript }
+            switch event.name {
+            case "start":
+                if session.agent == .none { session.agent = .idle }
             case "prompt", "tool":
                 session.agent = .working
             case "notify":
                 session.agent = .blocked
                 session.markAttentionIfBackground(reason: L("needs you"))
             case "idle":
-                // Esc fires no Stop — this is the first word after it. A
+                // Esc fires no Stop: this is the first word after it. A
                 // pending permission prompt stays what it is.
                 if session.agent == .working { session.agent = .idle }
             case "error":
@@ -451,7 +460,7 @@ final class Store: ObservableObject {
             default:
                 session.agent = .idle
                 session.markAttentionIfBackground(reason: L("is done"))
-                // A turn often ends with a push — don't wait for the poll.
+                // A turn often ends with a push: don't wait for the poll.
                 if let primary = workspace.primary, Git.mayHavePR(primary.context.branch) {
                     primary.refreshContext()
                 }
@@ -553,17 +562,20 @@ final class Store: ObservableObject {
     /// it exists, as the tab's own program (nothing typed into a shell).
     func launch(_ spec: SessionSpec, in window: WindowModel) {
         let prompt = spec.prompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Claude takes the conversation id from us: resumable from the start.
+        let conversation = spec.agent == .claude ? UUID().uuidString.lowercased() : nil
         let session = TerminalSession(
             directory: spec.directory,
             command: spec.agent.map {
                 Launcher.shellCommand(running: $0.command(
-                    .new(prompt: !prompt.isEmpty), skipPermissions: skipPermissions
+                    .new(prompt: !prompt.isEmpty, id: conversation), skipPermissions: skipPermissions
                 ))
             },
             environment: prompt.isEmpty ? [:] : ["MUXY_PROMPT": prompt],
             preparing: spec.branch == nil ? nil : L("Creating worktree …")
         )
         session.kind = spec.agent
+        session.agentSessionID = conversation
         if spec.agent != nil { session.agent = .idle }
         let workspace = makeWorkspace(directory: spec.directory, in: window, session: session)
         window.select(workspace)
