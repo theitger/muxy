@@ -7,11 +7,16 @@ struct TabBarView: View {
     @ObservedObject var store: Store
     @ObservedObject var window: WindowModel
     @ObservedObject var workspace: Workspace
+    /// Inside the stage card: the title bar above carries the window's
+    /// controls, so this strip is only the tabs.
+    var onStage = false
 
     var body: some View {
         HStack(spacing: 8) {
-            IconButton(symbol: "sidebar.left", help: L("Sidebar (⌘B)")) {
-                store.toggleSidebar()
+            if !onStage {
+                IconButton(symbol: "sidebar.left", help: L("Sidebar (⌘B)")) {
+                    store.toggleSidebar()
+                }
             }
             HStack(spacing: 2) {
                 ForEach(workspace.sessions) { session in
@@ -27,16 +32,25 @@ struct TabBarView: View {
                 window.newTab()
             }
             Spacer(minLength: 8)
-            AttentionPill(store: store, window: window)
+            if !onStage {
+                AttentionPill(store: store, window: window)
+            }
         }
         // Folded sidebar: leave room for the traffic lights.
-        .padding(.leading, store.sidebarVisible ? 10 : 80)
+        .padding(.leading, onStage ? 8 : 80)
         .padding(.trailing, 12)
-        .frame(height: 46)
+        .frame(height: onStage ? 42 : 46)
         // Matches the terminal and reaches 1pt under it: Ghostty leaves its
         // outermost pixels unpainted, which shows as a seam wherever the
         // window blur is missing (Mission Control).
-        .background(Theme.terminal)
+        .background(
+            UnevenRoundedRectangle(
+                topLeadingRadius: onStage ? StageMetrics.radius : 0,
+                topTrailingRadius: onStage ? StageMetrics.radius : 0,
+                style: .continuous
+            )
+            .fill(Theme.terminal)
+        )
     }
 }
 
@@ -91,33 +105,9 @@ private struct SegmentTab: View {
     }
 }
 
-struct IconButton: View {
-    let symbol: String
-    let help: String
-    let action: () -> Void
-    @State private var hovered = false
-
-    var body: some View {
-        Button(action: action) {
-            Image(systemName: symbol)
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(hovered ? Theme.textPrimary : Theme.textDim)
-                .frame(width: 28, height: 28)
-                .background(
-                    RoundedRectangle(cornerRadius: 7, style: .continuous)
-                        .fill(hovered ? Theme.fillHover : .clear)
-                )
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .help(help)
-        .onHover { hovered = $0 }
-    }
-}
-
 /// "login-fix ⌘J" — visible from any session, so the sidebar
 /// can stay hidden without missing anything.
-private struct AttentionPill: View {
+struct AttentionPill: View {
     @ObservedObject var store: Store
     @ObservedObject var window: WindowModel
 
@@ -127,19 +117,7 @@ private struct AttentionPill: View {
             Button {
                 store.jumpToAttention()
             } label: {
-                HStack(spacing: 7) {
-                    Circle().fill(Theme.orange.strong).frame(width: 6, height: 6)
-                    Text(waiting.count == 1 ? first.title : L("%d sessions waiting", waiting.count))
-                        .lineLimit(1)
-                        .frame(maxWidth: 220)
-                    Text("⌘J").opacity(0.55)
-                }
-                .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(Theme.orange.strong)
-                .padding(.horizontal, 11)
-                .frame(height: 26)
-                .background(Capsule().fill(Theme.orange.soft))
-                .contentShape(Capsule())
+                WaitingPill(text: waiting.count == 1 ? first.title : L("%d sessions waiting", waiting.count))
             }
             .buttonStyle(.plain)
             .transition(.opacity.combined(with: .scale(scale: 0.95)))

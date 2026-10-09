@@ -63,7 +63,9 @@ enum Git {
         let branch = lines[2] == "HEAD" ? nil : lines[2]
         return RepoContext(
             repo: repo,
+            root: repoDir.hasSuffix(".git") ? nil : repoDir,
             folder: (toplevel as NSString).lastPathComponent,
+            checkout: toplevel,
             branch: branch,
             pr: nil
         )
@@ -76,38 +78,62 @@ enum Git {
     }
 
     struct PullRequest {
+        enum State { case open, merged, closed }
+
         var number: Int
+        var state: State
+        /// The commit GitHub has as the PR's head.
+        var head: String?
         var checks: Checks
         var isDraft: Bool
         var mergeability: Mergeability
     }
 
-    /// Open PR of the directory's current branch, its checks and whether
-    /// GitHub would merge it, via gh.
-    static func pullRequest(in directory: String) -> PullRequest? {
-        guard let first = fetchPullRequest(in: directory) else { return nil }
-        // GitHub computes mergeability lazily: the first ask after a push
-        // often answers UNKNOWN and starts the computation — ask once more.
-        guard first.mergeability == .unknown else { return first }
-        Thread.sleep(forTimeInterval: 3)
-        return fetchPullRequest(in: directory) ?? first
+    /// What `gh` said about the branch's PR. `unknown`: it couldn't tell
+    /// (offline, rate limited, …): whatever was known stays.
+    enum Lookup {
+        case found(PullRequest)
+        case none
+        case unknown
     }
 
-    private static func fetchPullRequest(in directory: String) -> PullRequest? {
-        guard let gh = Shell.find("gh"),
-              let output = Shell.run(
-                  gh,
-                  ["pr", "view", "--json",
-                   "number,state,isDraft,mergeable,mergeStateStatus,reviewDecision,statusCheckRollup"],
-                  in: directory
-              ),
-              let json = try? JSONSerialization.jsonObject(with: Data(output.utf8)) as? [String: Any],
-              json["state"] as? String == "OPEN",
+    /// The PR of the directory's current branch (the newest, open or not),
+    /// its checks and whether GitHub would merge it, via gh.
+    static func pullRequest(in directory: String) -> Lookup {
+        let first = fetchPullRequest(in: directory)
+        // GitHub computes mergeability lazily: the first ask after a push
+        // often answers UNKNOWN and starts the computation — ask once more.
+        guard case let .found(pr) = first, pr.state == .open, pr.mergeability == .unknown else { return first }
+        Thread.sleep(forTimeInterval: 3)
+        let second = fetchPullRequest(in: directory)
+        if case .found = second { return second }
+        return first
+    }
+
+    private static func fetchPullRequest(in directory: String) -> Lookup {
+        guard let gh = Shell.find("gh") else { return .unknown }
+        let result = Shell.execute(
+            gh,
+            ["pr", "view", "--json",
+             "number,state,headRefOid,isDraft,mergeable,mergeStateStatus,reviewDecision,statusCheckRollup"],
+            in: directory, timeout: 30
+        )
+        guard result.status == 0 else {
+            return result.error.contains("no pull requests found") ? .none : .unknown
+        }
+        guard let json = try? JSONSerialization.jsonObject(with: Data(result.output.utf8)) as? [String: Any],
               let number = json["number"] as? Int
-        else { return nil }
+        else { return .unknown }
+        let state: PullRequest.State = switch json["state"] as? String {
+        case "MERGED": .merged
+        case "CLOSED": .closed
+        default: .open
+        }
         let rollup = json["statusCheckRollup"] as? [[String: Any]] ?? []
-        return PullRequest(
+        return .found(PullRequest(
             number: number,
+            state: state,
+            head: json["headRefOid"] as? String,
             checks: checks(from: rollup),
             isDraft: json["isDraft"] as? Bool ?? false,
             mergeability: mergeability(
@@ -115,7 +141,7 @@ enum Git {
                 state: json["mergeStateStatus"] as? String ?? "",
                 review: json["reviewDecision"] as? String ?? ""
             )
-        )
+        ))
     }
 
     /// GraphQL MergeableState + MergeStateStatus + ReviewDecision → one

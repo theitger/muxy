@@ -1,0 +1,590 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>muxy merge concept</title>
+<style>
+:root {
+  --page: #0c0c0c;
+  --bg: #141414;
+  --side: #191919;
+  --hover: rgba(240,240,240,.045);
+  --active: rgba(240,240,240,.08);
+  --hair: rgba(240,240,240,.08);
+  --hair-2: rgba(240,240,240,.13);
+  --t1: #f0f0f0; --t2: #c8c8c8; --t3: #9a9a9a; --t4: #6a6a6a; --t5: #474747;
+  --orange: #ffb45c; --orange-soft: rgba(247,140,16,.15);
+  --blue: #9dbaf0;   --blue-soft: rgba(80,128,216,.16);
+  --green: #a9de6e;  --green-soft: rgba(131,205,45,.14);
+  --red: #f87171;    --red-soft: rgba(220,38,38,.16);
+  --yellow: #f5cf5b; --yellow-soft: rgba(242,183,5,.15);
+  --claude: #d97757; --codex: #19b98b; --quorum: #b79cf2;
+  --mono: "IosevkaTerm Nerd Font Mono", "Iosevka Term", "SF Mono", ui-monospace, Menlo, monospace;
+  --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+  --ease: cubic-bezier(.32,.72,0,1);
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
+body { background: var(--page); color: var(--t2); font: 13px/1.4 var(--sans); -webkit-font-smoothing: antialiased; overflow: hidden; }
+button, input, select { font: inherit; color: inherit; background: none; border: 0; }
+button { cursor: pointer; }
+kbd { font: 10.5px var(--sans); color: inherit; opacity: .75; background: rgba(240,240,240,.07); border: 1px solid var(--hair); border-radius: 4px; padding: 0 4px; line-height: 15px; display: inline-block; }
+
+/* page chrome */
+.stage { height: 100%; display: flex; flex-direction: column; align-items: center; padding: 14px 16px 16px; gap: 12px; }
+.picker { display: flex; align-items: center; gap: 14px; width: min(1320px, 100%); }
+.variants { display: flex; gap: 4px; background: #151515; border: 1px solid var(--hair); border-radius: 10px; padding: 3px; }
+.variants a { padding: 6px 12px; border-radius: 7px; color: var(--t4); font-weight: 500; text-decoration: none; }
+.variants a:hover { color: var(--t2); }
+.variants a.on { background: #262626; color: var(--t1); }
+.variants a b { margin-right: 6px; }
+.variants a.on b { color: var(--orange); }
+.pitch { flex: 1; color: var(--t3); font-size: 12.5px; min-width: 0; }
+.pitch strong { color: var(--t1); font-weight: 600; }
+.sim { display: flex; gap: 6px; }
+.sim button { padding: 6px 10px; border-radius: 7px; border: 1px solid var(--hair); color: var(--t3); font-size: 12px; white-space: nowrap; }
+.sim button:hover { color: var(--t1); background: var(--hover); }
+.keys { width: min(1320px, 100%); display: flex; gap: 16px; color: var(--t4); font-size: 11.5px; margin-top: -4px; flex-wrap: wrap; }
+
+/* window */
+.win { position: relative; width: min(1320px, 100%); flex: 1; min-height: 0; max-height: 860px; background: var(--bg); border-radius: 12px; border: 1px solid #2a2a2a; box-shadow: 0 30px 80px rgba(0,0,0,.6); overflow: hidden; display: flex; }
+.lights { display: flex; gap: 8px; align-items: center; }
+.lights i { width: 12px; height: 12px; border-radius: 50%; background: #ff5f57; }
+.lights i:nth-child(2) { background: #febc2e; } .lights i:nth-child(3) { background: #28c840; }
+
+/* glyphs */
+.g { display: inline-grid; place-items: center; flex: none; }
+.g.claude { color: var(--claude); } .g.codex { color: var(--codex); } .g.quorum { color: var(--quorum); } .g.shell { color: var(--t3); }
+
+/* ---------- sidebar ---------- */
+.side { width: 272px; flex: none; background: var(--side); border-right: 1px solid var(--hair); display: flex; flex-direction: column; min-height: 0; transition: margin .25s var(--ease); }
+.side.hidden { margin-left: -272px; }
+.side-top { height: 44px; display: flex; align-items: center; padding: 0 10px 0 14px; flex: none; }
+.side-top .sp { flex: 1; }
+.icon-btn { width: 26px; height: 26px; border-radius: 6px; display: grid; place-items: center; color: var(--t4); }
+.icon-btn:hover { background: var(--hover); color: var(--t2); }
+.icon-btn.on { background: var(--active); color: var(--t1); }
+.list { flex: 1; overflow: auto; padding: 2px 8px 10px; }
+.grp { font-size: 10.5px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--t4); padding: 14px 8px 6px; }
+.row { position: relative; display: grid; grid-template-columns: 30px 1fr auto; column-gap: 10px; align-items: center; padding: 7px 8px; border-radius: 9px; cursor: pointer; margin-bottom: 1px; }
+.row:hover { background: var(--hover); }
+.row.on { background: var(--active); }
+.tile { grid-row: 1 / 3; width: 30px; height: 30px; border-radius: 8px; display: grid; place-items: center; background: rgba(240,240,240,.05); }
+.tile.working { background: var(--blue-soft); color: var(--blue); }
+.tile.blocked { background: var(--orange-soft); color: var(--orange); }
+.tile.done { background: var(--green-soft); color: var(--green); }
+.tile.failed { background: var(--red-soft); color: var(--red); }
+.tile.idle, .tile.shell { color: var(--t3); }
+.row .t { color: var(--t1); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; align-items: center; gap: 6px; }
+.row .new { width: 6px; height: 6px; border-radius: 50%; background: var(--orange); flex: none; }
+.row .s { grid-column: 2 / 4; display: flex; align-items: center; gap: 8px; font-size: 11.5px; color: var(--t4); min-width: 0; }
+.row .s .br { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; min-width: 0; }
+.row .s .q { color: var(--orange); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; min-width: 0; font-family: var(--mono); font-size: 11px; }
+.row .s .err { color: var(--red); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; }
+.row .agents { display: flex; gap: 5px; flex: none; }
+.row .agents span { position: relative; display: grid; place-items: center; width: 14px; height: 14px; opacity: .55; }
+.row .agents span.working, .row .agents span.blocked, .row .agents span.failed, .row .agents span.done { opacity: 1; }
+.row .agents span::after { content: ""; position: absolute; right: -2px; bottom: -2px; width: 5px; height: 5px; border-radius: 50%; border: 1.5px solid var(--side); }
+.row .agents span.working::after { background: var(--blue); }
+.row .agents span.blocked::after { background: var(--orange); }
+.row .agents span.done::after { background: var(--green); }
+.row .agents span.failed::after { background: var(--red); }
+.side-foot { padding: 8px; border-top: 1px solid var(--hair); flex: none; }
+.side-foot button { width: 100%; display: flex; align-items: center; gap: 8px; padding: 7px 10px; border-radius: 8px; color: var(--t3); }
+.side-foot button:hover { background: var(--hover); color: var(--t1); }
+.side-foot kbd { margin-left: auto; }
+
+.pr { font: 500 11px var(--sans); padding: 1px 6px; border-radius: 5px; white-space: nowrap; }
+.pr.running { color: var(--blue); background: var(--blue-soft); }
+.pr.ready { color: var(--green); background: var(--green-soft); }
+.pr.failed { color: var(--red); background: var(--red-soft); }
+.pr.fixing { color: var(--yellow); background: var(--yellow-soft); }
+.pr.draft { color: var(--t3); background: rgba(240,240,240,.06); }
+
+/* ---------- main ---------- */
+.main { flex: 1; display: flex; flex-direction: column; min-width: 0; position: relative; }
+.tabbar { height: 44px; display: flex; align-items: center; gap: 2px; padding: 0 10px; border-bottom: 1px solid var(--hair); flex: none; }
+.tabbar .lights { margin: 0 10px 0 4px; }
+.tab { display: flex; align-items: center; gap: 7px; height: 30px; padding: 0 11px; border-radius: 7px; color: var(--t3); font-size: 12.5px; white-space: nowrap; }
+.tab:hover { background: var(--hover); color: var(--t2); }
+.tab.on { background: var(--active); color: var(--t1); }
+.tab .d { width: 6px; height: 6px; border-radius: 50%; }
+.tab .d.blocked { background: var(--orange); } .tab .d.done { background: var(--green); } .tab .d.failed { background: var(--red); }
+.tab .spin { width: 9px; height: 9px; border-radius: 50%; border: 1.5px solid var(--blue); border-right-color: transparent; animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spin, .tab .spin { animation: none; } }
+.tabbar .grow { flex: 1; }
+.pill { display: flex; align-items: center; gap: 8px; height: 28px; padding: 0 11px; border-radius: 999px; background: var(--orange-soft); color: var(--orange); font-weight: 600; font-size: 12px; white-space: nowrap; }
+.pill .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.mini-dots { display: flex; gap: 5px; margin-right: 8px; }
+.mini-dots i { width: 8px; height: 8px; border-radius: 50%; background: var(--t5); cursor: pointer; }
+.mini-dots i.working { background: var(--blue); } .mini-dots i.blocked { background: var(--orange); }
+.mini-dots i.done { background: var(--green); } .mini-dots i.failed { background: var(--red); }
+.mini-dots i.on { outline: 2px solid rgba(240,240,240,.5); outline-offset: 2px; }
+.crumb { color: var(--t3); font-size: 12.5px; margin-left: 6px; white-space: nowrap; }
+.crumb b { color: var(--t1); font-weight: 600; }
+
+/* the question bar */
+.ask { display: flex; gap: 14px; align-items: flex-start; padding: 12px 16px; background: linear-gradient(rgba(247,140,16,.10), rgba(247,140,16,.06)); border-bottom: 1px solid rgba(255,180,92,.22); flex: none; animation: drop .2s var(--ease); }
+@keyframes drop { from { opacity: 0; transform: translateY(-6px); } }
+.ask .who { width: 28px; height: 28px; border-radius: 8px; background: var(--orange-soft); color: var(--orange); display: grid; place-items: center; flex: none; margin-top: 1px; }
+.ask .body { flex: 1; min-width: 0; }
+.ask .what { color: var(--t1); font-weight: 600; font-size: 13px; }
+.ask .what span { color: var(--t3); font-weight: 400; }
+.ask code { display: block; margin-top: 5px; font: 12.5px/1.5 var(--mono); color: var(--t1); background: rgba(0,0,0,.28); border-radius: 6px; padding: 6px 9px; white-space: pre-wrap; word-break: break-word; }
+.ask code .del { color: #f3b0b0; background: rgba(220,38,38,.16); display: block; }
+.ask code .add { color: #bfe5bf; background: rgba(70,160,70,.15); display: block; }
+.ask code .ctx { color: var(--t4); display: block; }
+.ask .why { color: var(--t3); font-size: 12px; margin-top: 5px; }
+.ask .acts { display: flex; gap: 6px; flex: none; align-items: center; padding-top: 1px; }
+.btn { display: inline-flex; align-items: center; gap: 7px; height: 28px; padding: 0 11px; border-radius: 7px; background: rgba(240,240,240,.06); border: 1px solid var(--hair); color: var(--t2); font-size: 12px; font-weight: 500; white-space: nowrap; }
+.btn:hover { background: rgba(240,240,240,.1); color: var(--t1); }
+.btn.primary { background: var(--orange); border-color: var(--orange); color: #241400; }
+.btn.primary:hover { background: #ffc27a; }
+.btn.primary kbd { color: #241400; background: rgba(0,0,0,.1); border-color: rgba(0,0,0,.15); }
+.btn.ghost { background: none; border-color: transparent; color: var(--t3); }
+.ask .hint { font-size: 11px; color: var(--t4); margin-top: 6px; }
+
+/* terminal */
+.term { flex: 1; min-height: 0; overflow: auto; padding: 18px 26px 26px; font: 14px/1.55 var(--mono); color: #d6d6d6; white-space: pre-wrap; }
+.term > div { margin-bottom: .55em; }
+.term > div.r, .term > div.cr { margin-top: -.45em; }
+.term .u { color: var(--t1); } .term .u::before { content: "> "; color: var(--t4); }
+.term .cu { color: var(--t1); } .term .cu::before { content: "› "; color: var(--t4); }
+.term .b::before { content: "● "; }
+.term .tl::before { content: "● "; color: #7ec27e; }
+.term .ctl::before { content: "• "; color: var(--t3); }
+.term b { color: var(--t1); }
+.term .r { color: var(--t3); padding-left: 2ch; } .term .r::before { content: "⎿  "; color: var(--t5); }
+.term .cr { color: var(--t3); padding-left: 2ch; } .term .cr::before { content: "└ "; color: var(--t5); }
+.term .sp { color: var(--claude); } .term .csp { color: var(--codex); } .term .qsp { color: var(--quorum); }
+.term .dim { color: var(--t4); } .term .err { color: var(--red); } .term .ok { color: var(--green); } .term .warn { color: var(--yellow); }
+.term .del { background: rgba(220,38,38,.18); color: #f3b0b0; display: block; margin: 0; }
+.term .add { background: rgba(70,160,70,.17); color: #bfe5bf; display: block; margin: 0; }
+.term .ctx { color: var(--t4); display: block; margin: 0; }
+.term .box { border: 1px solid #5a4636; border-radius: 6px; padding: 10px 14px; color: var(--t2); }
+.term .box.cx { border-color: #24564a; }
+.term .box .h { color: var(--claude); font-weight: 700; } .term .box.cx .h { color: var(--codex); }
+.term .box .sel { color: var(--t1); }
+.term .q { color: var(--t2); }
+.term .prompt::before { content: "~/code/muxy-inbox ❯ "; color: var(--codex); }
+.cursor { display: inline-block; width: .6em; height: 1.1em; background: #cfcfcf; vertical-align: text-bottom; }
+
+/* overview (⌘E) */
+.over { position: absolute; inset: 44px 0 0 0; background: var(--bg); z-index: 5; overflow: auto; padding: 18px 20px 24px; display: none; }
+.over.show { display: block; animation: fade .2s var(--ease); }
+@keyframes fade { from { opacity: 0; transform: scale(1.02); } }
+.over h2 { font-size: 10.5px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--t4); margin: 4px 2px 10px; }
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; margin-bottom: 20px; }
+.card { background: var(--side); border: 1px solid var(--hair); border-radius: 11px; overflow: hidden; cursor: pointer; display: flex; flex-direction: column; }
+.card:hover { border-color: var(--hair-2); }
+.card.blocked { border-color: rgba(255,180,92,.35); }
+.card .hd { display: flex; align-items: center; gap: 9px; padding: 10px 12px 8px; }
+.card .hd .tile { width: 26px; height: 26px; grid-row: auto; }
+.card .hd .t { color: var(--t1); font-weight: 600; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.card .hd .s { color: var(--t4); font-size: 11.5px; }
+.card .snap { margin: 0 10px; padding: 8px 10px; background: #0f0f0f; border-radius: 7px; font: 11px/1.5 var(--mono); color: var(--t3); height: 92px; overflow: hidden; white-space: pre; }
+.card .ft { padding: 9px 12px 11px; font-size: 12px; color: var(--t3); display: flex; align-items: center; gap: 8px; min-height: 40px; }
+.card .ft .q { color: var(--orange); font-family: var(--mono); font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; }
+
+/* sheet: new worktree */
+.scrim { position: absolute; inset: 0; background: rgba(0,0,0,.4); z-index: 20; display: none; }
+.scrim.show { display: block; }
+.sheet { position: absolute; left: 50%; top: 0; transform: translateX(-50%); width: 440px; max-width: calc(100% - 32px); background: #1f1f1f; border: 1px solid var(--hair-2); border-top: 0; border-radius: 0 0 12px 12px; box-shadow: 0 24px 60px rgba(0,0,0,.55); z-index: 21; padding: 18px 18px 14px; display: none; }
+.sheet.show { display: block; animation: sheet .22s var(--ease); }
+@keyframes sheet { from { transform: translate(-50%, -12px); opacity: 0; } }
+.sheet h3 { color: var(--t1); font-size: 14px; font-weight: 600; margin-bottom: 14px; }
+.field { display: grid; grid-template-columns: 90px 1fr; align-items: center; gap: 10px; margin-bottom: 10px; }
+.field label { color: var(--t3); font-size: 12.5px; text-align: right; }
+.field input, .field select { height: 30px; border: 1px solid var(--hair-2); border-radius: 7px; padding: 0 10px; background: #161616; color: var(--t1); outline: 0; }
+.field input:focus { border-color: rgba(157,186,240,.6); }
+.seg { display: flex; background: #161616; border: 1px solid var(--hair-2); border-radius: 8px; padding: 2px; gap: 2px; }
+.seg button { flex: 1; height: 26px; border-radius: 6px; color: var(--t3); display: flex; align-items: center; justify-content: center; gap: 6px; }
+.seg button.on { background: #2c2c2c; color: var(--t1); }
+.sheet .note { color: var(--t4); font-size: 11.5px; margin: 2px 0 14px 100px; font-family: var(--mono); }
+.sheet .row-btns { display: flex; justify-content: flex-end; gap: 8px; }
+.btn.blue { background: #3d6fd1; border-color: #3d6fd1; color: #fff; }
+
+.toast { position: absolute; right: 16px; bottom: 16px; z-index: 30; background: #222; border: 1px solid var(--hair-2); border-radius: 10px; padding: 10px 14px; box-shadow: 0 16px 40px rgba(0,0,0,.5); transform: translateY(16px); opacity: 0; transition: all .25s var(--ease); color: var(--t1); pointer-events: none; }
+.toast.show { transform: none; opacity: 1; }
+</style>
+</head>
+<body>
+<div class="stage">
+  <div class="picker">
+    <nav class="variants">
+      <a href="index.html" onclick="try{localStorage.setItem('muxy-ui-variant','A')}catch{}"><b>A</b>Pur</a>
+      <a href="index.html" onclick="try{localStorage.setItem('muxy-ui-variant','B')}catch{}"><b>B</b>Triage</a>
+      <a href="index.html" onclick="try{localStorage.setItem('muxy-ui-variant','C')}catch{}"><b>C</b>Übersicht</a>
+      <a class="on" href="merge.html"><b>D</b>Merge</a>
+    </nav>
+    <div class="pitch"><strong>Das muxy, das du kennst — plus drei Dinge.</strong> Jede Zeile zeigt ihre Agent-Tabs. Wartet einer, steht die Frage über dem Terminal. <kbd>⌘J</kbd> holt den Nächsten.</div>
+    <div class="sim">
+      <button id="simEvent">▶ Event</button>
+      <button id="simReset">↺ Reset</button>
+    </div>
+  </div>
+  <div class="keys">
+    <span><kbd>⌘J</kbd> nächster, der wartet</span>
+    <span><kbd>⌘↩</kbd> erlauben</span>
+    <span><kbd>⌘.</kbd> ablehnen</span>
+    <span><kbd>⌘E</kbd> Übersicht</span>
+    <span><kbd>⌘B</kbd> Sidebar</span>
+    <span><kbd>⌥⌘N</kbd> neuer Worktree</span>
+    <span><kbd>⌃1–9</kbd> Session · <kbd>⌘1–9</kbd> Tab</span>
+  </div>
+  <div class="win" id="win"></div>
+</div>
+
+<script>
+// ---------------------------------------------------------------------------
+// Icons
+// ---------------------------------------------------------------------------
+const ICON = {
+  claude: (s = 12) => `<svg viewBox="0 0 12 12" width="${s}" height="${s}" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M6 1.2v9.6M1.8 3.6l8.4 4.8M1.8 8.4l8.4-4.8"/></svg>`,
+  codex: (s = 12) => `<svg viewBox="0 0 12 12" width="${s}" height="${s}" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="6" cy="6" r="4.3"/><circle cx="6" cy="6" r="1.4" fill="currentColor" stroke="none"/></svg>`,
+  quorum: (s = 12) => `<svg viewBox="0 0 12 12" width="${s}" height="${s}" fill="currentColor"><circle cx="3" cy="4" r="1.5"/><circle cx="9" cy="4" r="1.5"/><circle cx="6" cy="8.6" r="1.5"/></svg>`,
+  shell: (s = 12) => `<svg viewBox="0 0 12 12" width="${s}" height="${s}" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3.5 6 6 3 8.5M6.5 9h3"/></svg>`,
+  hand: `<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5.5 8V3.5a1 1 0 0 1 2 0V7m0-3.5v-1a1 1 0 0 1 2 0V7m0-3a1 1 0 0 1 2 0v4.5m0-2.5a1 1 0 0 1 2 0V10a4.5 4.5 0 0 1-4.5 4.5h-.6a4.5 4.5 0 0 1-3.6-1.8L2.6 10a1 1 0 0 1 1.5-1.3L5.5 10"/></svg>`,
+  check: `<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m3.5 8.5 3 3 6-7"/></svg>`,
+  x: `<svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="m4 4 8 8M12 4l-8 8"/></svg>`,
+  grid: `<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="2" y="2" width="5" height="5" rx="1.2"/><rect x="9" y="2" width="5" height="5" rx="1.2"/><rect x="2" y="9" width="5" height="5" rx="1.2"/><rect x="9" y="9" width="5" height="5" rx="1.2"/></svg>`,
+  side: `<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="1.8" y="2.5" width="12.4" height="11" rx="2"/><path d="M6 2.5v11"/></svg>`,
+  plus: `<svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M8 3v10M3 8h10"/></svg>`,
+  branch: `<svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="4.5" cy="3.5" r="1.5"/><circle cx="4.5" cy="12.5" r="1.5"/><circle cx="11.5" cy="5.5" r="1.5"/><path d="M4.5 5v6M11.5 7c0 3-7 2-7 4"/></svg>`,
+};
+const NAME = { claude: "Claude", codex: "Codex", quorum: "quorum", shell: "zsh" };
+
+// ---------------------------------------------------------------------------
+// Data: sessions are worktrees; each has tabs, each tab has its own agent/state.
+// ---------------------------------------------------------------------------
+function seed() {
+  return [
+    { id: "w1", repo: "muxy", title: "Inbox overlay", branch: "feat/inbox", pr: { n: 44, s: "running" }, seen: true, tab: 0, tabs: [
+      { kind: "claude", state: "blocked", since: "2m",
+        ask: { verb: "run a command", code: "swift build -c release && ./Scripts/make-app.sh", why: "Build and install the app to try the overlay." },
+        term: [["u", "Add a ⌘J overlay that lists every agent waiting on me."], ["b", "I'll feed it from the PermissionRequest hook."], ["tl", "<b>Update</b>(Sources/muxy/InboxView.swift)"], ["r", "Created with 142 lines"], ["tl", "<b>Update</b>(Sources/muxy/Store.swift)"], ["r", "Updated with 31 additions and 4 removals"],
+          ["box", `<span class="h">Bash command</span>\n\n  swift build -c release && ./Scripts/make-app.sh\n  <span class="dim">Build and install the app to try the overlay</span>\n\nDo you want to proceed?\n<span class="sel">❯ 1. Yes</span>\n  2. Yes, and don't ask again for swift build commands\n  3. No, and tell Claude what to do differently <span class="dim">(esc)</span>`]] },
+      { kind: "quorum", state: "working", label: "quorum babysit",
+        term: [["q", "<span class=\"dim\">$</span> quorum babysit 44"], ["q", "quorum · PR #44 feat/inbox · 6 reviewers · gpt-5.6-luna medium"], ["q", "<span class=\"ok\">✓</span> pass 1  correctness      2 findings"], ["q", "<span class=\"ok\">✓</span> pass 2  concurrency      0 findings"], ["q", "<span class=\"ok\">✓</span> pass 3  ui-states        1 finding"], ["qsp", "◌ pass 4–6 running … 3m 10s"]] },
+      { kind: "shell", state: "idle", label: "zsh", term: [["prompt", "<span class=\"cursor\"></span>"]] },
+    ]},
+    { id: "w2", repo: "muxy", title: "Codex adapter", branch: "feat/codex-hooks", pr: null, seen: true, tab: 0, tabs: [
+      { kind: "codex", state: "blocked", since: "40s",
+        ask: { verb: "apply a change", file: "Sources/muxy/Agents/Codex.swift", diff: [["ctx", "  case \"notify\":"], ["del", "-     session.agent = .idle"], ["add", "+     session.agent = event.needsInput ? .blocked : .idle"]] },
+        term: [["cu", "Route Codex approval requests through the same event channel as Claude."], ["ctl", "<b>Explored</b>"], ["cr", "Read HookWatcher.swift, Store.swift"], ["ctl", "<b>Proposed change</b> Sources/muxy/Agents/Codex.swift"], ["ctx", "  case \"notify\":"], ["del", "-     session.agent = .idle"], ["add", "+     session.agent = event.needsInput ? .blocked : .idle"],
+          ["boxcx", `<span class="h">Allow Codex to apply this change?</span>\n\n<span class="sel">❯ Yes</span>   <span class="dim">y</span>\n  Always for this session   <span class="dim">a</span>\n  No, tell Codex what to do   <span class="dim">n</span>`]] },
+      { kind: "shell", state: "idle", label: "zsh", term: [["prompt", "<span class=\"cursor\"></span>"]] },
+    ]},
+    { id: "w3", repo: "muxy", title: "Resume on launch", branch: "feat/resume", pr: { n: 45, s: "draft" }, seen: true, tab: 0, tabs: [
+      { kind: "claude", state: "working", since: "4m",
+        term: [["u", "On launch, reopen every session and resume its agent."], ["tl", "<b>Update</b>(Sources/muxy/Persistence.swift)"], ["r", "Created with 96 lines"], ["tl", "<b>Bash</b>(swift test --filter Resume)"], ["r", "Running…"], ["sp", "✳ Testing resume… <span class=\"dim\">(1m 12s · esc to interrupt)</span>"]] },
+    ]},
+    { id: "w4", repo: "website", title: "Pricing copy", branch: "copy/pricing", pr: { n: 12, s: "fixing" }, seen: true, tab: 0, tabs: [
+      { kind: "codex", state: "working", since: "1m",
+        term: [["cu", "CI fails on the pricing snapshot. Fix it, keep the copy."], ["ctl", "<b>Ran</b> pnpm test pricing"], ["cr", "1 failed · snapshot mismatch"], ["ctl", "<b>Edited</b> src/pages/pricing.tsx (+4 −2)"], ["csp", "• Working <span class=\"dim\">(48s • esc to interrupt)</span>"]] },
+      { kind: "quorum", state: "done", label: "quorum babysit",
+        term: [["q", "<span class=\"dim\">$</span> quorum babysit 12"], ["q", "<span class=\"ok\">✓</span> 6/6 passes · 2 findings posted to #12"], ["q", "<span class=\"dim\">handed to the fix session</span>"]] },
+      { kind: "shell", state: "working", label: "pnpm dev", term: [["q", "  VITE v7.1  ready in 312 ms\n\n  ➜  Local:   http://localhost:5173/"]] },
+    ]},
+    { id: "w5", repo: "website", title: "Dark mode tokens", branch: "feat/dark-tokens", pr: { n: 14, s: "ready" }, seen: false, tab: 0, tabs: [
+      { kind: "claude", state: "done", since: "6m",
+        term: [["u", "Move every color to tokens and add the dark set."], ["tl", "<b>Update</b>(src/styles/tokens.css)"], ["r", "Updated with 61 additions and 9 removals"], ["tl", "<b>Bash</b>(gh pr create --fill)"], ["r", "https://github.com/theitger/website/pull/14"], ["b", "Done. PR #14 is open and green."]] },
+    ]},
+    { id: "w6", repo: "relay", title: "Relay reconnect", branch: "fix/reconnect", pr: { n: 41, s: "failed" }, seen: false, tab: 0, tabs: [
+      { kind: "codex", state: "failed", since: "9m", error: "429 · rate limit",
+        term: [["cu", "Reconnect with backoff when the relay drops the socket."], ["ctl", "<b>Edited</b> main.go (+22 −5)"], ["err", "■ stream error: 429 Too Many Requests — retry in 4m"]] },
+    ]},
+    { id: "w7", repo: null, title: "~", branch: null, pr: null, seen: true, tab: 0, tabs: [
+      { kind: "shell", state: "idle", label: "zsh", term: [["prompt", "<span class=\"cursor\"></span>"]] },
+    ]},
+  ];
+}
+
+const EVENTS = [
+  d => { const w = d.find(x => x.id === "w3"), t = w.tabs[0];
+    Object.assign(t, { state: "blocked", since: "now", ask: { verb: "run a command", code: "rm -rf ~/Library/Application\\ Support/muxy/state.json", why: "Clear stale state before the resume test." } });
+    t.term.splice(-1, 1, ["box", `<span class="h">Bash command</span>\n\n  rm -rf ~/Library/Application\\ Support/muxy/state.json\n\nDo you want to proceed?\n<span class="sel">❯ 1. Yes</span>\n  2. Yes, and don't ask again\n  3. No <span class="dim">(esc)</span>`]);
+    return [w, "Resume on launch needs you"]; },
+  d => { const w = d.find(x => x.id === "w1"), t = w.tabs[1];
+    t.state = "done"; t.term.splice(-1, 1, ["q", "<span class=\"ok\">✓</span> 6/6 passes · 3 findings posted to #44"]); w.seen = false;
+    return [w, "quorum finished on #44 · 3 findings"]; },
+  d => { const w = d.find(x => x.id === "w4"), t = w.tabs[0];
+    t.state = "done"; t.term.splice(-1, 1, ["ctl", "<b>Ran</b> pnpm test pricing"], ["cr", "✓ 18 passed"]); w.seen = false; w.pr.s = "running";
+    return [w, "Pricing copy is done"]; },
+];
+
+let data, current, sideHidden, overview, sheet, evIndex, toastTimer, newAgent = "claude";
+
+// ---------------------------------------------------------------------------
+// derived state
+// ---------------------------------------------------------------------------
+const RANK = { blocked: 0, failed: 1, working: 2, done: 3, idle: 4 };
+const agentTabs = w => w.tabs.filter(t => t.kind !== "shell");
+function wState(w) {
+  const states = w.tabs.filter(t => t.kind !== "shell" || t.state === "working").map(t => t.state);
+  if (!states.length) return "shell";
+  return states.sort((a, b) => RANK[a] - RANK[b])[0];
+}
+const blockedTab = w => w.tabs.find(t => t.state === "blocked");
+const cur = () => data.find(w => w.id === current);
+const curTab = () => cur().tabs[cur().tab];
+const waiting = () => data.filter(w => blockedTab(w));
+const fresh = () => data.filter(w => !w.seen && !blockedTab(w));
+const esc = s => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;");
+const $ = s => document.querySelector(s);
+
+function tileIcon(w) {
+  const s = wState(w), main = agentTabs(w)[0]?.kind || "shell";
+  if (s === "blocked") return ICON.hand;
+  if (s === "done") return ICON.check;
+  if (s === "failed") return ICON.x;
+  return `<span class="g ${s === "working" ? "" : main}">${ICON[main](14)}</span>`;
+}
+const prBadge = w => w.pr ? `<span class="pr ${w.pr.s}">${{ running: "◌", ready: "✓", failed: "✕", fixing: "⚒", draft: "◇" }[w.pr.s]} #${w.pr.n}</span>` : "";
+
+function askLine(w) {
+  const t = blockedTab(w);
+  return t.ask.code ? t.ask.code : `edit ${t.ask.file.split("/").pop()}`;
+}
+
+// ---------------------------------------------------------------------------
+// render
+// ---------------------------------------------------------------------------
+function render() {
+  const w = cur(), t = curTab();
+  const groups = [];
+  for (const x of data) {
+    const g = x.repo || "Terminal";
+    let grp = groups.find(y => y.name === g);
+    if (!grp) groups.push(grp = { name: g, items: [] });
+    grp.items.push(x);
+  }
+
+  const rows = groups.map(g => `<div class="grp">${esc(g.name)}</div>` + g.items.map(x => {
+    const s = wState(x), bt = blockedTab(x);
+    const sub = bt
+      ? `<span class="q">${ICON[bt.kind](10)} ${esc(askLine(x))}</span>`
+      : s === "failed" ? `<span class="err">${esc(x.tabs.find(t => t.state === "failed").error)}</span>`
+      : `<span class="br">${esc(x.branch || "Home")}</span>`;
+    const agents = agentTabs(x).length > 0 ? `<span class="agents">${agentTabs(x).map(t => `<span class="g ${t.kind} ${t.state}" title="${NAME[t.kind]} · ${t.state}">${ICON[t.kind](11)}</span>`).join("")}</span>` : "";
+    return `<div class="row ${x.id === current ? "on" : ""}" data-sel="${x.id}">
+      <div class="tile ${s}">${tileIcon(x)}</div>
+      <div class="t">${esc(x.title)}${!x.seen && !bt ? `<span class="new"></span>` : ""}</div>${prBadge(x)}
+      <div class="s">${sub}${agents}</div></div>`;
+  }).join("")).join("");
+
+  const nWait = waiting().length;
+  const pill = nWait
+    ? `<button class="pill" data-act="jump"><span class="dot"></span>${nWait === 1 ? esc(waiting()[0].title) : nWait + " waiting"} <kbd>⌘J</kbd></button>`
+    : fresh().length ? `<button class="pill" style="background:var(--green-soft);color:var(--green)" data-act="jump"><span class="dot"></span>${fresh().length} new <kbd>⌘J</kbd></button>` : "";
+
+  const tabs = w.tabs.map((x, i) => {
+    const mark = x.state === "working" ? `<span class="spin"></span>` : ["blocked", "done", "failed"].includes(x.state) && (x.kind !== "shell") ? `<span class="d ${x.state}"></span>` : "";
+    return `<button class="tab ${i === w.tab ? "on" : ""}" data-tab="${i}"><span class="g ${x.kind}">${ICON[x.kind](12)}</span>${esc(x.label || NAME[x.kind])}${mark}</button>`;
+  }).join("");
+
+  const askBar = t.state === "blocked" ? `
+    <div class="ask">
+      <div class="who">${ICON[t.kind](14)}</div>
+      <div class="body">
+        <div class="what">${NAME[t.kind]} wants to ${t.ask.verb}${t.ask.file ? ` <span>· ${esc(t.ask.file)}</span>` : ""}</div>
+        <code>${t.ask.code ? esc(t.ask.code) : t.ask.diff.map(([k, l]) => `<span class="${k}">${esc(l)}</span>`).join("")}</code>
+        ${t.ask.why ? `<div class="why">${esc(t.ask.why)}</div>` : ""}
+      </div>
+      <div class="acts">
+        <button class="btn ghost" data-act="deny">Deny <kbd>⌘.</kbd></button>
+        <button class="btn" data-act="always">Always</button>
+        <button class="btn primary" data-act="allow">Allow <kbd>⌘↩</kbd></button>
+      </div>
+    </div>` : "";
+
+  const cards = [...data].sort((a, b) => (RANK[wState(a)] ?? 9) - (RANK[wState(b)] ?? 9)).map(x => {
+    const s = wState(x), bt = blockedTab(x), main = x.tabs.find(t => t.kind !== "shell") || x.tabs[0];
+    const snap = main.term.slice(-5).map(([k, h]) => esc(h.replace(/<[^>]+>/g, "").split("\n")[0])).join("\n");
+    return `<div class="card ${s}" data-sel="${x.id}">
+      <div class="hd"><div class="tile ${s}">${tileIcon(x)}</div><div style="min-width:0;flex:1"><div class="t">${esc(x.title)}</div><div class="s">${esc([x.repo, x.branch].filter(Boolean).join(" · ") || "~")}</div></div>${prBadge(x)}</div>
+      <div class="snap">${snap}</div>
+      <div class="ft">${bt ? `<span class="q">${esc(askLine(x))}</span><button class="btn primary" style="height:24px" data-act="allow" data-w="${x.id}">Allow</button>` : `<span>${s === "working" ? "working" : s}</span><span style="flex:1"></span><span class="row" style="padding:0;display:flex"><span class="agents" style="display:flex;gap:5px">${agentTabs(x).map(t => `<span class="g ${t.kind}">${ICON[t.kind](11)}</span>`).join("")}</span></span>`}</div>
+    </div>`;
+  }).join("");
+
+  $("#win").innerHTML = `
+    <aside class="side ${sideHidden ? "hidden" : ""}">
+      <div class="side-top"><div class="lights"><i></i><i></i><i></i></div><div class="sp"></div>
+        <button class="icon-btn ${overview ? "on" : ""}" data-act="overview" title="Overview ⌘E">${ICON.grid}</button>
+        <button class="icon-btn" data-act="side" title="Hide sidebar ⌘B">${ICON.side}</button></div>
+      <div class="list">${rows}</div>
+      <div class="side-foot"><button data-act="new">${ICON.branch} New worktree <kbd>⌥⌘N</kbd></button></div>
+    </aside>
+    <main class="main">
+      <div class="tabbar">
+        ${sideHidden ? `<div class="lights"><i></i><i></i><i></i></div><button class="icon-btn" data-act="side" title="Show sidebar ⌘B">${ICON.side}</button>
+          <div class="mini-dots">${data.map(x => `<i class="${wState(x)} ${x.id === current ? "on" : ""}" data-sel="${x.id}" title="${esc(x.title)}"></i>`).join("")}</div>
+          <span class="crumb"><b>${esc(w.title)}</b></span><span style="width:12px"></span>` : ""}
+        ${overview ? `<span class="crumb"><b>${data.length} sessions</b> · ${data.filter(x => wState(x) === "working").length} working</span>` : tabs}
+        <div class="grow"></div>${pill}
+      </div>
+      ${overview ? "" : askBar}
+      <div class="term" id="term">${renderTerm(t)}</div>
+      <div class="over ${overview ? "show" : ""}"><div class="cards">${cards}</div></div>
+    </main>
+    <div class="scrim ${sheet ? "show" : ""}" data-act="close"></div>
+    <div class="sheet ${sheet ? "show" : ""}">${sheetHTML()}</div>
+    <div class="toast" id="toast"></div>`;
+  const term = $("#term"); if (term) term.scrollTop = term.scrollHeight;
+  if (sheet) setTimeout(() => $("#branch")?.focus(), 0);
+}
+
+function renderTerm(t) {
+  return t.term.map(([k, h]) => {
+    if (k === "box") return `<div class="box">${h}</div>`;
+    if (k === "boxcx") return `<div class="box cx">${h}</div>`;
+    if (k === "del" || k === "add" || k === "ctx") return `<span class="${k}">${esc(h)}</span>`;
+    return `<div class="${k}">${h}</div>`;
+  }).join("");
+}
+
+function sheetHTML() {
+  const repos = [...new Set(data.map(w => w.repo).filter(Boolean))];
+  return `<h3>New worktree</h3>
+    <div class="field"><label>Repository</label><select id="repo">${repos.map(r => `<option ${r === cur().repo ? "selected" : ""}>${r}</option>`).join("")}</select></div>
+    <div class="field"><label>Branch</label><input id="branch" placeholder="feat/something" autocomplete="off"></div>
+    <div class="field"><label>Start</label><div class="seg">${["claude", "codex", "shell"].map(k => `<button class="${newAgent === k ? "on" : ""}" data-agent="${k}"><span class="g ${k}">${ICON[k](12)}</span>${NAME[k]}</button>`).join("")}</div></div>
+    <div class="note">git worktree add ../&lt;repo&gt;-&lt;branch&gt; · runs .muxy/setup if present</div>
+    <div class="row-btns"><button class="btn" data-act="close">Cancel <kbd>esc</kbd></button><button class="btn blue" data-act="create">Create <kbd style="color:#fff">↩</kbd></button></div>`;
+}
+
+// ---------------------------------------------------------------------------
+// actions
+// ---------------------------------------------------------------------------
+function select(id, tabIndex) {
+  current = id;
+  const w = cur();
+  if (tabIndex != null) w.tab = tabIndex;
+  w.seen = true;
+  w.tabs.forEach(t => { if (t.state === "done" && t.kind !== "shell" && w.tabs[w.tab] === t) t.state = "idle"; });
+  overview = false;
+  render();
+}
+
+function jump() {
+  const order = data;
+  const start = order.findIndex(w => w.id === current);
+  for (let i = 1; i <= order.length; i++) {
+    const w = order[(start + i) % order.length];
+    const bi = w.tabs.findIndex(t => t.state === "blocked");
+    if (bi >= 0) return select(w.id, bi);
+  }
+  for (let i = 1; i <= order.length; i++) {
+    const w = order[(start + i) % order.length];
+    if (!w.seen) { const di = w.tabs.findIndex(t => t.state === "done" || t.state === "failed"); return select(w.id, Math.max(0, di)); }
+  }
+  // current one may be the only waiting one
+  const bi = cur().tabs.findIndex(t => t.state === "blocked");
+  if (bi >= 0) return select(current, bi);
+  toast("Nobody is waiting right now");
+}
+
+function answer(kind, wid) {
+  const w = wid ? data.find(x => x.id === wid) : cur();
+  const t = wid ? blockedTab(w) : curTab();
+  if (!t || t.state !== "blocked") return;
+  const a = t.ask;
+  t.term = t.term.filter(([k]) => k !== "box" && k !== "boxcx");
+  if (kind === "deny") {
+    const why = prompt(`Tell ${NAME[t.kind]} what to do instead (optional):`, "");
+    if (why === null) return;
+    t.term.push([t.kind === "codex" ? "cu" : "u", why ? esc(why) : "<span class=\"dim\">(denied)</span>"]);
+  } else {
+    t.term.push([t.kind === "codex" ? "ctl" : "tl", `<b>${a.code ? "Bash" : "Edit"}</b>(${esc(a.code || a.file)})`]);
+  }
+  t.term.push(t.kind === "codex" ? ["csp", "• Working <span class=\"dim\">(0s • esc to interrupt)</span>"] : ["sp", "✳ Working… <span class=\"dim\">(0s · esc to interrupt)</span>"]);
+  t.state = "working"; t.ask = null;
+  render();
+  const left = waiting().length;
+  toast(kind === "deny" ? "Denied" : kind === "always" ? "Allowed — and from now on" : "Allowed", left ? `${left} still waiting · ⌘J` : "Nobody else is waiting");
+}
+
+function create() {
+  const repo = $("#repo").value, branch = ($("#branch").value || "feat/new-thing").trim();
+  const id = "w" + Date.now();
+  const tabs = newAgent === "shell"
+    ? [{ kind: "shell", state: "idle", label: "zsh", term: [["prompt", "<span class=\"cursor\"></span>"]] }]
+    : [{ kind: newAgent, state: "idle", since: "now", term: [["q", `<span class="dim">Preparing worktree (new branch '${esc(branch)}')</span>`], ["q", `<span class="dim">HEAD is now at 34b7e87</span>`], ["q", `<span class="dim">.muxy/setup · pnpm install … done in 4.1s</span>`], [newAgent === "codex" ? "csp" : "sp", newAgent === "codex" ? "› <span class=\"dim\">ready — what should Codex do?</span>" : "> <span class=\"dim\">ready — what should Claude do?</span>"]] },
+       { kind: "shell", state: "idle", label: "zsh", term: [["prompt", "<span class=\"cursor\"></span>"]] }];
+  const at = data.map(w => w.repo).lastIndexOf(repo);
+  data.splice(at + 1, 0, { id, repo, title: branch.split("/").pop().replace(/-/g, " ").replace(/^./, c => c.toUpperCase()), branch, pr: null, seen: true, tab: 0, tabs });
+  sheet = false;
+  select(id, 0);
+}
+
+function fire() {
+  if (evIndex >= EVENTS.length) return toast("No more scripted events", "↺ Reset");
+  const [w, msg] = EVENTS[evIndex++](data);
+  if (w.id === current) w.seen = true;
+  render();
+  toast(msg, w.id === current ? "" : "⌘J to go there");
+}
+
+function toast(text, sub = "") {
+  const el = $("#toast");
+  el.innerHTML = `${esc(text)}${sub ? `<div style="color:var(--t3);font-size:12px;margin-top:2px">${esc(sub)}</div>` : ""}`;
+  el.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove("show"), 2600);
+}
+
+function reset() { data = seed(); current = "w3"; sideHidden = false; overview = false; sheet = false; evIndex = 0; }
+
+// ---------------------------------------------------------------------------
+// input
+// ---------------------------------------------------------------------------
+document.addEventListener("click", e => {
+  const ag = e.target.closest("[data-agent]");
+  if (ag) { newAgent = ag.dataset.agent; const b = $("#branch").value; $(".sheet").innerHTML = sheetHTML(); $("#branch").value = b; $("#branch").focus(); return; }
+  const a = e.target.closest("[data-act]");
+  if (a) {
+    e.stopPropagation();
+    switch (a.dataset.act) {
+      case "jump": return jump();
+      case "allow": case "always": case "deny": return answer(a.dataset.act, a.dataset.w);
+      case "overview": overview = !overview; return render();
+      case "side": sideHidden = !sideHidden; return render();
+      case "new": sheet = true; return render();
+      case "close": sheet = false; return render();
+      case "create": return create();
+    }
+  }
+  const tab = e.target.closest("[data-tab]");
+  if (tab) return select(current, +tab.dataset.tab);
+  const sel = e.target.closest("[data-sel]");
+  if (sel) return select(sel.dataset.sel);
+});
+
+document.addEventListener("keydown", e => {
+  const k = e.key.toLowerCase(), meta = e.metaKey || e.ctrlKey;
+  if (sheet) {
+    if (k === "escape") { sheet = false; render(); }
+    if (k === "enter") { e.preventDefault(); create(); }
+    return;
+  }
+  if (e.metaKey && e.altKey && (k === "n" || e.code === "KeyN")) { e.preventDefault(); sheet = true; return render(); }
+  if (meta && k === "j") { e.preventDefault(); return jump(); }
+  if (meta && k === "enter") { e.preventDefault(); return answer(e.shiftKey ? "always" : "allow"); }
+  if (meta && k === ".") { e.preventDefault(); return answer("deny"); }
+  if (meta && k === "e") { e.preventDefault(); overview = !overview; return render(); }
+  if (meta && k === "b") { e.preventDefault(); sideHidden = !sideHidden; return render(); }
+  if (e.ctrlKey && !e.metaKey && /^[1-9]$/.test(k)) { e.preventDefault(); const w = data[+k - 1]; if (w) select(w.id); return; }
+  if (e.metaKey && /^[1-9]$/.test(k)) { e.preventDefault(); if (cur().tabs[+k - 1]) select(current, +k - 1); return; }
+  if (k === "escape" && overview) { overview = false; render(); }
+});
+
+$("#simEvent").onclick = fire;
+$("#simReset").onclick = () => { reset(); render(); };
+reset();
+render();
+</script>
+</body>
+</html>

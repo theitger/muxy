@@ -43,6 +43,19 @@ struct MuxyApp: App {
         // system's — must be set before AppKit first resolves localizations.
         UserDefaults.standard.set([Language.current.rawValue], forKey: "AppleLanguages")
 
+        // Started from inside an agent's shell (`swift run`, a script),
+        // muxy would hand that agent's session markers to every tab, and
+        // agents there would think they run nested. muxy's tabs are new
+        // top-level terminals.
+        for name in ProcessInfo.processInfo.environment.keys
+            where name == "CLAUDECODE" || name == "CLAUDE_PID" || name.hasPrefix("CLAUDE_CODE_") {
+            unsetenv(name)
+        }
+        // Tabs run your login shell, not whatever SHELL muxy inherited (a
+        // zsh from the terminal or agent that started it): libghostty picks
+        // SHELL first.
+        setenv("SHELL", Paths.userShell, 1)
+
         // Never restore windows across launches.
         UserDefaults.standard.register(defaults: ["NSQuitAlwaysKeepsWindows": false])
 
@@ -78,6 +91,8 @@ struct MuxyApp: App {
             CommandGroup(replacing: .newItem) {
                 Button(L("New Session")) { store.newWorkspaceInFront() }
                     .keyboardShortcut("n", modifiers: .command)
+                Button(L("New Shell")) { store.newShellInFront() }
+                    .keyboardShortcut("n", modifiers: [.command, .option])
                 Button(L("New Window")) { store.newWindow() }
                     .keyboardShortcut("n", modifiers: [.command, .shift])
                 Button(L("New Tab")) { store.newTabInFront() }
@@ -103,6 +118,10 @@ struct MuxyApp: App {
                     store.toggleSidebar()
                 }
                 .keyboardShortcut("b", modifiers: .command)
+                Button(store.detailedWings ? L("Simple Sessions") : L("Detailed Sessions")) {
+                    store.toggleDetailedWings()
+                }
+                .keyboardShortcut("b", modifiers: [.command, .shift])
             }
         }
 

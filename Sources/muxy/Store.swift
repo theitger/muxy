@@ -10,6 +10,12 @@ final class Store: ObservableObject {
     @Published private(set) var windows: [WindowModel] = []
     @AppStorage("sidebarVisible") var sidebarVisible = true
     @AppStorage("sidebarWidth") var sidebarWidth: Double = 256
+    /// Wings show each session's last lines; off: title and status only.
+    @AppStorage("detailedWings") var detailedWings = true
+    /// Agents started by "New Session" skip their permission prompts.
+    @AppStorage("skipPermissions") var skipPermissions = true
+    /// Sessions come back after a quit, a crash or an update.
+    @AppStorage("restoreSessions") var restoreOnLaunch = true
 
     static let sidebarWidthRange: ClosedRange<Double> = 200 ... 420
 
@@ -21,9 +27,19 @@ final class Store: ObservableObject {
     private var keyMonitor: Any?
     private var hookWatcher: HookWatcher?
     private var prTimer: Timer?
+    private var snapshotTimer: Timer?
+    private var saveTimer: Timer?
+    /// Nothing is saved before the last launch's sessions had their
+    /// chance to come back: the first window's fresh shell would erase them.
+    private var restoreAttempted = false
+    private var saved: SavedSessions?
 
     func toggleSidebar() {
         withAnimation(Theme.ease) { sidebarVisible.toggle() }
+    }
+
+    func toggleDetailedWings() {
+        withAnimation(Theme.ease) { detailedWings.toggle() }
     }
 
     // MARK: - Lifecycle
@@ -41,6 +57,73 @@ final class Store: ObservableObject {
         prTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.refreshPullRequests() }
         }
+        let snapshots = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.refreshSnapshots() }
+        }
+        // Lets macOS coalesce the wakeup with others.
+        snapshots.tolerance = 0.3
+        snapshotTimer = snapshots
+        // Folders and conversations change all the time; a crash must not
+        // lose more than a few seconds of them.
+        let saves = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.saveSessions() }
+        }
+        saves.tolerance = 1
+        saveTimer = saves
+        #if DEBUG
+        launchDebugSessions()
+        #endif
+    }
+
+    #if DEBUG
+    /// MUXY_DEBUG_LAUNCH="claude|/dir|prompt|branch;codex|/dir||" — sessions
+    /// to open on launch, for trying the app without clicking. Branch "auto":
+    /// a placeholder, renamed after the prompt.
+    private func launchDebugSessions() {
+        guard let list = ProcessInfo.processInfo.environment["MUXY_DEBUG_LAUNCH"] else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+            guard let window = self.windows.first else { return }
+            for entry in list.split(separator: ";") {
+                let field = entry.split(separator: "|", omittingEmptySubsequences: false).map(String.init)
+                guard field.count >= 2 else { continue }
+                let spec = SessionSpec(
+                    directory: field[1], agent: AgentKind(rawValue: field[0]),
+                    prompt: field.count > 2 ? field[2] : "",
+                    branch: field.count > 3 && !field[3].isEmpty
+                        ? (field[3] == "auto" ? BranchNamer.placeholder() : field[3]) : nil,
+                    autoName: field.count > 3 && field[3] == "auto"
+                )
+                self.launch(spec, in: window)
+            }
+        }
+    }
+    #endif
+
+    /// The wings' live lines: one text read per card, only for windows on
+    /// screen.
+    func refreshSnapshots() {
+        #if DEBUG
+        // Debugging: every running session, seen or not.
+        if ProcessInfo.processInfo.environment["MUXY_DEBUG_SNAPSHOTS"] != nil {
+            workspaces.flatMap(\.sessions).forEach { $0.refreshSnapshot() }
+            return
+        }
+        #endif
+        // Codex without muxy's hook: its state is read off its screen,
+        // always, seen or not.
+        for session in workspaces.flatMap(\.sessions) where session.kind == .codex && !session.reportsByHook {
+            session.refreshSnapshot()
+        }
+        guard detailedWings, sidebarVisible else { return }
+        for window in windows {
+            guard let nsWindow = window.nsWindow, nsWindow.occlusionState.contains(.visible) else { continue }
+            // The one on stage too: its card keeps its size and lines.
+            for workspace in window.workspaces {
+                if let featured = workspace.featured, featured.kind != .codex || featured.reportsByHook {
+                    featured.refreshSnapshot()
+                }
+            }
+        }
     }
 
     func refreshPullRequests() {
@@ -50,6 +133,82 @@ final class Store: ObservableObject {
                 primary.refreshContext()
             }
         }
+    }
+
+    // MARK: - Restore
+
+    /// The last launch's sessions, into `first` and as many more windows as
+    /// there were. False when there was nothing to bring back.
+    @discardableResult
+    func restoreSessions(into first: WindowModel) -> Bool {
+        guard !restoreAttempted else { return false }
+        restoreAttempted = true
+        guard restoreOnLaunch, let state = SavedSessions.load() else { return false }
+        var restoredAny = false
+        for savedWindow in state.windows {
+            let window = restoredAny ? makeWindow() : first
+            var made: [Workspace?] = []
+            for savedWorkspace in savedWindow.workspaces {
+                let tabs = savedWorkspace.tabs.map { $0.session() }
+                guard let head = tabs.compactMap({ $0 }).first else {
+                    made.append(nil)
+                    continue
+                }
+                let workspace = makeWorkspace(directory: head.cwd, in: window, session: head)
+                tabs.compactMap { $0 }.dropFirst().forEach { add($0, to: workspace) }
+                if let index = savedWorkspace.selected, tabs.indices.contains(index), let tab = tabs[index] {
+                    workspace.selectedSessionID = tab.id
+                }
+                made.append(workspace)
+            }
+            let present = made.compactMap { $0 }
+            guard let fallback = present.first else {
+                if window !== first { windows.removeAll { $0.id == window.id } }
+                continue
+            }
+            let chosen = savedWindow.selected.flatMap { made.indices.contains($0) ? made[$0] : nil }
+            window.select(chosen ?? fallback)
+            if window !== first { openWindow?(id: "main", value: window.id) }
+            restoredAny = true
+        }
+        saved = state
+        return restoredAny
+    }
+
+    /// Every window's sessions as they are now.
+    private var currentSessions: SavedSessions {
+        SavedSessions(windows: windows.compactMap { window in
+            let ordered = window.orderedWorkspaces
+            var list: [SavedSessions.Workspace] = []
+            var selected: Int?
+            for workspace in ordered {
+                let pairs = workspace.sessions.compactMap { session in
+                    SavedSessions.Tab(session).map { (session.id, $0) }
+                }
+                guard !pairs.isEmpty else { continue }
+                if workspace.id == window.selectedWorkspaceID { selected = list.count }
+                list.append(SavedSessions.Workspace(
+                    tabs: pairs.map(\.1),
+                    selected: pairs.firstIndex { $0.0 == workspace.selectedSessionID }
+                ))
+            }
+            return list.isEmpty ? nil : SavedSessions.Window(workspaces: list, selected: selected)
+        })
+    }
+
+    /// Writes the sessions when they changed since the last write.
+    func saveSessions() {
+        guard restoreAttempted else { return }
+        let state = currentSessions
+        guard state != saved else { return }
+        state.write()
+        saved = state
+    }
+
+    /// Something worth keeping changed (a conversation began or ended):
+    /// saved right away rather than on the next tick.
+    func sessionsChanged() {
+        DispatchQueue.main.async { self.saveSessions() }
     }
 
     // MARK: - Windows
@@ -122,9 +281,9 @@ final class Store: ObservableObject {
 
     // MARK: - Workspaces
 
-    func makeWorkspace(directory: String, in window: WindowModel) -> Workspace {
+    func makeWorkspace(directory: String, in window: WindowModel, session: TerminalSession? = nil) -> Workspace {
         let workspace = Workspace(windowID: window.id)
-        add(TerminalSession(directory: directory), to: workspace)
+        add(session ?? TerminalSession(directory: directory), to: workspace)
         workspaces.append(workspace)
         return workspace
     }
@@ -184,12 +343,66 @@ final class Store: ObservableObject {
     // MARK: - Closing
 
     private func closeWorkspace(_ workspace: Workspace) {
+        let context = workspace.context
         let window = window(of: workspace)
         let index = window?.orderedWorkspaces.firstIndex { $0.id == workspace.id } ?? 0
         workspace.sessions.forEach { $0.terminate() }
         workspaces.removeAll { $0.id == workspace.id }
         window?.repairSelection(near: index)
         updateBadge()
+        cleanUp(after: context)
+    }
+
+    // MARK: - Worktree cleanup
+
+    private var cleaning: Set<Workspace.ID> = []
+
+    /// A session's PR got merged: once nothing runs in it and you aren't
+    /// looking at it, it closes and its worktree goes (when nothing in it
+    /// would be lost). Asked again on every PR poll until then.
+    func pullRequestMerged(in workspace: Workspace) {
+        let context = workspace.context
+        guard !cleaning.contains(workspace.id), !workspace.isBusy,
+              !workspace.sessions.contains(where: { $0.agent == .blocked || $0.agent == .working }),
+              window(of: workspace)?.selectedWorkspaceID != workspace.id,
+              let root = context.root, let checkout = context.checkout,
+              Worktrees.isManaged(checkout, root: root), !sharesCheckout(workspace)
+        else { return }
+        cleaning.insert(workspace.id)
+        let pr = context.pr
+        Task.detached(priority: .utility) {
+            let finished = Worktrees.isFinished(checkout, pullRequest: pr, root: root)
+            await MainActor.run {
+                self.cleaning.remove(workspace.id)
+                guard finished, self.workspaces.contains(where: { $0.id == workspace.id }),
+                      !workspace.isBusy, self.window(of: workspace)?.selectedWorkspaceID != workspace.id
+                else { return }
+                let window = self.window(of: workspace)
+                self.closeWorkspace(workspace)
+                window?.show(L("#%d merged: session closed, worktree removed", pr ?? 0))
+            }
+        }
+    }
+
+    /// A closed session's worktree goes too when it holds nothing: merged,
+    /// or never touched (a session you tried and dropped). Otherwise it
+    /// stays, to be opened again.
+    private func cleanUp(after context: RepoContext) {
+        guard let root = context.root, let checkout = context.checkout,
+              Worktrees.isManaged(checkout, root: root),
+              !workspaces.contains(where: { $0.context.checkout == checkout })
+        else { return }
+        let merged = context.prState == .merged ? context.pr : nil
+        let branch = context.branch
+        Task.detached(priority: .utility) {
+            guard Worktrees.isFinished(checkout, pullRequest: merged, root: root) else { return }
+            Worktrees.remove(checkout, branch: branch, root: root)
+        }
+    }
+
+    /// Another open session works in the same checkout.
+    private func sharesCheckout(_ workspace: Workspace) -> Bool {
+        workspaces.contains { $0 !== workspace && $0.context.checkout == workspace.context.checkout }
     }
 
     func close(_ session: TerminalSession, in workspace: Workspace) {
@@ -221,7 +434,10 @@ final class Store: ObservableObject {
     /// ⌘Q — one keystroke must never silently kill every agent.
     /// Always asks while any session is open — every agent ends with it.
     func shouldQuit() -> Bool {
-        guard !workspaces.isEmpty else { return true }
+        guard !workspaces.isEmpty else {
+            saveSessions()
+            return true
+        }
         let running = workspaces.flatMap(\.sessions).filter(\.needsCloseConfirmation)
         let alert = NSAlert()
         alert.messageText = L("Quit muxy?")
@@ -232,9 +448,14 @@ final class Store: ObservableObject {
         case 1: L("Something is still running in one tab.")
         default: L("Something is still running in %d tabs.", running.count)
         }
+        if restoreOnLaunch {
+            alert.informativeText += " " + L("They come back when muxy opens again.")
+        }
         alert.addButton(withTitle: L("Quit"))
         alert.addButton(withTitle: L("Cancel"))
-        return alert.runModal() == .alertFirstButtonReturn
+        guard alert.runModal() == .alertFirstButtonReturn else { return false }
+        saveSessions()
+        return true
     }
 
     private func confirm(running: Bool, title: String, detail: String, then action: @escaping () -> Void) {
@@ -356,25 +577,33 @@ final class Store: ObservableObject {
 
     // MARK: - Agent events
 
-    /// Claude Code hook: `prompt` (started working), `tool` (working —
+    /// Agent hook (Claude Code and Codex): `start` (a conversation began
+    /// or was resumed: its id), `prompt` (started working), `tool` (working,
     /// also when it resumes on its own), `notify` (needs you), `idle`
-    /// (waiting for input — ends a turn that was interrupted), `error`
-    /// (turn died on an API error), `stop` (turn finished). False when the
+    /// (waiting for input: ends a turn that was interrupted), `error` (turn
+    /// died on an API error), `stop` (turn finished). False when the
     /// session isn't ours.
     @discardableResult
-    func handleHookEvent(sessionUUID: String, event: String, transcript: String? = nil) -> Bool {
+    func handleHookEvent(_ event: HookWatcher.Event) -> Bool {
         for workspace in workspaces {
-            guard let session = workspace.sessions.first(where: { $0.id.uuidString == sessionUUID })
+            guard let session = workspace.sessions.first(where: { $0.id.uuidString == event.session })
             else { continue }
-            if let transcript { session.transcriptPath = transcript }
-            switch event {
+            let kind = AgentKind(rawValue: event.agent) ?? session.kind
+            session.kind = kind
+            session.reportsByHook = true
+            if let id = event.agentSession { session.agentSessionID = id }
+            // The remote reads Claude's log format only.
+            if kind == .claude, let transcript = event.transcript { session.transcriptPath = transcript }
+            switch event.name {
+            case "start":
+                if session.agent == .none { session.agent = .idle }
             case "prompt", "tool":
                 session.agent = .working
             case "notify":
                 session.agent = .blocked
                 session.markAttentionIfBackground(reason: L("needs you"))
             case "idle":
-                // Esc fires no Stop — this is the first word after it. A
+                // Esc fires no Stop: this is the first word after it. A
                 // pending permission prompt stays what it is.
                 if session.agent == .working { session.agent = .idle }
             case "error":
@@ -383,11 +612,12 @@ final class Store: ObservableObject {
             default:
                 session.agent = .idle
                 session.markAttentionIfBackground(reason: L("is done"))
-                // A turn often ends with a push — don't wait for the poll.
+                // A turn often ends with a push: don't wait for the poll.
                 if let primary = workspace.primary, Git.mayHavePR(primary.context.branch) {
                     primary.refreshContext()
                 }
             }
+            sessionsChanged()
             return true
         }
         return false
@@ -440,20 +670,27 @@ final class Store: ObservableObject {
             window?.selectWorkspace(index: digit - 1)
             return true
         }
+        if mods == [.command, .option], key == "n" {
+            newShellInFront()
+            return true
+        }
         if mods == [.command, .shift] {
             switch key {
             case "n": newWindow()
+            case "b": toggleDetailedWings()
             default: return false
             }
             return true
         }
         guard mods == .command else { return false }
+        // The ⌘N panel picks repositories with ⌘1…6.
+        if window?.showNewSession == true, digit != nil { return false }
         if let digit {
             window?.selectTab(index: digit - 1)
             return true
         }
         switch key {
-        case "n": targetWindow().newWorkspace()
+        case "n": targetWindow().showNewSession.toggle()
         case "t": targetWindow().newTab()
         case "w": window?.closeCurrent()
         case "j": jumpToAttention()
@@ -468,10 +705,105 @@ final class Store: ObservableObject {
         return true
     }
 
+    // MARK: - Launching
+
+    /// "New Session": a worktree if asked for, then a tab there whose shell
+    /// starts the agent with the prompt. Calls back with an error message,
+    /// or nil once the session is open.
+    /// A new session from the ⌘N panel. Its card and tab appear at once;
+    /// a worktree is made meanwhile and the agent starts in it as soon as
+    /// it exists, as the tab's own program (nothing typed into a shell).
+    func launch(_ spec: SessionSpec, in window: WindowModel) {
+        let prompt = spec.prompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Claude takes the conversation id from us: resumable from the start.
+        let conversation = spec.agent == .claude ? UUID().uuidString.lowercased() : nil
+        let session = TerminalSession(
+            directory: spec.directory,
+            command: spec.agent.map {
+                Launcher.shellCommand(running: $0.command(
+                    .new(prompt: !prompt.isEmpty, id: conversation), skipPermissions: skipPermissions
+                ))
+            },
+            environment: prompt.isEmpty ? [:] : ["MUXY_PROMPT": prompt],
+            preparing: spec.branch == nil ? nil : L("Creating worktree …")
+        )
+        session.kind = spec.agent
+        session.agentSessionID = conversation
+        session.skipsPermissions = spec.agent != nil && skipPermissions
+        if spec.agent != nil { session.agent = .idle }
+        let workspace = makeWorkspace(directory: spec.directory, in: window, session: session)
+        window.select(workspace)
+        window.bringToFront()
+        guard let branch = spec.branch else { return }
+
+        #if DEBUG
+        let began = Date()
+        #endif
+        Task.detached(priority: .userInitiated) {
+            let result: Result<(path: String, problem: String?), Error>
+            do {
+                result = try .success(await Launcher.makeWorktree(from: spec.directory, branch: branch) { step in
+                    Task { @MainActor in session.updatePreparing(step) }
+                })
+            } catch {
+                result = .failure(error)
+            }
+            #if DEBUG
+            if let path = ProcessInfo.processInfo.environment["MUXY_DEBUG_TIMING"],
+               let handle = FileHandle(forWritingAtPath: path) {
+                handle.seekToEndOfFile()
+                handle.write(Data(String(format: "worktree ready after %.2fs\n", Date().timeIntervalSince(began)).utf8))
+            }
+            #endif
+            await MainActor.run {
+                switch result {
+                case let .success(made):
+                    session.begin(in: made.path)
+                    if let problem = made.problem {
+                        session.markAttentionIfBackground(reason: problem)
+                        self.window(of: workspace)?.show(problem)
+                    }
+                    if spec.autoName, !prompt.isEmpty {
+                        self.nameBranch(of: session, placeholder: branch, task: prompt, agent: spec.agent)
+                    }
+                    self.sessionsChanged()
+                case let .failure(error):
+                    session.agent = .none
+                    session.failPreparing((error as? Launcher.Failure)?.message ?? error.localizedDescription)
+                }
+            }
+        }
+    }
+
+    /// The session already runs on its placeholder branch; the real name
+    /// follows a few seconds later.
+    private func nameBranch(of session: TerminalSession, placeholder: String, task: String, agent: AgentKind?) {
+        let directory = session.cwd
+        Task.detached(priority: .utility) {
+            let wanted = BranchNamer.suggest(for: task, agent: agent, in: directory)
+            let renamed = wanted.flatMap { BranchNamer.rename(in: directory, from: placeholder, to: $0) }
+            #if DEBUG
+            if let path = ProcessInfo.processInfo.environment["MUXY_DEBUG_TIMING"],
+               let handle = FileHandle(forWritingAtPath: path) {
+                handle.seekToEndOfFile()
+                handle.write(Data("named \(directory): \(wanted ?? "nil") → \(renamed ?? "nil")\n".utf8))
+            }
+            #endif
+            guard renamed != nil else { return }
+            await MainActor.run { session.refreshContext() }
+        }
+    }
+
     // MARK: - Menu commands
 
-    func newWorkspaceInFront() { targetWindow().newWorkspace() }
+    func newWorkspaceInFront() { targetWindow().showNewSession = true }
     func newTabInFront() { targetWindow().newTab() }
+    /// ⌥⌘N: no questions, a shell in home, like any terminal's ⌘N.
+    func newShellInFront() {
+        let window = targetWindow()
+        window.showNewSession = false
+        window.newWorkspace()
+    }
 
     /// `open -a Muxy <dir>`, `Scripts/muxy`, a folder dropped on the Dock
     /// icon: a new session there. The shell a fresh launch opened on its own

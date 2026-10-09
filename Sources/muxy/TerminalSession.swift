@@ -40,9 +40,18 @@ final class TerminalSession: NSObject, ObservableObject, Identifiable {
     @Published private(set) var context: RepoContext
     @Published private(set) var status: SessionStatus = .running
     @Published var agent: AgentState = .none
+    /// Which agent runs here, once one does.
+    @Published var kind: AgentKind?
     /// Claude's conversation log, as the hook reports it — the remote
     /// renders it as a chat.
     var transcriptPath: String?
+    /// The agent's own id for its conversation: `claude --resume` and
+    /// `codex resume` take it, so a restart picks up where it was.
+    var agentSessionID: String?
+    /// muxy's hook speaks for this agent; Codex needs no screen reading.
+    var reportsByHook = false
+    /// muxy started the agent without permission prompts: resumed alike.
+    var skipsPermissions = false
     /// Something happened here while you were looking elsewhere — the
     /// single orange signal.
     @Published var needsAttention = false {
@@ -51,28 +60,67 @@ final class TerminalSession: NSObject, ObservableObject, Identifiable {
         }
     }
 
+    /// The last lines of output for the wings (see Store.refreshSnapshots).
+    @Published private(set) var snapshot: Snapshot?
+
     var onAttentionChange: (() -> Void)?
     var onContextChange: (() -> Void)?
 
     private var contextToken = 0
+    /// The surface runs an agent directly (see `init`); the first prompt
+    /// of the shell that follows it means the agent has exited.
+    private var runsAgent = false
+    private let environment: [String: String]
+    private let command: String?
 
-    init(directory: String) {
+    /// Its folder is still being made (a new worktree): the tab exists, its
+    /// surface starts with `begin(in:)`.
+    @Published private(set) var preparing: String?
+
+    /// `command` runs instead of a bare shell (an agent, followed by your
+    /// shell when it exits); `environment` reaches every process in the tab.
+    init(directory: String, command: String? = nil, environment: [String: String] = [:], preparing: String? = nil) {
         cwd = directory
         title = Paths.folderName(directory)
         context = .plain(directory)
         terminalView = DropTerminalView(frame: NSRect(x: 0, y: 0, width: 800, height: 600))
+        self.environment = environment
+        self.command = command
+        self.preparing = preparing
+        runsAgent = command != nil
         super.init()
 
         terminalView.delegate = self
-        terminalView.controller = Self.controller
+        if preparing == nil { begin(in: directory) }
+    }
+
+    /// Starts the surface: right away, or once its folder exists.
+    func begin(in directory: String) {
+        preparing = nil
+        if directory != cwd {
+            cwd = directory
+            title = Paths.folderName(directory)
+        }
         terminalView.configuration = TerminalSurfaceOptions(
             backend: .exec,
             workingDirectory: directory,
             // Every process in this terminal inherits the session id — the
             // Claude Code hook uses it to route its events back.
-            envVars: ["MUXY": "1", "MUXY_SESSION": id.uuidString]
+            envVars: environment.merging(["MUXY": "1", "MUXY_SESSION": id.uuidString]) { _, ours in ours },
+            command: command
         )
+        terminalView.controller = Self.controller
         refreshContext()
+    }
+
+    /// What the folder is waiting for now (a checkout, a bootstrap).
+    func updatePreparing(_ step: String) {
+        if preparing != nil { preparing = step }
+    }
+
+    /// The folder never came: the tab says why instead of a terminal.
+    func failPreparing(_ message: String) {
+        preparing = message
     }
 
     /// Ghostty's own logic: confirm only when foreground work is running
@@ -87,6 +135,30 @@ final class TerminalSession: NSObject, ObservableObject, Identifiable {
     func terminate() {
         terminalView.setSurfaceVisible(false)
         terminalView.removeFromSuperview()
+    }
+
+    /// Reads the active area — background surfaces keep their VT state, so
+    /// this works without rendering. Publishes only real changes.
+    func refreshSnapshot() {
+        guard let surface = terminalView.currentSurface,
+              let text = surface.readText(screen: false) else { return }
+        let fresh = Snapshot.make(from: text, columns: Int(surface.gridSize.columns))
+        #if DEBUG
+        SnapshotLog.write(session: self, raw: text, snapshot: fresh)
+        #endif
+        if fresh != snapshot { snapshot = fresh }
+        if kind == .codex, !reportsByHook { followCodex(fresh) }
+    }
+
+    /// Codex reports no turns to muxy (yet): its own progress line is the
+    /// signal. Present means working; gone means the turn ended.
+    private func followCodex(_ snapshot: Snapshot) {
+        if snapshot.activity != nil {
+            if agent != .working { agent = .working }
+        } else if agent == .working {
+            agent = .idle
+            markAttentionIfBackground(reason: L("is done"))
+        }
     }
 
     /// The session came to the front.
@@ -104,7 +176,7 @@ final class TerminalSession: NSObject, ObservableObject, Identifiable {
 
     /// Tab label: what runs here, not the shell's noisy title.
     var tabTitle: String {
-        if agent != .none { return "Claude" }
+        if agent != .none { return kind?.name ?? "Agent" }
         let clean = Self.clean(title)
         // An idle shell titles itself with its path — the folder says it shorter.
         if clean.isEmpty || clean.hasPrefix("~") || clean.hasPrefix("/") {
@@ -118,7 +190,7 @@ final class TerminalSession: NSObject, ObservableObject, Identifiable {
     var agentTitle: String? {
         guard agent != .none else { return nil }
         let clean = Self.clean(title)
-        if clean.isEmpty || clean == "Claude Code" || clean.hasPrefix("claude") || clean.hasPrefix("~")
+        if clean.isEmpty || clean == "Claude Code" || AgentKind(commandLine: clean) != nil || clean.hasPrefix("~")
             || clean.hasPrefix("/") { return nil }
         return clean
     }
@@ -143,6 +215,8 @@ final class TerminalSession: NSObject, ObservableObject, Identifiable {
                 // Keep the known PR while it's the same branch.
                 if context.branch == self.context.branch {
                     context.pr = self.context.pr
+                    context.prState = self.context.prState
+                    context.prHead = self.context.prHead
                     context.checks = self.context.checks
                     context.isDraft = self.context.isDraft
                     context.mergeability = self.context.mergeability
@@ -151,26 +225,55 @@ final class TerminalSession: NSObject, ObservableObject, Identifiable {
                 self.onContextChange?()
             }
             guard includePR, Git.mayHavePR(resolved.branch) else { return }
-            let pr = Git.pullRequest(in: directory)
+            let lookup = Git.pullRequest(in: directory)
             await MainActor.run {
                 guard token == self.contextToken else { return }
-                let before = self.context.checks
+                let pr: Git.PullRequest?
+                switch lookup {
+                // gh couldn't tell: what was known stays, no flicker.
+                case .unknown: return
+                case .none: pr = nil
+                case let .found(found): pr = found
+                }
+                let before = self.context
                 self.context.pr = pr?.number
+                self.context.prState = pr?.state ?? .open
+                self.context.prHead = pr?.head
                 self.context.checks = pr?.checks ?? .none
                 self.context.isDraft = pr?.isDraft ?? false
-                self.context.mergeability = pr?.mergeability ?? .unknown
+                // Still being computed after a push: the last answer stands.
+                let mergeability = pr?.mergeability ?? .unknown
+                self.context.mergeability = mergeability == .unknown && before.pr == pr?.number
+                    ? before.mergeability : mergeability
                 self.onContextChange?()
-                if before == .pending, let number = pr?.number {
+                guard let number = pr?.number else { return }
+                let workspace = Store.shared.workspace(of: self)
+                if before.checks == .pending, before.pr == number {
                     switch self.context.checks {
                     case .passed: self.markAttentionIfBackground(reason: L("· #%d passed", number))
                     // Red while something is fixing it is expected — stay quiet.
-                    case .failed where Store.shared.workspace(of: self)?.isBusy != true:
+                    case .failed where workspace?.isBeingFixed != true:
                         self.markAttentionIfBackground(reason: L("· #%d failed", number))
                     default: break
                     }
                 }
+                if self.context.prState == .merged, let workspace {
+                    Store.shared.pullRequestMerged(in: workspace)
+                }
             }
         }
+    }
+}
+
+extension TerminalSession {
+    func agentExited() {
+        agent = .none
+        kind = nil
+        transcriptPath = nil
+        agentSessionID = nil
+        reportsByHook = false
+        skipsPermissions = false
+        Store.shared.sessionsChanged()
     }
 }
 
@@ -179,13 +282,22 @@ extension TerminalSession: TerminalSurfaceTitleDelegate {
         let clean = Paths.abbreviate(title)
         // Shell integration titles a running command with its command line
         // — the cheapest way to notice an agent started by hand.
-        if agent == .none, clean.lowercased().hasPrefix("claude") { agent = .idle }
+        if agent == .none, let detected = AgentKind(commandLine: clean) {
+            kind = detected
+            agent = .idle
+        }
         self.title = clean
     }
 }
 
 extension TerminalSession: TerminalSurfacePwdDelegate {
     func terminalDidChangeWorkingDirectory(_ path: String) {
+        // Agents report no directory; the shell after one does, on its
+        // first prompt: the agent has exited.
+        if runsAgent {
+            runsAgent = false
+            agentExited()
+        }
         guard path != cwd else { return }
         cwd = path
         refreshContext()
@@ -196,8 +308,7 @@ extension TerminalSession: TerminalSurfaceCommandFinishedDelegate {
     func terminalDidFinishCommand(exitCode _: Int?, durationNanos _: UInt64) {
         // Commands inside claude never reach this shell — a finished
         // command here means claude itself exited.
-        agent = .none
-        transcriptPath = nil
+        agentExited()
     }
 }
 

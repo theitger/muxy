@@ -2,7 +2,7 @@
 
 export type Agent = 'none' | 'idle' | 'working' | 'blocked' | 'failed'
 
-export type PRStatus = 'none' | 'running' | 'fixing' | 'failed' | 'conflicts' | 'draft' | 'waiting' | 'ready'
+export type PRStatus = 'none' | 'running' | 'fixing' | 'failed' | 'conflicts' | 'draft' | 'waiting' | 'ready' | 'merged' | 'closed'
 
 export type Tab = {
   id: string

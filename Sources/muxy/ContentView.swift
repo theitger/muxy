@@ -36,6 +36,9 @@ struct WindowRoot: View {
                 model.claimed = true
                 windowID = model.id
                 if model.workspaces.isEmpty {
+                    store.restoreSessions(into: model)
+                }
+                if model.workspaces.isEmpty {
                     model.newWorkspace()
                     model.workspaces.first?.isLaunchDefault = true
                 }
@@ -51,32 +54,42 @@ struct ContentView: View {
     @ObservedObject var window: WindowModel
 
     var body: some View {
-        HStack(spacing: 0) {
+        Group {
             if store.sidebarVisible {
-                HStack(spacing: 0) {
-                    SidebarView(store: store, window: window)
-                    SidebarHandle(store: store)
+                stage
+            } else {
+                // Wings away: the terminal fills the window, like Ghostty.
+                VStack(spacing: 0) {
+                    if let workspace = window.selectedWorkspace {
+                        TabBarView(store: store, window: window, workspace: workspace)
+                        WorkspaceContent(workspace: workspace)
+                    } else {
+                        EmptyState()
+                    }
                 }
-                .background(Theme.sidebar)
-                .transition(.move(edge: .leading))
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-            VStack(spacing: 0) {
-                if let workspace = window.selectedWorkspace {
-                    TabBarView(store: store, window: window, workspace: workspace)
-                    WorkspaceContent(workspace: workspace)
-                } else {
-                    EmptyState()
-                }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .overlay(alignment: .top) {
             if window.showSwitcher {
                 ZStack(alignment: .top) {
-                    Color.black.opacity(0.06)
+                    Color.black.opacity(0.32)
                         .contentShape(Rectangle())
                         .onTapGesture { window.showSwitcher = false }
                     SwitcherView(store: store, window: window)
+                        .padding(.top, 90)
+                        .transition(.scale(scale: 0.97, anchor: .top).combined(with: .offset(y: 8)))
+                }
+                .transition(.opacity)
+            }
+        }
+        .overlay(alignment: .top) {
+            if window.showNewSession {
+                ZStack(alignment: .top) {
+                    Color.black.opacity(0.32)
+                        .contentShape(Rectangle())
+                        .onTapGesture { window.showNewSession = false }
+                    NewSessionView(store: store, window: window)
                         .padding(.top, 90)
                         .transition(.scale(scale: 0.97, anchor: .top).combined(with: .offset(y: 8)))
                 }
@@ -101,9 +114,78 @@ struct ContentView: View {
         }
         .animation(Theme.ease, value: window.toast)
         .animation(Theme.ease, value: window.showSwitcher)
+        .animation(Theme.ease, value: window.showNewSession)
         .animation(.easeOut(duration: 0.2), value: window.attentionWorkspaces.map(\.id))
         .background(WindowConfigurator(model: window))
         .ignoresSafeArea()
+    }
+
+    /// Wings out: a title bar across, the wings, the session in front as a card.
+    private var stage: some View {
+        StageLayout(wingsWidth: store.sidebarWidth) {
+            StageTopBar(store: store, window: window)
+        } wings: {
+            WingsView(store: store, window: window)
+                .overlay(alignment: .trailing) { SidebarHandle(store: store) }
+        } stage: {
+            VStack(spacing: 0) {
+                if let workspace = window.selectedWorkspace {
+                    TabBarView(store: store, window: window, workspace: workspace, onStage: true)
+                    WorkspaceContent(workspace: workspace, cornerRadius: StageMetrics.radius)
+                        // What a session fades in over when it takes the stage.
+                        .background(
+                            UnevenRoundedRectangle(
+                                bottomLeadingRadius: StageMetrics.radius,
+                                bottomTrailingRadius: StageMetrics.radius, style: .continuous
+                            )
+                            .fill(Theme.terminal)
+                        )
+                } else {
+                    EmptyState()
+                        .clipShape(RoundedRectangle(cornerRadius: StageMetrics.radius, style: .continuous))
+                }
+            }
+        }
+    }
+}
+
+/// Across the top with the wings out: the window's controls, what is on
+/// stage, who else wants you, and a new session.
+private struct StageTopBar: View {
+    @ObservedObject var store: Store
+    @ObservedObject var window: WindowModel
+
+    var body: some View {
+        HStack(spacing: 4) {
+            // The traffic lights.
+            Color.clear.frame(width: 72)
+            IconButton(symbol: "sidebar.left", help: L("Sidebar (⌘B)")) {
+                store.toggleSidebar()
+            }
+            IconButton(
+                symbol: store.detailedWings ? "rectangle.grid.1x2" : "list.bullet",
+                help: store.detailedWings ? L("Simple Sessions") : L("Detailed Sessions")
+            ) {
+                store.toggleDetailedWings()
+            }
+            Spacer(minLength: 12)
+            if let workspace = window.selectedWorkspace {
+                StageTitle(
+                    title: workspace.title,
+                    place: [workspace.context.repo, workspace.subtitle].compactMap { $0 }.joined(separator: " · "),
+                    pr: workspace.context.pr,
+                    prStatus: workspace.prStatus
+                )
+            }
+            Spacer(minLength: 12)
+            HStack(spacing: 8) {
+                AttentionPill(store: store, window: window)
+                TitleBarButton(symbol: "plus", title: L("New Session"), keys: "⌘N") {
+                    window.showNewSession = true
+                }
+            }
+        }
+        .padding(.trailing, 10)
     }
 }
 
@@ -153,13 +235,45 @@ private struct SidebarHandle: View {
 /// The active tab's terminal for one workspace.
 private struct WorkspaceContent: View {
     @ObservedObject var workspace: Workspace
+    var cornerRadius: CGFloat = 0
 
     var body: some View {
         if let session = workspace.selectedSession {
-            TerminalHostView(session: session)
+            TerminalHostView(session: session, cornerRadius: cornerRadius)
                 .id(session.id)
+                .overlay { Preparing(session: session, cornerRadius: cornerRadius) }
         } else {
             Color.clear
+        }
+    }
+}
+
+/// A tab whose folder is still being made: the terminal's own background
+/// and one quiet line, until the agent takes over.
+private struct Preparing: View {
+    @ObservedObject var session: TerminalSession
+    var cornerRadius: CGFloat
+
+    var body: some View {
+        if let text = session.preparing {
+            HStack(spacing: 8) {
+                if session.agent != .none {
+                    ProgressView().controlSize(.small)
+                }
+                Text(text)
+                    .font(Theme.mono(size: 12.5))
+                    .foregroundStyle(session.agent != .none ? Theme.textDim : Theme.redTone.strong)
+                    .textSelection(.enabled)
+            }
+            .padding(24)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .background(
+                UnevenRoundedRectangle(
+                    bottomLeadingRadius: cornerRadius, bottomTrailingRadius: cornerRadius, style: .continuous
+                )
+                .fill(Theme.terminal)
+            )
+            .transition(.opacity)
         }
     }
 }
