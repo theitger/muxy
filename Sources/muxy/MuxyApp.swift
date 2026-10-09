@@ -51,6 +51,10 @@ struct MuxyApp: App {
             where name == "CLAUDECODE" || name == "CLAUDE_PID" || name.hasPrefix("CLAUDE_CODE_") {
             unsetenv(name)
         }
+        // Tabs run your login shell, not whatever SHELL muxy inherited (a
+        // zsh from the terminal or agent that started it): libghostty picks
+        // SHELL first.
+        setenv("SHELL", Paths.userShell, 1)
 
         // Never restore windows across launches.
         UserDefaults.standard.register(defaults: ["NSQuitAlwaysKeepsWindows": false])
