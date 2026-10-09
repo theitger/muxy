@@ -130,6 +130,8 @@ enum Launcher {
     /// Where new branches start: the recipe's base (as origin has it, when
     /// it does), else origin's default branch, as last fetched: starting
     /// never waits on the network (`prefetch` runs while ⌘N is open).
+    /// Without either, the main checkout's branch (or commit). Never "HEAD":
+    /// read in a worktree, that would name the worktree's own commit.
     static func startPoint(in root: String, recipe: WorktreeRecipe?) -> String {
         let git = "/usr/bin/git"
         if let base = recipe?.base {
@@ -140,7 +142,10 @@ enum Launcher {
         }
         guard let remote = Shell.run(git, ["rev-parse", "--abbrev-ref", "origin/HEAD"], in: root),
               remote.hasPrefix("origin/")
-        else { return "HEAD" }
+        else {
+            return Shell.run(git, ["symbolic-ref", "--quiet", "--short", "HEAD"], in: root)
+                ?? Shell.run(git, ["rev-parse", "--verify", "HEAD"], in: root) ?? "HEAD"
+        }
         return remote
     }
 
