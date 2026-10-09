@@ -9,6 +9,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         if !Onboarding.isDue { Notifier.requestPermission() }
         AgentSetup.shared.maintain()
         Onboarding.showIfDue()
+        Updater.shared.start()
     }
 
     /// Like Ghostty with `quit-after-last-window-closed = false`: closing the
@@ -18,7 +19,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     }
 
     func applicationShouldTerminate(_: NSApplication) -> NSApplication.TerminateReply {
-        Store.shared.shouldQuit() ? .terminateNow : .terminateCancel
+        // "Install and Relaunch" already said yes, and sessions come back.
+        if Updater.shared.installing, Store.shared.restoreOnLaunch {
+            Store.shared.saveSessions()
+            return .terminateNow
+        }
+        return Store.shared.shouldQuit() ? .terminateNow : .terminateCancel
     }
 
     /// Banner click → that session.
@@ -92,6 +98,9 @@ struct MuxyApp: App {
         // Shortcuts are handled by the key monitor in Store (the Ghostty
         // surface swallows menu key equivalents); the menus list them.
         .commands {
+            CommandGroup(after: .appInfo) {
+                CheckForUpdatesButton()
+            }
             CommandGroup(replacing: .newItem) {
                 Button(L("New Session")) { store.newWorkspaceInFront() }
                     .keyboardShortcut("n", modifiers: .command)

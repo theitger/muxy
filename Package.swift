@@ -14,7 +14,8 @@ let package = Package(
         .executableTarget(
             name: "muxy",
             dependencies: [
-                .product(name: "GhosttyTerminal", package: "libghostty-spm")
+                .product(name: "GhosttyTerminal", package: "libghostty-spm"),
+                "Sparkle"
             ],
             path: "Sources/muxy"
         ),
@@ -22,6 +23,12 @@ let package = Package(
             name: "muxyTests",
             dependencies: ["muxy"],
             path: "Tests/muxyTests"
+        ),
+        // Self-updates. Vendored for the same reason as libghostty;
+        // Scripts/fetch-sparkle.sh downloads the pinned release.
+        .binaryTarget(
+            name: "Sparkle",
+            path: "Vendor/Sparkle/Sparkle.xcframework"
         )
     ]
 )

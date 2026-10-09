@@ -32,6 +32,10 @@ struct SettingsView: View {
             RemoteSettings()
             Divider().padding(.vertical, 6)
             Button(L("Set Up muxy Again…")) { Onboarding.show() }
+            if Updater.shared.available {
+                Divider().padding(.vertical, 6)
+                UpdateSettings()
+            }
         }
         .padding(20)
         .frame(width: 440)

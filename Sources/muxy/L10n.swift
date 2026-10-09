@@ -229,5 +229,9 @@ private enum German {
         "Keep agents working while you're away": "Lass Agents weiterarbeiten, während du weg bist",
         "Optional. You can change all of this later in Settings.": "Optional. Du kannst das alles später in den Einstellungen ändern.",
         "Below %d %% battery the Mac may sleep again.": "Unter %d %% Akku darf der Mac wieder schlafen.",
+        // Updates
+        "Check for Updates…": "Nach Updates suchen …",
+        "Check for updates automatically": "Automatisch nach Updates suchen",
+        "Once a day. Muxy %@ asks before it installs anything.": "Einmal am Tag. Muxy %@ fragt, bevor es etwas installiert.",
     ]
 }
