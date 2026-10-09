@@ -65,6 +65,8 @@ final class TerminalSession: NSObject, ObservableObject, Identifiable {
 
     /// The last lines of output for the wings (see Store.refreshSnapshots).
     @Published private(set) var snapshot: Snapshot?
+    /// ⌘F: the open find field (see TerminalSearch).
+    @Published var search: TerminalSearch?
 
     var onAttentionChange: (() -> Void)?
     var onContextChange: (() -> Void)?

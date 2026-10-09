@@ -114,6 +114,13 @@ struct MuxyApp: App {
                 Button(L("Close Tab")) { store.activeWindow?.closeCurrent() }
                     .keyboardShortcut("w", modifiers: .command)
             }
+            CommandGroup(after: .pasteboard) {
+                Divider()
+                Button(L("Find in Terminal…")) {
+                    store.activeWindow?.selectedWorkspace?.selectedSession?.startSearch()
+                }
+                .keyboardShortcut("f", modifiers: .command)
+            }
             CommandMenu(L("Sessions")) {
                 Button(L("Search…")) { store.activeWindow?.showSwitcher.toggle() }
                     .keyboardShortcut("k", modifiers: .command)

@@ -57,7 +57,9 @@ private enum TerminalCallbacks {
             bridge.handleAction(action)
         }
 
-        return false
+        // muxy patch: the host shows the search UI. Unhandled, Ghostty
+        // would pass the key that asked for it on to the shell.
+        return action.tag == GHOSTTY_ACTION_START_SEARCH
     }
 
     static func closeSurface(

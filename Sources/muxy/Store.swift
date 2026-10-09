@@ -679,6 +679,10 @@ final class Store: ObservableObject {
             switch key {
             case "n": newWindow()
             case "b": toggleDetailedWings()
+            // Without a search open, ⇧⌘G stays the terminal's.
+            case "g":
+                guard let search = window?.selectedWorkspace?.selectedSession?.search else { return false }
+                search.previous()
             default: return false
             }
             return true
@@ -697,6 +701,14 @@ final class Store: ObservableObject {
         case "j": jumpToAttention()
         case "k": window?.showSwitcher.toggle()
         case "b": toggleSidebar()
+        case "f":
+            guard window?.showNewSession != true, window?.showSwitcher != true,
+                  let session = window?.selectedWorkspace?.selectedSession,
+                  session.terminalView.currentSurface != nil else { return false }
+            session.startSearch()
+        case "g":
+            guard let search = window?.selectedWorkspace?.selectedSession?.search else { return false }
+            search.next()
         // Ghostty binds ⌘, to its own config — muxy's Settings win.
         case ",": openSettings?()
         // Ghostty binds ⌘Q to its own quit, which never reaches AppKit.

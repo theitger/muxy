@@ -242,6 +242,7 @@ private struct WorkspaceContent: View {
             TerminalHostView(session: session, cornerRadius: cornerRadius)
                 .id(session.id)
                 .overlay { Preparing(session: session, cornerRadius: cornerRadius) }
+                .overlay(alignment: .topTrailing) { SearchOverlay(session: session) }
         } else {
             Color.clear
         }

@@ -243,5 +243,16 @@ private enum German {
         "%@ points to %@. Install replaces the link.": "%@ zeigt auf %@. Installieren ersetzt den Link.",
         "This build doesn't include the tool.": "Dieser Build enthält das Tool nicht.",
         "Couldn't install: %@": "Installation fehlgeschlagen: %@",
+        // Terminal search
+        "Find in terminal": "Im Terminal suchen",
+        "No matches": "Keine Treffer",
+        "Matches: %@": "Treffer: %@",
+        "Next Match (⌘G)": "Nächster Treffer (⌘G)",
+        "Next Match": "Nächster Treffer",
+        "Previous Match (⇧⌘G)": "Vorheriger Treffer (⇧⌘G)",
+        "Previous Match": "Vorheriger Treffer",
+        "Close (esc)": "Schließen (esc)",
+        "Close Search": "Suche schließen",
+        "Find in Terminal…": "Im Terminal suchen…",
     ]
 }
