@@ -118,8 +118,15 @@ enum Git {
              "number,state,headRefOid,isDraft,mergeable,mergeStateStatus,reviewDecision,statusCheckRollup"],
             in: directory, timeout: 30
         )
+        return lookup(from: result)
+    }
+
+    /// What `gh pr view --json …` answered, read.
+    static func lookup(from result: Shell.Result) -> Lookup {
         guard result.status == 0 else {
-            return result.error.contains("no pull requests found") ? .none : .unknown
+            // "No pull requests found for branch …" (gh 2.101; older ones
+            // said it in lower case).
+            return result.error.range(of: "no pull requests found", options: .caseInsensitive) != nil ? .none : .unknown
         }
         guard let json = try? JSONSerialization.jsonObject(with: Data(result.output.utf8)) as? [String: Any],
               let number = json["number"] as? Int
