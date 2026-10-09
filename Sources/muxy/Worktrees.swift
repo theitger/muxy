@@ -33,7 +33,8 @@ struct WorktreeRecipe {
     var disposable: [String] = []
 
     static let file = ".wtconfig"
-    /// Ports with their own start live here (direnv loads it, git ignores it).
+    /// Ports with their own start live here (direnv loads it, muxy keeps it
+    /// out of git).
     static let portsFile = ".wt.env"
 
     static func load(root: String) -> WorktreeRecipe? {
@@ -95,6 +96,8 @@ enum Worktrees {
             retarget(moved, in: file)
             let own = values.filter { name, _ in recipe.ports.contains { $0.name == name && $0.start != nil } }
             if !own.isEmpty {
+                // Not the repository's: never committed, never "work".
+                Launcher.exclude("/" + WorktreeRecipe.portsFile, in: root)
                 write(own, into: (path as NSString).appendingPathComponent(WorktreeRecipe.portsFile))
             }
         }
@@ -127,7 +130,8 @@ enum Worktrees {
         // -z: paths unquoted (spaces and all), entries end in NUL.
         guard let status = Shell.run(git, ["status", "--porcelain", "-z", "--untracked-files=all"], in: checkout)
         else { return false }
-        let disposable = recipe?.disposable ?? []
+        // muxy's own ports file, even where git doesn't ignore it yet.
+        let disposable = (recipe?.disposable ?? []) + [WorktreeRecipe.portsFile]
         // "XY path". Only untracked files ("??") can be disposable: a change
         // to a tracked file is work, wherever it is. (The first entry comes
         // trimmed: " M a" reads "M a", still no "??".)

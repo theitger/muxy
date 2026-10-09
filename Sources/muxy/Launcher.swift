@@ -54,7 +54,7 @@ enum Launcher {
         guard let root = mainCheckout(of: directory) else {
             throw Failure(message: L("Not a git repository."))
         }
-        excludeWorktrees(in: root)
+        exclude("/\(worktreesFolder)/", in: root)
         let recipe = WorktreeRecipe.load(root: root)
         let git = "/usr/bin/git"
         let exists = Shell.execute(git, ["rev-parse", "--verify", "--quiet", "refs/heads/\(branch)"], in: root).status == 0
@@ -114,10 +114,10 @@ enum Launcher {
         return path
     }
 
-    /// Adds `/.worktrees/` to the repository's local ignore list, once.
-    private static func excludeWorktrees(in root: String) {
+    /// Adds `line` (`/.worktrees/`, …) to the repository's local ignore
+    /// list, once. Worktrees share it.
+    static func exclude(_ line: String, in root: String) {
         let exclude = (root as NSString).appendingPathComponent(".git/info/exclude")
-        let line = "/\(worktreesFolder)/"
         let current = (try? String(contentsOfFile: exclude, encoding: .utf8)) ?? ""
         guard !current.split(separator: "\n").contains(Substring(line)) else { return }
         try? FileManager.default.createDirectory(
