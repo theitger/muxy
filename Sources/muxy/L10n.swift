@@ -163,5 +163,8 @@ private enum German {
         "No network connection.": "Keine Netzwerkverbindung.",
         "Language": "Sprache",
         "Some menus switch after the next launch.": "Manche Menüs wechseln erst nach einem Neustart.",
+        "Setting up: %@": "Richte ein: %@",
+        "%@ failed.": "%@ fehlgeschlagen.",
+        "Setup failed, the session runs without it.": "Setup fehlgeschlagen, die Session läuft ohne.",
     ]
 }

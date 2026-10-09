@@ -44,8 +44,10 @@ enum Launcher {
     /// beside it). Kept out of git by `.git/info/exclude`.
     static let worktreesFolder = ".worktrees"
 
-    /// A new worktree on `branch`. An existing branch is checked out as is.
-    /// Blocking; call off the main thread.
+    /// A ready worktree on `branch`: the repository's spare when one is
+    /// waiting (see Spares), else a new one, set up after `.wtconfig`. An
+    /// existing branch is checked out as is. `problem`: set up, but its
+    /// bootstrap failed. Blocking; call off the main thread.
     static func makeWorktree(
         from directory: String, branch: String, progress: @escaping @Sendable (String) -> Void
     ) async throws -> (path: String, problem: String?) {
@@ -53,8 +55,29 @@ enum Launcher {
             throw Failure(message: L("Not a git repository."))
         }
         excludeWorktrees(in: root)
+        let recipe = WorktreeRecipe.load(root: root)
         let git = "/usr/bin/git"
         let exists = Shell.execute(git, ["rev-parse", "--verify", "--quiet", "refs/heads/\(branch)"], in: root).status == 0
+        defer { Spares.shared.prepare(root: root) }
+
+        if !exists, let path = await Spares.shared.take(root: root) {
+            var problem: String?
+            let start = startPoint(in: root, recipe: recipe)
+            // Made a while ago: brought up to date, its setup redone.
+            if Shell.run(git, ["rev-parse", "HEAD"], in: path) != Shell.run(git, ["rev-parse", start], in: root) {
+                _ = Shell.execute(git, ["reset", "--hard", "--quiet", start], in: path)
+                if let recipe, recipe.bootstrap != nil {
+                    var again = recipe
+                    again.copies = []
+                    again.env = nil
+                    problem = (try? Worktrees.setUp(path, root: root, recipe: again, progress: progress)) == nil
+                        ? L("Setup failed, the session runs without it.") : nil
+                }
+            }
+            if Shell.execute(git, ["switch", "--quiet", "-c", branch], in: path).status == 0 {
+                return (path, problem)
+            }
+        }
 
         let path = freeFolder(in: root, named: branch.replacingOccurrences(of: "/", with: "-"))
         let result: Shell.Result
@@ -64,13 +87,19 @@ enum Launcher {
             // --no-track: the new branch is its own, not a follower of main
             // (and it counts as unpushed until the agent pushes it).
             result = Shell.execute(
-                git, ["worktree", "add", "--no-track", "-b", branch, path, startPoint(in: root)], in: root
+                git, ["worktree", "add", "--no-track", "-b", branch, path, startPoint(in: root, recipe: recipe)], in: root
             )
         }
         guard result.status == 0 else {
             throw Failure(message: result.error.isEmpty ? L("git worktree add failed.") : result.error)
         }
-        return (path, nil)
+        guard let recipe else { return (path, nil) }
+        do {
+            try Worktrees.setUp(path, root: root, recipe: recipe, progress: progress)
+            return (path, nil)
+        } catch {
+            return (path, (error as? Failure)?.message ?? error.localizedDescription)
+        }
     }
 
     /// `<repo>/.worktrees/<name>`, or `<name>-2`, … when taken.
@@ -98,10 +127,17 @@ enum Launcher {
         try? (current + prefix + line + "\n").write(toFile: exclude, atomically: true, encoding: .utf8)
     }
 
-    /// Where new branches start: origin's default branch, as last fetched:
-    /// starting never waits on the network (`prefetch` runs while ⌘N is open).
-    static func startPoint(in root: String) -> String {
+    /// Where new branches start: the recipe's base (as origin has it, when
+    /// it does), else origin's default branch, as last fetched: starting
+    /// never waits on the network (`prefetch` runs while ⌘N is open).
+    static func startPoint(in root: String, recipe: WorktreeRecipe?) -> String {
         let git = "/usr/bin/git"
+        if let base = recipe?.base {
+            for candidate in ["origin/\(base)", base]
+                where Shell.execute(git, ["rev-parse", "--verify", "--quiet", candidate], in: root).status == 0 {
+                return candidate
+            }
+        }
         guard let remote = Shell.run(git, ["rev-parse", "--abbrev-ref", "origin/HEAD"], in: root),
               remote.hasPrefix("origin/")
         else { return "HEAD" }
@@ -109,15 +145,17 @@ enum Launcher {
     }
 
     /// Fetches the branch new worktrees start from in the background, so a
-    /// worktree started a moment later begins from what is merged now.
-    static func prefetch(_ directory: String) {
+    /// worktree started a moment later begins from what is merged now; then
+    /// readies the repository's spare worktree.
+    static func prefetch(_ directory: String, spare: Bool) {
         Task.detached(priority: .utility) {
             guard let root = mainCheckout(of: directory) else { return }
-            let start = startPoint(in: root)
+            let start = startPoint(in: root, recipe: WorktreeRecipe.load(root: root))
             if start.hasPrefix("origin/") {
                 _ = Shell.execute("/usr/bin/git", ["fetch", "--quiet", "origin", String(start.dropFirst("origin/".count))],
                                   in: root, timeout: 20)
             }
+            if spare { Spares.shared.prepare(root: root) }
         }
     }
 }

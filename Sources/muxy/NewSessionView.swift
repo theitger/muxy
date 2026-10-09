@@ -72,7 +72,7 @@ struct NewSessionView: View {
         .background(shortcuts)
         .onAppear(perform: prepare)
         .onChange(of: repo?.path, initial: true) { _, path in
-            if let path { Launcher.prefetch(path) }
+            if let path { Launcher.prefetch(path, spare: useWorktree) }
         }
         .onExitCommand { window.showNewSession = false }
     }
