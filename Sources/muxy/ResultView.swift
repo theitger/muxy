@@ -156,10 +156,23 @@ struct ResultOverlay: View {
     var body: some View {
         ZStack(alignment: .topTrailing) {
             if results.isPanelOpen(in: window) {
-                ResultPanel(window: window, workspace: workspace)
-                    .padding(10)
-                    .transition(.move(edge: .trailing).combined(with: .opacity))
+                let session = results.source(in: workspace)
+                ResultPanel(
+                    result: session.flatMap { results.bySession[$0.id] },
+                    building: session.map { results.building.contains($0.id) } ?? false,
+                    hasAgent: session != nil,
+                    livePR: workspace.context.pr,
+                    liveChecks: workspace.context.checks,
+                    refresh: { if let session { results.refresh(session) } },
+                    close: { results.closePanel(in: window) }
+                )
+                .padding(10)
+                .transition(.move(edge: .trailing).combined(with: .opacity))
             }
+        }
+        // The PR poll moved the checks on: their names follow.
+        .onChange(of: workspace.context.checks) {
+            if results.isPanelOpen(in: window), let session = results.source(in: workspace) { results.refresh(session) }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
         // Closed, the terminal underneath gets every click.
@@ -167,14 +180,16 @@ struct ResultOverlay: View {
     }
 }
 
-private struct ResultPanel: View {
-    @ObservedObject var window: WindowModel
-    @ObservedObject var workspace: Workspace
-    @ObservedObject private var results = Results.shared
-
-    private var session: TerminalSession? { results.source(in: workspace) }
-    private var result: SessionResult? { session.flatMap { results.bySession[$0.id] } }
-    private var building: Bool { session.map { results.building.contains($0.id) } ?? false }
+/// The panel itself, drawn from plain values like the wings' cards.
+struct ResultPanel: View {
+    let result: SessionResult?
+    let building: Bool
+    let hasAgent: Bool
+    /// The session's PR and its checks as the PR poll knows them now.
+    var livePR: Int?
+    var liveChecks: Checks = .none
+    var refresh: () -> Void = {}
+    var close: () -> Void = {}
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -196,10 +211,6 @@ private struct ResultPanel: View {
                 .strokeBorder(Theme.textPrimary.opacity(0.12), lineWidth: 1)
         )
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-        // The PR poll moved the checks on: names follow.
-        .onChange(of: workspace.context.checks) {
-            if let session { results.refresh(session) }
-        }
     }
 
     private var header: some View {
@@ -211,15 +222,11 @@ private struct ResultPanel: View {
                 ProgressView().controlSize(.mini).scaleEffect(0.8).frame(width: 12, height: 12)
             }
             Spacer()
-            IconButton(symbol: "arrow.clockwise", help: L("Refresh result")) {
-                if let session { results.refresh(session) }
-            }
-            .accessibilityLabel(L("Refresh result"))
-            .disabled(session == nil)
-            IconButton(symbol: "xmark", help: L("Close result (⌘I)")) {
-                results.closePanel(in: window)
-            }
-            .accessibilityLabel(L("Close result"))
+            IconButton(symbol: "arrow.clockwise", help: L("Refresh result"), action: refresh)
+                .accessibilityLabel(L("Refresh result"))
+                .disabled(!hasAgent)
+            IconButton(symbol: "xmark", help: L("Close result (⌘I)"), action: close)
+                .accessibilityLabel(L("Close result"))
         }
         .padding(.leading, 14)
         .padding(.trailing, 6)
@@ -253,7 +260,7 @@ private struct ResultPanel: View {
                 .font(.system(size: 12))
                 .foregroundStyle(Theme.textDim)
         } else {
-            Text(session == nil
+            Text(!hasAgent
                 ? L("No agent runs in this session.")
                 : L("No result yet. It appears when the agent finishes a turn."))
                 .font(.system(size: 12))
@@ -314,7 +321,7 @@ private struct ResultPanel: View {
         if let pr {
             row(icon: { Image(systemName: "arrow.triangle.pull").foregroundStyle(Theme.textDim) }, prText(pr))
             // Checks as the PR poll knows them, names from the last build.
-            let checks = workspace.context.pr == pr.number ? workspace.context.checks : pr.checks
+            let checks = livePR == pr.number ? liveChecks : pr.checks
             row(
                 icon: { ChecksIcon(checks: checks, size: 13) },
                 ChecksIcon.label(checks),
