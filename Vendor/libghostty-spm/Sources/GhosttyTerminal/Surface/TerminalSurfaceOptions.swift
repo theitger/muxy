@@ -17,6 +17,9 @@ public struct TerminalSurfaceOptions: Sendable {
     /// embedding hosts tag a surface (e.g. `MYAPP_PANE=<uuid>`) and correlate
     /// externally observed processes back to it.
     public var envVars: [String: String]
+    /// muxy patch: what the surface runs instead of the configured shell
+    /// (`ghostty_surface_config_s.command`, Ghostty's `command` syntax).
+    public var command: String?
     public var context: TerminalSurfaceContext
 
     public init(
@@ -24,12 +27,14 @@ public struct TerminalSurfaceOptions: Sendable {
         fontSize: Float? = nil,
         workingDirectory: String? = nil,
         envVars: [String: String] = [:],
+        command: String? = nil,
         context: TerminalSurfaceContext = .window
     ) {
         self.backend = backend
         self.fontSize = fontSize
         self.workingDirectory = workingDirectory
         self.envVars = envVars
+        self.command = command
         self.context = context
     }
 
@@ -37,6 +42,7 @@ public struct TerminalSurfaceOptions: Sendable {
         fontSize == other.fontSize
             && workingDirectory == other.workingDirectory
             && envVars == other.envVars
+            && command == other.command
             && context == other.context
             && backend.isEquivalent(to: other.backend)
     }

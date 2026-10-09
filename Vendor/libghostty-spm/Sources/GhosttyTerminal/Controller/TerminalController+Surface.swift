@@ -33,6 +33,11 @@ extension TerminalController {
         return withEnvVarEntries(configuration.envVars) { entries, count in
             surfaceConfig.env_vars = entries
             surfaceConfig.env_var_count = count
+            // muxy patch: an explicit command, valid like the others only
+            // until `ghostty_surface_new` has copied it.
+            let command = configuration.command.map { strdup($0) }
+            defer { command.map { free($0) } }
+            if let command { surfaceConfig.command = UnsafePointer(command) }
             return finalizeSurface(
                 app: app,
                 bridge: bridge,
