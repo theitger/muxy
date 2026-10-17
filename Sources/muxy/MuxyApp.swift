@@ -10,6 +10,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         AgentSetup.shared.maintain()
         Onboarding.showIfDue()
         Updater.shared.start()
+        QuickTerminal.shared.start()
     }
 
     /// Like Ghostty with `quit-after-last-window-closed = false`: closing the

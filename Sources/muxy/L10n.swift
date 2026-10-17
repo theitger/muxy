@@ -333,5 +333,11 @@ enum German {
         "Send (↩)": "Senden (↩)",
         "Go there": "Hingehen",
         "Inbox": "Inbox",
+
+        // Quick terminal
+        "Quick terminal": "Quick-Terminal",
+        "A shell that drops down from the top of the screen, from any app.": "Eine Shell, die von oben ins Bild fährt, aus jeder App heraus.",
+        "Key": "Taste",
+        "%@ is taken by another app. Pick another key.": "%@ belegt schon eine andere App. Wähl eine andere Taste.",
     ]
 }

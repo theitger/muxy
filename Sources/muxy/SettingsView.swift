@@ -29,6 +29,8 @@ struct SettingsView: View {
             Divider().padding(.vertical, 6)
             StayAwakeSettings()
             Divider().padding(.vertical, 6)
+            QuickTerminalSettings()
+            Divider().padding(.vertical, 6)
             RemoteSettings()
             Divider().padding(.vertical, 6)
             CommandLineSettings()
