@@ -128,12 +128,38 @@ final class Store: ObservableObject {
     }
 
     func refreshPullRequests() {
-        // The first tab speaks for the session — one gh call each.
-        for workspace in workspaces {
-            if let primary = workspace.primary, Git.mayHavePR(primary.context.branch) {
-                primary.refreshContext()
+        guard !Git.rateLimited else { return }
+        // The first tab speaks for the session; one gh call per repository
+        // answers all of its sessions at once.
+        let primaries = workspaces.compactMap(\.primary).filter { Git.mayHavePR($0.context.branch) }
+        let byRepo = Dictionary(grouping: primaries) { $0.context.root ?? $0.cwd }
+        for (root, sessions) in byRepo {
+            guard sessions.count > 1, sessions.first?.context.root != nil else {
+                sessions.forEach { $0.refreshContext() }
+                continue
+            }
+            let branches = Set(sessions.compactMap(\.context.branch))
+            Task.detached(priority: .utility) {
+                let answers = Git.pullRequests(in: root, branches: branches)
+                await MainActor.run {
+                    for session in sessions {
+                        guard let branch = session.context.branch, let lookup = answers?[branch],
+                              // Mergeability still computing: the single lookup asks again.
+                              !Self.stillComputing(lookup)
+                        else {
+                            session.refreshContext()
+                            continue
+                        }
+                        session.refreshContext(known: (branch, lookup))
+                    }
+                }
             }
         }
+    }
+
+    private nonisolated static func stillComputing(_ lookup: Git.Lookup) -> Bool {
+        if case let .found(pr) = lookup { return pr.state == .open && pr.mergeability == .unknown }
+        return false
     }
 
     // MARK: - Restore

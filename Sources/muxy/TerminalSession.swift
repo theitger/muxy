@@ -213,7 +213,8 @@ final class TerminalSession: NSObject, ObservableObject, Identifiable {
 
     // MARK: - Context (repo, branch, PR)
 
-    func refreshContext(includePR: Bool = true) {
+    /// `known`: the PR of `branch` as a batched poll already found it.
+    func refreshContext(includePR: Bool = true, known: (branch: String, lookup: Git.Lookup)? = nil) {
         contextToken += 1
         let token = contextToken
         let directory = cwd
@@ -235,7 +236,8 @@ final class TerminalSession: NSObject, ObservableObject, Identifiable {
                 self.onContextChange?()
             }
             guard includePR, Git.mayHavePR(resolved.branch) else { return }
-            let lookup = Git.pullRequest(in: directory)
+            let lookup = known.flatMap { $0.branch == resolved.branch ? $0.lookup : nil }
+                ?? Git.pullRequest(in: directory)
             await MainActor.run {
                 guard token == self.contextToken else { return }
                 let pr: Git.PullRequest?

@@ -110,7 +110,59 @@ enum Git {
         return first
     }
 
+    /// Every branch's PR in one repository with one gh call: the newest PR
+    /// per head branch among the repository's latest ones. A branch missing
+    /// from a full page may still have an older PR: it gets no answer here
+    /// (ask `pullRequest(in:)`). nil: gh couldn't tell.
+    static func pullRequests(in root: String, branches: Set<String>) -> [String: Lookup]? {
+        guard !rateLimited, let gh = Shell.find("gh") else { return nil }
+        let limit = 40
+        let result = Shell.execute(
+            gh,
+            ["pr", "list", "--state", "all", "--limit", String(limit), "--json",
+             "number,headRefName,state,headRefOid,isDraft,mergeable,mergeStateStatus,reviewDecision,statusCheckRollup"],
+            in: root, timeout: 30
+        )
+        noteRateLimit(result)
+        guard result.status == 0,
+              let rows = try? JSONSerialization.jsonObject(with: Data(result.output.utf8)) as? [[String: Any]]
+        else { return nil }
+        return answers(from: rows, branches: branches, limit: limit)
+    }
+
+    /// `gh pr list` rows (newest first), read per branch.
+    static func answers(from rows: [[String: Any]], branches: Set<String>, limit: Int) -> [String: Lookup] {
+        var answers: [String: Lookup] = [:]
+        // Newest first: the first PR of a branch is the one `gh pr view` shows.
+        for row in rows {
+            guard let branch = row["headRefName"] as? String, branches.contains(branch), answers[branch] == nil,
+                  let pr = pullRequest(from: row)
+            else { continue }
+            answers[branch] = .found(pr)
+        }
+        if rows.count < limit {
+            for branch in branches where answers[branch] == nil { answers[branch] = Lookup.none }
+        }
+        return answers
+    }
+
+    /// gh hit GitHub's rate limit: polling pauses for a while, since every
+    /// further call only digs deeper (and shares the quota with your other
+    /// tools).
+    private static let limitLock = NSLock()
+    nonisolated(unsafe) private static var limitedUntil = Date.distantPast
+
+    static var rateLimited: Bool {
+        limitLock.withLock { limitedUntil > Date() }
+    }
+
+    private static func noteRateLimit(_ result: Shell.Result) {
+        guard result.status != 0, result.error.range(of: "rate limit", options: .caseInsensitive) != nil else { return }
+        limitLock.withLock { limitedUntil = Date().addingTimeInterval(600) }
+    }
+
     private static func fetchPullRequest(in directory: String) -> Lookup {
+        guard !rateLimited else { return .unknown }
         guard let gh = Shell.find("gh") else { return .unknown }
         let result = Shell.execute(
             gh,
@@ -118,6 +170,7 @@ enum Git {
              "number,state,headRefOid,isDraft,mergeable,mergeStateStatus,reviewDecision,statusCheckRollup"],
             in: directory, timeout: 30
         )
+        noteRateLimit(result)
         return lookup(from: result)
     }
 
@@ -129,15 +182,21 @@ enum Git {
             return result.error.range(of: "no pull requests found", options: .caseInsensitive) != nil ? .none : .unknown
         }
         guard let json = try? JSONSerialization.jsonObject(with: Data(result.output.utf8)) as? [String: Any],
-              let number = json["number"] as? Int
+              let pr = pullRequest(from: json)
         else { return .unknown }
+        return .found(pr)
+    }
+
+    /// One PR as gh's JSON has it.
+    static func pullRequest(from json: [String: Any]) -> PullRequest? {
+        guard let number = json["number"] as? Int else { return nil }
         let state: PullRequest.State = switch json["state"] as? String {
         case "MERGED": .merged
         case "CLOSED": .closed
         default: .open
         }
         let rollup = json["statusCheckRollup"] as? [[String: Any]] ?? []
-        return .found(PullRequest(
+        return PullRequest(
             number: number,
             state: state,
             head: json["headRefOid"] as? String,
@@ -148,7 +207,7 @@ enum Git {
                 state: json["mergeStateStatus"] as? String ?? "",
                 review: json["reviewDecision"] as? String ?? ""
             )
-        ))
+        )
     }
 
     /// GraphQL MergeableState + MergeStateStatus + ReviewDecision → one
