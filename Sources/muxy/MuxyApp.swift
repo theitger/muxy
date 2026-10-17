@@ -34,9 +34,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         withCompletionHandler completion: @escaping () -> Void
     ) {
         let id = response.notification.request.content.userInfo["session"] as? String
+        let action = response.actionIdentifier
+        let text = (response as? UNTextInputNotificationResponse)?.userText
         Task { @MainActor in
-            if let id { Store.shared.focus(sessionID: id) }
-            completion()
+            defer { completion() }
+            guard let id else { return }
+            // Answered from the banner: the session gets it where it is.
+            if let session = Store.shared.session(id: id) {
+                if action == Notifier.replyAction, let text {
+                    Inbox.reply(text, to: session)
+                    return
+                }
+                // Only while that question is still on screen: a digit
+                // must never answer a newer one.
+                if action.hasPrefix(Notifier.choicePrefix), let number = Int(action.dropFirst(Notifier.choicePrefix.count)),
+                   let choice = Inbox.choices(of: session).first(where: { $0.number == number }) {
+                    Inbox.choose(choice, in: session)
+                    return
+                }
+            }
+            Store.shared.focus(sessionID: id)
         }
     }
 }
@@ -126,6 +143,8 @@ struct MuxyApp: App {
                     .keyboardShortcut("k", modifiers: .command)
                 Button(L("Next one waiting")) { store.jumpToAttention() }
                     .keyboardShortcut("j", modifiers: .command)
+                Button(L("Inbox")) { store.toggleInbox() }
+                    .keyboardShortcut("j", modifiers: [.command, .shift])
                 Divider()
                 Button(L("Previous Session")) { store.activeWindow?.selectWorkspace(offset: -1) }
                     .keyboardShortcut(.upArrow, modifiers: [.command, .option])

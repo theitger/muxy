@@ -39,7 +39,9 @@ final class TerminalSession: NSObject, ObservableObject, Identifiable {
     @Published private(set) var title: String
     @Published private(set) var context: RepoContext
     @Published private(set) var status: SessionStatus = .running
-    @Published var agent: AgentState = .none
+    @Published var agent: AgentState = .none {
+        didSet { updateWaiting() }
+    }
     /// Which agent runs here, once one does.
     @Published var kind: AgentKind?
     /// Claude's conversation log, as the hook reports it — the remote
@@ -60,10 +62,22 @@ final class TerminalSession: NSObject, ObservableObject, Identifiable {
         didSet {
             if !needsAttention { notice = nil }
             if needsAttention != oldValue { onAttentionChange?() }
+            updateWaiting()
         }
     }
     /// What `muxy notify` said, shown on the card until you look.
     @Published var notice: String?
+    /// Since when it waits on you (the inbox's order and age).
+    private(set) var waitingSince: Date?
+
+    private func updateWaiting() {
+        let waiting = needsAttention || agent == .blocked || agent == .failed
+        if !waiting {
+            waitingSince = nil
+        } else if waitingSince == nil {
+            waitingSince = Date()
+        }
+    }
 
     /// The last lines of output for the wings (see Store.refreshSnapshots).
     @Published private(set) var snapshot: Snapshot?

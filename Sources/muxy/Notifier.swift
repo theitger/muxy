@@ -13,6 +13,33 @@ enum Notifier {
     static func setUp(delegate: UNUserNotificationCenterDelegate) {
         guard available else { return }
         UNUserNotificationCenter.current().delegate = delegate
+        register([])
+    }
+
+    /// Every banner of a session can be answered in place; one with
+    /// choices on screen offers them as buttons too.
+    static let replyAction = "reply"
+    static let choicePrefix = "choice-"
+    private static var categories: Set<UNNotificationCategory> = []
+
+    private static func category(for choices: [Choice]) -> String {
+        let id = choices.isEmpty ? "session" : "choices-" + choices.map(\.label).joined(separator: "|")
+        guard !categories.contains(where: { $0.identifier == id }) else { return id }
+        register(choices, id: id)
+        return id
+    }
+
+    private static func register(_ choices: [Choice], id: String = "session") {
+        let reply = UNTextInputNotificationAction(
+            identifier: replyAction, title: L("Reply"), options: [],
+            textInputButtonTitle: L("Send"), textInputPlaceholder: L("Your answer")
+        )
+        // Banners show a handful of buttons at most.
+        let buttons = choices.prefix(3).map {
+            UNNotificationAction(identifier: choicePrefix + String($0.number), title: $0.label, options: [])
+        }
+        categories.insert(UNNotificationCategory(identifier: id, actions: buttons + [reply], intentIdentifiers: []))
+        UNUserNotificationCenter.current().setNotificationCategories(categories)
     }
 
     /// macOS asks only the first time; later calls change nothing.
@@ -34,6 +61,7 @@ enum Notifier {
         }
         content.sound = .default
         content.userInfo = ["session": session.id.uuidString]
+        content.categoryIdentifier = category(for: Inbox.choices(of: session))
         // One banner per session — a newer event replaces the older one.
         let request = UNNotificationRequest(
             identifier: session.id.uuidString, content: content, trigger: nil
@@ -48,7 +76,10 @@ enum Notifier {
         content.title = title
         content.body = body
         content.sound = .default
-        if let session { content.userInfo = ["session": session.id.uuidString] }
+        if let session {
+            content.userInfo = ["session": session.id.uuidString]
+            content.categoryIdentifier = category(for: [])
+        }
         let request = UNNotificationRequest(
             identifier: session?.id.uuidString ?? UUID().uuidString, content: content, trigger: nil
         )

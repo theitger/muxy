@@ -344,22 +344,25 @@ final class Store: ObservableObject {
         if window !== activeWindow { window.bringToFront() }
     }
 
-    /// ⌘J — the next session that wants you (unseen news, or an agent
-    /// still blocked on you), in any window, round-robin from the one in
-    /// front. Says so when nobody is waiting.
+    /// ⌘J: the next session that wants you, in any window, in the inbox's
+    /// order (blocked, then failed, then news; oldest first). Repeated
+    /// presses walk on from the one on stage. Says so when nobody waits.
     func jumpToAttention() {
-        let ordered = orderedWorkspaces
-        let current = activeWindow?.selectedWorkspaceID
-        let start = ordered.firstIndex { $0.id == current } ?? -1
-        for step in 0 ..< ordered.count {
-            let workspace = ordered[(start + 1 + step + ordered.count) % ordered.count]
-            if workspace.id == current { continue }
-            if let session = workspace.sessions.first(where: { $0.needsAttention || $0.agent == .blocked }) {
-                select(workspace, session: session)
-                return
-            }
+        let items = Inbox.items(in: self)
+        let current = activeWindow?.selectedWorkspace?.selectedSession?.id
+        let start = items.firstIndex { $0.session.id == current } ?? -1
+        for step in 0 ..< items.count {
+            let item = items[(start + 1 + step) % items.count]
+            if item.session.id == current { continue }
+            select(item.workspace, session: item.session)
+            return
         }
         activeWindow?.show(L("Nobody is waiting right now"))
+    }
+
+    func toggleInbox() {
+        guard let window = activeWindow else { return }
+        Inbox.shared.toggle(in: window)
     }
 
     /// Notification click.
@@ -371,6 +374,10 @@ final class Store: ObservableObject {
                 return
             }
         }
+    }
+
+    func session(id: String) -> TerminalSession? {
+        workspaces.lazy.flatMap(\.sessions).first { $0.id.uuidString == id }
     }
 
     func workspace(of session: TerminalSession) -> Workspace? {
@@ -718,6 +725,7 @@ final class Store: ObservableObject {
             switch key {
             case "n": newWindow()
             case "b": toggleDetailedWings()
+            case "j": toggleInbox()
             // Without a search open, ⇧⌘G stays the terminal's.
             case "g":
                 guard let search = window?.selectedWorkspace?.selectedSession?.search else { return false }

@@ -318,5 +318,20 @@ enum German {
         "Reload": "Neu laden",
         "Open in Browser": "Im Browser öffnen",
         "Runs an app on port %d": "Lässt eine App auf Port %d laufen",
+
+        // Inbox
+        "Reply": "Antworten",
+        "Send": "Senden",
+        "Your answer": "Deine Antwort",
+        "has news": "hat Neuigkeiten",
+        "Inbox (⇧⌘J). Next one: ⌘J": "Inbox (⇧⌘J). Nächster: ⌘J",
+        "Inbox: %d waiting": "Inbox: %d warten",
+        "Waiting on you": "Wartet auf dich",
+        "next": "nächster",
+        "Answer %d: %@": "Antwort %d: %@",
+        "Reply to %@": "Antwort an %@",
+        "Send (↩)": "Senden (↩)",
+        "Go there": "Hingehen",
+        "Inbox": "Inbox",
     ]
 }

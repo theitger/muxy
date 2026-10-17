@@ -185,7 +185,7 @@ private struct StageTopBar: View {
             }
             Spacer(minLength: 12)
             HStack(spacing: 8) {
-                AttentionPill(store: store, window: window)
+                InboxPill(store: store, window: window)
                 TitleBarButton(symbol: "plus", title: L("New Session"), keys: "⌘N") {
                     window.showNewSession = true
                 }

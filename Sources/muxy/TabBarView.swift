@@ -35,7 +35,7 @@ struct TabBarView: View {
             AppButton(workspace: workspace)
             ResultButton(window: window, workspace: workspace)
             if !onStage {
-                AttentionPill(store: store, window: window)
+                InboxPill(store: store, window: window)
             }
         }
         // Folded sidebar: leave room for the traffic lights.
@@ -104,25 +104,5 @@ private struct SegmentTab: View {
         .onTapGesture { workspace.selectedSessionID = session.id }
         .onHover { hovered = $0 }
         .animation(.easeOut(duration: 0.15), value: isActive)
-    }
-}
-
-/// "login-fix ⌘J" — visible from any session, so the sidebar
-/// can stay hidden without missing anything.
-struct AttentionPill: View {
-    @ObservedObject var store: Store
-    @ObservedObject var window: WindowModel
-
-    var body: some View {
-        let waiting = window.attentionWorkspaces
-        if let first = waiting.first {
-            Button {
-                store.jumpToAttention()
-            } label: {
-                WaitingPill(text: waiting.count == 1 ? first.title : L("%d sessions waiting", waiting.count))
-            }
-            .buttonStyle(.plain)
-            .transition(.opacity.combined(with: .scale(scale: 0.95)))
-        }
     }
 }
