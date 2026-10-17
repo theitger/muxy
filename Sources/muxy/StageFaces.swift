@@ -97,7 +97,7 @@ struct WingCardFace: View {
     private var preview: some View {
             VStack(alignment: .leading, spacing: 1.5) {
                 ForEach(Array(face.lines.enumerated()), id: \.offset) { _, line in
-                    Text(line).lineLimit(1).truncationMode(.tail)
+                    Text(Theme.displayable(line)).lineLimit(1).truncationMode(.tail)
                 }
             }
             .font(Theme.mono(size: 9.5))

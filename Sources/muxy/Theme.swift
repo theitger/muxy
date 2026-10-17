@@ -76,11 +76,26 @@ enum Theme {
     /// The terminal's own font (Ghostty's `font-family`), for text that
     /// quotes the terminal; the system monospace when it isn't installed.
     static func mono(size: CGFloat) -> Font {
-        if let family = GhosttyColors.fontFamily,
+        if hasTerminalFont, let family = GhosttyColors.fontFamily,
            let font = NSFontManager.shared.font(withFamily: family, traits: [], weight: 5, size: size) {
             return Font(font)
         }
         return .system(size: size, design: .monospaced)
+    }
+
+    /// Your Ghostty font is installed: it has the prompt's icons (Nerd Font
+    /// glyphs and the like).
+    static let hasTerminalFont: Bool = GhosttyColors.fontFamily.map {
+        NSFontManager.shared.font(withFamily: $0, traits: [], weight: 5, size: 12) != nil
+    } ?? false
+
+    /// A screen line for the cards: without your font, icons from the
+    /// private use area would show as boxes, so they go.
+    static func displayable(_ line: String) -> String {
+        guard !hasTerminalFont else { return line }
+        return String(String.UnicodeScalarView(line.unicodeScalars.filter { scalar in
+            !(0xE000 ... 0xF8FF).contains(scalar.value) && scalar.value < 0xF0000
+        }))
     }
 
     /// Standard motion curve: fast start, long soft landing.

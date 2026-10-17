@@ -232,7 +232,7 @@ private struct InboxRow: View {
             if let lines = item.session.snapshot?.lines, !lines.isEmpty {
                 VStack(alignment: .leading, spacing: 1.5) {
                     ForEach(Array(lines.enumerated()), id: \.offset) { _, line in
-                        Text(line).lineLimit(1).truncationMode(.tail)
+                        Text(Theme.displayable(line)).lineLimit(1).truncationMode(.tail)
                     }
                 }
                 .font(Theme.mono(size: 10))
