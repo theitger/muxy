@@ -251,6 +251,21 @@ final class CommandCenter {
         Task.detached(priority: .userInitiated) {
             // The panel offers a worktree only inside a repository.
             let inRepo = Launcher.mainCheckout(of: directory) != nil
+            // The issue itself, like the panel looks it up. Unreachable
+            // (gh missing, offline): the agent gets the reference only.
+            var found: Issue?
+            if let issue {
+                guard let ref = IssueRef.parse(issue) else {
+                    return reply(Reply(ok: false, output: "not an issue reference: \(issue)"))
+                }
+                switch Issues.view(ref.number, repo: ref.repo ?? Issues.repo(of: directory), in: directory) {
+                case let .found(resolved): found = resolved
+                case .notFound: return reply(Reply(ok: false, output: "no such issue: \(issue)"))
+                case .pullRequest: return reply(Reply(ok: false, output: "\(issue) is a pull request, not an issue"))
+                case .unavailable: break
+                }
+            }
+            let issueFound = found
             await MainActor.run {
                 guard let store = self.store else { return }
                 let window = store.activeWindow ?? store.windows.first ?? {
@@ -263,7 +278,7 @@ final class CommandCenter {
                     worktree: inRepo && wantsWorktree, branch: branch
                 )
                 if let issue {
-                    store.launch(issue: issue, spec: spec, in: window)
+                    store.launch(issue: issue, found: issueFound, spec: spec, in: window)
                 } else {
                     store.launch(spec, in: window)
                 }
@@ -282,15 +297,26 @@ final class CommandCenter {
 }
 
 extension Store {
-    /// `muxy new --issue <ref>`: the one place work on an issue starts.
-    /// For now the agent is only told which issue; resolving it (title,
-    /// body via `gh issue view`) plugs in here.
-    func launch(issue ref: String, spec: SessionSpec, in window: WindowModel) {
+    /// `muxy new --issue <ref>`: like an issue picked in the ⌘N panel.
+    /// `found` is the issue as gh knows it; nil when gh couldn't say.
+    func launch(issue ref: String, found: Issue?, spec: SessionSpec, in window: WindowModel) {
         var spec = spec
-        let task = "Work on issue \(ref)"
-        spec.prompt = spec.prompt.isEmpty ? task : task + "\n\n" + spec.prompt
-        // Named after the task, which now always has one.
-        if let branch = spec.branch, BranchNamer.isPlaceholder(branch) { spec.autoName = true }
+        if let found {
+            let note = IssueRef.parse(ref)?.note ?? ""
+            let extra = [note, spec.prompt].filter { !$0.isEmpty }.joined(separator: "\n\n")
+            spec.prompt = Issues.prompt(for: found, note: extra, localRepo: Issues.repo(of: spec.directory))
+            spec.issue = found
+            // Named after the issue, not by the model.
+            if let branch = spec.branch, BranchNamer.isPlaceholder(branch) {
+                spec.branch = Issues.branchName(for: found)
+                spec.autoName = false
+            }
+        } else {
+            let task = "Work on issue \(ref)"
+            spec.prompt = spec.prompt.isEmpty ? task : task + "\n\n" + spec.prompt
+            // Named after the task, which now always has one.
+            if let branch = spec.branch, BranchNamer.isPlaceholder(branch) { spec.autoName = true }
+        }
         launch(spec, in: window)
     }
 }
