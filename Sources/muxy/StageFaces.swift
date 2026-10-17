@@ -15,6 +15,8 @@ struct WingFace {
     var agents: [AgentState]
     /// What the last turn came to; shown once the agent is done.
     var result: ResultFace?
+    /// The web app it runs, if any (Open app).
+    var appPort: Int?
 
     /// The outcome line replaces the activity while nothing runs.
     var showsResult: Bool { result != nil && (agent == .idle || agent == .none) }
@@ -133,6 +135,14 @@ struct WingCardFace: View {
                     .truncationMode(.tail)
             }
             Spacer(minLength: 4)
+            if let port = face.appPort {
+                HStack(spacing: 2) {
+                    Image(systemName: "globe").font(.system(size: 9, weight: .semibold))
+                    Text(":\(port)").font(.system(size: 10, weight: .medium)).monospacedDigit()
+                }
+                .foregroundStyle(Theme.textDim)
+                .accessibilityLabel(L("Runs an app on port %d", port))
+            }
             HStack(spacing: 4) {
                 ForEach(Array(face.agents.enumerated()), id: \.offset) { _, state in
                     Image(systemName: "sparkle")

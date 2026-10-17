@@ -38,7 +38,7 @@ func L(_ english: String, _ args: CVarArg...) -> String {
     return args.isEmpty ? template : String(format: template, arguments: args)
 }
 
-private enum German {
+enum German {
     static let table: [String: String] = [
         // Empty window
         "What are you working on?": "Woran arbeitest du?",
@@ -306,5 +306,17 @@ private enum German {
         "Open PR": "PR öffnen",
         "Open checks": "Checks öffnen",
         "Updated %@": "Aktualisiert %@",
+
+        // Open app
+        "Preview :%d": "Vorschau :%d",
+        ":%d (not a web page)": ":%d (keine Webseite)",
+        "Open :%d in Browser": ":%d im Browser öffnen",
+        "Close Preview": "Vorschau schließen",
+        "Open the app this session runs (⌥-click: in the browser)": "Die App öffnen, die diese Session laufen lässt (⌥-Klick: im Browser)",
+        "Open app on port %d": "App auf Port %d öffnen",
+        "App :%d": "App :%d",
+        "Reload": "Neu laden",
+        "Open in Browser": "Im Browser öffnen",
+        "Runs an app on port %d": "Lässt eine App auf Port %d laufen",
     ]
 }

@@ -29,6 +29,7 @@ final class Store: ObservableObject {
     private var prTimer: Timer?
     private var snapshotTimer: Timer?
     private var saveTimer: Timer?
+    private var portTimer: Timer?
     /// Nothing is saved before the last launch's sessions had their
     /// chance to come back: the first window's fresh shell would erase them.
     private var restoreAttempted = false
@@ -71,6 +72,15 @@ final class Store: ObservableObject {
         }
         saves.tolerance = 1
         saveTimer = saves
+        // Which servers each session runs (Open app).
+        let ports = Timer.scheduledTimer(withTimeInterval: 4, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                guard let self else { return }
+                Previews.shared.scan(self.workspaces)
+            }
+        }
+        ports.tolerance = 1
+        portTimer = ports
         #if DEBUG
         launchDebugSessions()
         #endif

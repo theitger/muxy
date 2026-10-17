@@ -40,6 +40,7 @@ private struct WingCard: View {
     @ObservedObject var window: WindowModel
     @ObservedObject var workspace: Workspace
     @ObservedObject private var results = Results.shared
+    @ObservedObject private var previews = Previews.shared
     @State private var hovered = false
 
     var body: some View {
@@ -85,7 +86,8 @@ extension Workspace {
             activity: activity,
             lines: featured?.snapshot?.lines ?? [],
             agents: sessions.filter { $0.agent != .none }.map(\.agent),
-            result: resultFace
+            result: resultFace,
+            appPort: Previews.shared.ports(of: self).first(where: \.isWeb)?.port
         )
     }
 }

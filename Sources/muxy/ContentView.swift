@@ -62,7 +62,9 @@ struct ContentView: View {
                 VStack(spacing: 0) {
                     if let workspace = window.selectedWorkspace {
                         TabBarView(store: store, window: window, workspace: workspace)
-                        WorkspaceContent(workspace: workspace)
+                        WithPreview(workspace: workspace, cornerRadius: 0) {
+                            WorkspaceContent(workspace: workspace)
+                        }
                             .overlay { ResultOverlay(window: window, workspace: workspace) }
                     } else {
                         EmptyState()
@@ -132,7 +134,9 @@ struct ContentView: View {
             VStack(spacing: 0) {
                 if let workspace = window.selectedWorkspace {
                     TabBarView(store: store, window: window, workspace: workspace, onStage: true)
-                    WorkspaceContent(workspace: workspace, cornerRadius: StageMetrics.radius)
+                    WithPreview(workspace: workspace, cornerRadius: StageMetrics.radius) {
+                        WorkspaceContent(workspace: workspace, cornerRadius: StageMetrics.radius)
+                    }
                         .overlay { ResultOverlay(window: window, workspace: workspace) }
                         // What a session fades in over when it takes the stage.
                         .background(
@@ -235,6 +239,28 @@ private struct SidebarHandle: View {
 }
 
 /// The active tab's terminal for one workspace.
+/// The terminal, and the app's preview beside it while one is open.
+private struct WithPreview<Terminal: View>: View {
+    @ObservedObject var workspace: Workspace
+    @ObservedObject private var previews = Previews.shared
+    var cornerRadius: CGFloat
+    @ViewBuilder var terminal: Terminal
+
+    var body: some View {
+        GeometryReader { geometry in
+            HStack(spacing: 0) {
+                terminal
+                if previews.port(open: workspace) != nil {
+                    Rectangle().fill(Theme.hairline).frame(width: 1)
+                    PreviewPane(workspace: workspace)
+                        .frame(width: max(320, geometry.size.width * 0.48))
+                        .clipShape(UnevenRoundedRectangle(bottomTrailingRadius: cornerRadius, style: .continuous))
+                }
+            }
+        }
+    }
+}
+
 private struct WorkspaceContent: View {
     @ObservedObject var workspace: Workspace
     var cornerRadius: CGFloat = 0
