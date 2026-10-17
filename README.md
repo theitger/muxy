@@ -43,10 +43,31 @@ Running processes don't notice.
   <img src=".github/readme/signals-light.png" alt="Session tiles for working, needs you, done, your turn, failed and shell; PR badges from checks running to ready to merge">
 </picture>
 
-A Claude Code hook reports *working*, *done* and *needs you* for every tab.
-The session's tile changes, the Dock shows a count, and when Muxy is in
-the background a banner appears; click it and you're in that session. `⌘J`
-jumps to the next one waiting, from any window.
+A hook in Claude Code and in Codex reports *working*, *done* and *needs
+you* for every tab. The session's card changes, the Dock shows a count, and
+when Muxy is in the background a banner appears: answer it right there
+(a reply, or one of the choices the agent's prompt offers) or click it and
+you're in that session.
+
+The inbox (`⇧⌘J`, or the pill in the title bar) lists everything waiting on
+you across all windows: blocked agents first, then failed turns, then news,
+oldest first. Each row shows the last lines, the prompt's choices as
+buttons and a reply line, so you answer without leaving what you're in.
+`⌘J` walks the same list.
+
+## See what it came to, and try it
+
+When a turn ends, the session's **result** (`⌘I`) says in plain words what
+the agent did, whether tests ran and passed, how many files changed, and
+the PR with its CI checks. No diff to read.
+
+If the session runs a web server (its own dev server, or one in a container
+on the ports its worktree got), the card shows the port and **App :3000**
+above the terminal opens it beside the terminal; `⌥`-click opens the
+browser. Several servers: a menu, web pages first.
+
+Start from an issue: type `#123` (or its link) into `⌘N`. Muxy looks it up,
+names the branch after it and asks the agent to close it from the PR.
 
 The PR badge follows the CI checks and GitHub's merge state: blue while
 checks run, yellow when they failed and something in the session is
@@ -80,7 +101,12 @@ locks all phones out.
   Muxy dying, turns it off; below 20 % battery the Mac may sleep again.
 - **Built to stay fast.** Exactly one terminal surface per window is
   attached; background sessions keep their PTY but cost no rendering. No
-  animations while idle.
+  animations while idle. One `gh` call per repository keeps every PR badge
+  current, and polling pauses when GitHub rate-limits.
+- **Quick terminal.** Optional, in Settings: a shell drops down from the top
+  of the screen on a global key (`` ⌃` ``, `⌥Space` or `` ⌥⌘` ``), from any app.
+- **Find in the scrollback.** `⌘F`, then `⌘G` / `⇧⌘G`.
+- **Updates itself.** Checks once a day and asks before installing.
 - **English or German.** English by default; switch in Settings (`⌘,`).
 
 ## Install
@@ -163,6 +189,9 @@ installed, its shell integration and terminfo are bundled into Muxy.
 | `⌘1…9` · `⌃Tab` | switch tab |
 | `⌃1…9` · `⌘⌥↑/↓` | switch session |
 | `⌘J` | next session that wants you (any window) |
+| `⇧⌘J` | inbox: everything waiting on you, answerable in place |
+| `⌘I` | the session's result |
+| `⌘F` · `⌘G` · `⇧⌘G` | find in the scrollback |
 | `⌘K` | search sessions |
 | `⌘B` | show/hide the sidebar (drag its edge to resize) |
 
