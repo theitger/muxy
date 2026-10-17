@@ -64,6 +64,9 @@ struct TerminalHostView: NSViewRepresentable {
         terminal.setSurfaceVisible(true)
         session.markSeen()
         DispatchQueue.main.async {
+            if terminal.bounds.width > 200, terminal.bounds.height > 100 {
+                BackgroundStart.size = terminal.bounds.size
+            }
             terminal.fitToSize()
             terminal.window?.makeFirstResponder(terminal)
         }

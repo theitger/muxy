@@ -803,6 +803,8 @@ final class Store: ObservableObject {
                 switch result {
                 case let .success(made):
                     session.begin(in: made.path)
+                    // Another session took the stage meanwhile: start anyway.
+                    BackgroundStart.start(session)
                     if let problem = made.problem {
                         session.markAttentionIfBackground(reason: problem)
                         self.window(of: workspace)?.show(problem)
