@@ -23,6 +23,10 @@ final class RenderTests: XCTestCase {
             activity: "Done", lines: ["$ npm test", "  12 passing", "  1 failing"], agents: [.idle],
             result: ResultFace(summary: full.summary, tests: .failed, checks: .failed)
         )
+        var signals = face
+        signals.quorum = "quorum: 2 findings open"
+        signals.proof = .passed
+        signals.collisions = ["Konten löschen"]
         let views: [(String, AnyView)] = [
             ("panel", AnyView(ResultPanel(result: full, building: false, hasAgent: true))),
             ("quorum-settings", AnyView(QuorumSettings().frame(width: 420))),
@@ -48,6 +52,7 @@ final class RenderTests: XCTestCase {
             )).frame(height: 900))),
             ("card", AnyView(WingCardFace(face: face, detailed: true, onStage: true).frame(width: 240))),
             ("row", AnyView(WingCardFace(face: face, detailed: false).frame(width: 240))),
+            ("row-signals", AnyView(WingCardFace(face: signals, detailed: false).frame(width: 300))),
             ("issue", AnyView(VStack(alignment: .leading) {
                 IssueRow(issue: issue)
                 IssueRow(issue: Issue(repo: "o/r", number: 7, title: "Closed one", url: "", state: "CLOSED"), prominent: false)
