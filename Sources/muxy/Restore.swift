@@ -33,8 +33,10 @@ struct SavedSessions: Codable, Equatable {
     static let file: URL = {
         let folder = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("muxy", isDirectory: true)
-        let name = Bundle.main.bundleIdentifier == nil ? "sessions-dev.json" : "sessions.json"
-        return folder.appendingPathComponent(name)
+        if Paths.isTesting {
+            return URL(fileURLWithPath: StateDirectory.path).appendingPathComponent("sessions.json")
+        }
+        return folder.appendingPathComponent(Paths.isApp ? "sessions.json" : "sessions-dev.json")
     }()
 
     static func load() -> SavedSessions? {

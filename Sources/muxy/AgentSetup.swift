@@ -65,7 +65,7 @@ final class AgentSetup: ObservableObject {
     /// Hooks you never installed stay that way. Not for the dev build, so
     /// it can't rewrite the files a running Muxy.app relies on.
     func maintain() {
-        guard Bundle.main.bundleIdentifier != nil else { return }
+        guard Paths.isApp else { return }
         Task {
             let found = await Task.detached(priority: .utility) { () -> [Agent] in
                 let agents = Self.probe()
@@ -87,7 +87,7 @@ final class AgentSetup: ObservableObject {
     /// agent-hook.sh as this muxy ships it: inside the app bundle, or the
     /// checkout's Scripts folder for a dev build.
     nonisolated static var bundledScript: Data? {
-        let bundled = Bundle.main.bundleIdentifier != nil
+        let bundled = Paths.isApp
             ? Bundle.main.resourceURL?.appendingPathComponent("agent-hook.sh")
             : URL(fileURLWithPath: #filePath)
                 .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()

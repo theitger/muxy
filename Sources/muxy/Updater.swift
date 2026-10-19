@@ -26,7 +26,7 @@ final class Updater: NSObject, ObservableObject, SPUUpdaterDelegate {
     /// Release bundles carry both; without the public key Sparkle refuses to
     /// start and says so in an alert.
     static var configured: Bool {
-        guard Bundle.main.bundleIdentifier != nil else { return false }
+        guard Paths.isApp else { return false }
         let info = Bundle.main.infoDictionary ?? [:]
         let feed = (info["SUFeedURL"] as? String) ?? ""
         let key = (info["SUPublicEDKey"] as? String) ?? ""

@@ -12,7 +12,10 @@ enum StateDirectory {
         if let custom = ProcessInfo.processInfo.environment["MUXY_STATE_DIR"], custom.hasPrefix("/") {
             return URL(fileURLWithPath: custom).standardized.path
         }
-        return Bundle.main.bundleIdentifier == nil ? Paths.home + "/.local/state/muxy-dev" : installed
+        if Paths.isTesting {
+            return (NSTemporaryDirectory() as NSString).appendingPathComponent("muxy-tests-\(getpid())")
+        }
+        return Paths.isApp ? installed : Paths.home + "/.local/state/muxy-dev"
     }()
 
     /// What a terminal needs to reach this muxy: nothing for the installed

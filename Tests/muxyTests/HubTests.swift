@@ -255,3 +255,27 @@ final class QuorumConfigTests: XCTestCase {
         XCTAssertEqual(values["REVIEW_EFFORT"], "high")
     }
 }
+
+final class OwnPullTests: XCTestCase {
+    func testFindsTheWorktreeThatHasTheBranch() throws {
+        let repo = try TempRepo()
+        // Made by hand beside the repository, like an agent's own worktree.
+        let beside = (repo.base as NSString).appendingPathComponent("repo-3401")
+        try repo.git("worktree", "add", "--quiet", "-b", "feat/3401-fix", beside, "HEAD")
+        let inside = try repo.addWorktree("other", branch: "feat/other")
+        XCTAssertEqual(HubModel.worktree(of: "feat/3401-fix", root: repo.root), beside)
+        XCTAssertEqual(HubModel.worktree(of: "feat/other", root: repo.root), inside)
+        XCTAssertEqual(HubModel.worktree(of: "main", root: repo.root), repo.root)
+        // A prefix is not the branch.
+        XCTAssertNil(HubModel.worktree(of: "feat/3401", root: repo.root))
+        XCTAssertNil(HubModel.worktree(of: "nowhere", root: repo.root))
+    }
+
+    func testTestsKeepTheirStateToThemselves() {
+        XCTAssertFalse(Paths.isApp)
+        XCTAssertTrue(Paths.isTesting)
+        XCTAssertNotEqual(StateDirectory.path, StateDirectory.installed)
+        XCTAssertFalse(StateDirectory.path.hasPrefix(Paths.home + "/.local/state"))
+        XCTAssertFalse(SavedSessions.file.path.contains("Application Support"))
+    }
+}
