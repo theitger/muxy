@@ -578,5 +578,17 @@ enum German {
         "Prompt for issues": "Prompt für Issues",
         "Back to the default": "Zurück zum Standard",
         "What the agent gets when you start it on an issue. Fields in braces are filled in; an empty one leaves no gap.": "Was der Agent bekommt, wenn du ihn auf einem Issue startest. Felder in geschweiften Klammern werden ausgefüllt; ein leeres hinterlässt keine Lücke.",
+        "Answer the agent": "Dem Agenten antworten",
+        "Open a pull request": "Pull Request öffnen",
+        "Fix %d findings": "%d Befunde fixen",
+        "Resolve conflicts": "Konflikte lösen",
+        "Fix CI": "CI fixen",
+        "CI is running": "CI läuft",
+        "Fix the checks": "Checks fixen",
+        "Waiting for your next prompt": "Wartet auf deinen nächsten Prompt",
+        "Message the agent …": "Dem Agenten schreiben …",
+        "No agent runs in this session to ask": "In dieser Session läuft kein Agent, den man fragen könnte",
+        "Review as soon as a pull request opens": "Reviewen, sobald ein Pull Request offen ist",
+        "Off: muxy suggests the review and you start it. On: quorum reviews every new pull request of a session right away.": "Aus: muxy schlägt das Review vor, du startest es. An: quorum reviewt jeden neuen Pull Request einer Session sofort.",
     ]
 }

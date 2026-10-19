@@ -216,12 +216,17 @@ private struct AgentSettings: View {
 private struct WorkflowSettings: View {
     @AppStorage(Proofs.autoKey) private var proofAfterTurn = true
     @AppStorage(Landing.quorumKey) private var landWithQuorum = true
+    @AppStorage(Flow.autoReviewKey) private var reviewWhenPROpens = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             toggle(L("Check after every turn"),
                    L("muxy runs the repository's checks ([check] in .wtconfig) on the agent's work when a turn ends, and tells you when they fail. Checks with auto = false only run on request and when landing."),
                    $proofAfterTurn)
+            toggle(L("Review as soon as a pull request opens"),
+                   L("Off: muxy suggests the review and you start it. On: quorum reviews every new pull request of a session right away."),
+                   $reviewWhenPROpens)
+                .disabled(!Quorum.isInstalled)
             toggle(L("Land with quorum"),
                    Quorum.isInstalled
                        ? L("Landing hands the pushed pull request to quorum's review loop before it merges.")

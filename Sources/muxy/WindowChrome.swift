@@ -17,6 +17,16 @@ struct WindowConfigurator: NSViewRepresentable {
             window.isOpaque = false
             window.backgroundColor = .clear
             window.titlebarAppearsTransparent = true
+            // An empty compact toolbar makes the title bar as tall as muxy's
+            // top bar (StageMetrics.topBar), and macOS centers the window's
+            // buttons in it: they line up with muxy's icons beside them.
+            if window.toolbar == nil {
+                let toolbar = NSToolbar(identifier: "muxy")
+                toolbar.showsBaselineSeparator = false
+                window.toolbar = toolbar
+                window.toolbarStyle = .unifiedCompact
+                window.titleVisibility = .hidden
+            }
             window.isRestorable = false
             window.tabbingMode = .disallowed
             // Closing goes through muxy, which confirms running work and

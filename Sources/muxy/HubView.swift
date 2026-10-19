@@ -24,10 +24,10 @@ struct HubView: View {
     var body: some View {
         VStack(spacing: 0) {
             header
-            Rectangle().fill(Theme.hairline).frame(height: 1)
+            Rectangle().fill(Theme.hairline).frame(height: 1).padding(.horizontal, 14)
             if page == "board" {
                 filterBar
-                Rectangle().fill(Theme.hairline).frame(height: 1)
+                Rectangle().fill(Theme.hairline).frame(height: 1).padding(.horizontal, 14)
             }
             if page == "worktrees" {
                 WorktreesPage(window: window)
@@ -63,7 +63,7 @@ struct HubView: View {
             IconButton(symbol: "xmark", help: L("Close hub (esc)")) { window.showHub = false }
         }
         .padding(.horizontal, 14)
-        .frame(height: 46)
+        .frame(height: sidebarFolded ? StageMetrics.topBar : 46)
     }
 
     @ViewBuilder
@@ -246,21 +246,10 @@ struct HubView: View {
         .scrollIndicators(.never)
     }
 
-    enum Stage { case working, review, ready, none }
+    typealias Stage = NextStep.Stage
 
     private func column(of workspace: Workspace) -> Stage {
-        let context = workspace.context
-        guard context.repo != nil else { return .none }
-        if landing.step(for: workspace)?.isActive == true { return .review }
-        // Merged or closed: nothing left to do on the board.
-        if context.pr != nil, context.prState != .open { return .none }
-        guard context.pr != nil else {
-            return workspace.agent == .none && workspace.variantGroup == nil && context.branch == nil ? .none : .working
-        }
-        if workspace.agent == .working || workspace.agent == .blocked { return .working }
-        if workspace.prStatus == .ready { return .ready }
-        if proofs.result(for: context.checkout)?.verdict == .passed, context.checks == .passed { return .ready }
-        return .review
+        Flow.next(for: workspace).stage
     }
 
     private func reviewWithQuorum(_ request: HubModel.ReviewRequest) {
@@ -451,9 +440,12 @@ private struct SessionCard: View {
     @ObservedObject private var radar = Radar.shared
     @ObservedObject private var quorum = QuorumWatch.shared
     @ObservedObject private var landing = Landing.shared
+    @State private var message = ""
+    @FocusState private var typing: Bool
 
     var body: some View {
         let context = workspace.context
+        let next = Flow.next(for: workspace)
         VStack(alignment: .leading, spacing: 7) {
             HStack(spacing: 8) {
                 SessionTile(agent: workspace.agent, attention: workspace.needsAttention, isGit: true, kind: workspace.agentTab?.kind, size: 20)
@@ -470,36 +462,87 @@ private struct SessionCard: View {
                 .buttonStyle(.plain)
                 .help(L("Open the pull request on GitHub"))
             }
-            Text([context.repo, context.branch].compactMap { $0 }.joined(separator: " · "))
-                .font(.system(size: 11)).foregroundStyle(Theme.textDim).lineLimit(1).truncationMode(.middle)
-            Signals(workspace: workspace)
-            if let step = landing.step(for: workspace) {
-                Text(step.text).font(.system(size: 11.5)).foregroundStyle(Theme.blue.strong).lineLimit(2)
+            if let branch = context.branch, branch != workspace.title {
+                Text(branch).font(Theme.mono(size: 10.5)).foregroundStyle(Theme.textDim).lineLimit(1).truncationMode(.middle)
             }
-            HStack(spacing: 6) {
-                SmallButton(title: L("Open")) {
-                    window.showHub = false
-                    window.select(workspace)
-                }
-                if context.checkout != nil {
-                    SmallButton(title: L("Review")) {
-                        window.openReview(workspace, scope: .branch)
+            Signals(workspace: workspace)
+            nextStep(next)
+            if workspace.agentTab != nil {
+                // Say something to the agent without going there.
+                HStack(spacing: 6) {
+                    TextField(L("Message the agent …"), text: $message)
+                        .textFieldStyle(.plain)
+                        .font(.system(size: 12))
+                        .focused($typing)
+                        .onSubmit(send)
+                    if !message.trimmingCharacters(in: .whitespaces).isEmpty {
+                        IconButton(symbol: "paperplane.fill", help: L("Send (↩)"), action: send)
                     }
                 }
-                if landing.canLand(workspace), landing.step(for: workspace)?.isActive != true {
-                    SmallButton(title: L("Land"), prominent: true) {
-                        landing.land(workspace)
-                    }
-                }
-                if workspace.variantGroup != nil {
-                    SmallButton(title: L("Keep")) {
-                        FanOut.confirmKeep(workspace)
-                    }
-                }
+                .padding(.horizontal, 8)
+                .frame(height: 28)
+                .background(
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .strokeBorder(typing ? Theme.textPrimary.opacity(0.35) : Theme.border, lineWidth: 1)
+                )
             }
         }
         .modifier(CardBackground(highlighted: workspace.agent == .blocked))
         .contentShape(Rectangle())
+        // The card is the way in: one click and you're in its terminal.
+        .onTapGesture(count: 2) { open() }
+        .contextMenu {
+            Button(L("Open")) { open() }
+            if context.checkout != nil {
+                Button(L("Review Changes")) { window.openReview(workspace, scope: .branch) }
+            }
+            if workspace.variantGroup != nil {
+                Button(L("Keep This Variant")) { FanOut.confirmKeep(workspace) }
+            }
+        }
+    }
+
+    /// The suggested step as a button, or what it waits for; plus the
+    /// way into the session and its changes.
+    private func nextStep(_ next: NextStep) -> some View {
+        HStack(spacing: 6) {
+            switch next {
+            case .wait, .landing:
+                ProgressView().controlSize(.mini).frame(width: 12)
+                Text(next.title).font(.system(size: 11.5)).foregroundStyle(Theme.textMuted).lineLimit(1)
+            case .none:
+                EmptyView()
+            default:
+                SmallButton(title: next.title, prominent: true) {
+                    if !Flow.take(next, in: workspace, window: window) {
+                        window.show(L("No agent runs in this session to ask"))
+                    }
+                }
+            }
+            Spacer(minLength: 4)
+            SmallButton(title: L("Open")) { open() }
+            if context.checkout != nil, next != .answer {
+                SmallButton(title: L("Changes")) { window.openReview(workspace, scope: .branch) }
+            }
+            if workspace.variantGroup != nil {
+                SmallButton(title: L("Keep")) { FanOut.confirmKeep(workspace) }
+            }
+        }
+    }
+
+    private var context: RepoContext { workspace.context }
+
+    private func open() {
+        window.showHub = false
+        window.select(workspace)
+        window.focusTerminal()
+    }
+
+    private func send() {
+        let text = message.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty, let agent = workspace.agentTab else { return }
+        RemoteState.type(text, enter: true, into: agent)
+        message = ""
     }
 }
 

@@ -237,7 +237,11 @@ final class Landing: ObservableObject {
     private func push(_ workspace: Workspace, checkout: String, pr: Int) {
         let run = runs[workspace.id]
         set(.pushing, for: workspace)
+        let reviewed = QuorumWatch.shared.status(for: workspace)?.succeeded == true
         Task.detached(priority: .userInitiated) {
+            // Anything origin doesn't have yet? Without, quorum's last clean
+            // review still holds and isn't repeated.
+            let unpushed = Shell.run(WorkState.git, ["rev-list", "--count", "@{push}..HEAD"], in: checkout).flatMap(Int.init) ?? 1
             let result = Shell.execute(WorkState.git, ["push", "--quiet", "origin", "HEAD"], in: checkout, timeout: 1200)
             let head = Shell.run(WorkState.git, ["rev-parse", "HEAD"], in: checkout)
             await MainActor.run {
@@ -248,7 +252,7 @@ final class Landing: ObservableObject {
                     self.set(.failed(L("Push failed: %@", reason)), for: workspace)
                     return
                 }
-                if self.withQuorum {
+                if self.withQuorum, !(reviewed && unpushed == 0) {
                     self.quorumSince[workspace.id] = Date()
                     self.set(.reviewing, for: workspace)
                     QuorumWatch.shared.start(.babysit, in: workspace)

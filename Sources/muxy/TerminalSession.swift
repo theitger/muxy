@@ -276,6 +276,9 @@ final class TerminalSession: NSObject, ObservableObject, Identifiable {
                 self.onContextChange?()
                 guard let number = pr?.number else { return }
                 let workspace = Store.shared.workspace(of: self)
+                if before.pr == nil, self.context.prState == .open, let workspace {
+                    Flow.pullRequestOpened(in: workspace)
+                }
                 if before.checks == .pending, before.pr == number {
                     switch self.context.checks {
                     case .passed: self.markAttentionIfBackground(reason: L("· #%d passed", number))

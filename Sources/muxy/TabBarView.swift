@@ -41,7 +41,7 @@ struct TabBarView: View {
         // Folded sidebar: leave room for the traffic lights.
         .padding(.leading, onStage ? 8 : 80)
         .padding(.trailing, 12)
-        .frame(height: onStage ? 42 : 46)
+        .frame(height: onStage ? 42 : StageMetrics.topBar)
         // Matches the terminal and reaches 1pt under it: Ghostty leaves its
         // outermost pixels unpainted, which shows as a seam wherever the
         // window blur is missing (Mission Control).

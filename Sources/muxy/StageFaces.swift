@@ -243,6 +243,9 @@ enum StageMetrics {
     static let radius: CGFloat = 10
     /// Gutter between the stage card and the window edge.
     static let margin: CGFloat = 8
+    /// The title bar: a compact toolbar's height, so the window's own
+    /// buttons (centered in it by macOS) line up with muxy's.
+    static let topBar: CGFloat = 40
 }
 
 /// The window with the wings out: a title bar across, the wings on the
@@ -256,7 +259,7 @@ struct StageLayout<TopBar: View, Wings: View, Stage: View>: View {
     var body: some View {
         VStack(spacing: 0) {
             topBar
-                .frame(height: 46)
+                .frame(height: StageMetrics.topBar)
                 .frame(maxWidth: .infinity)
                 .background(Theme.sidebar)
             HStack(spacing: 0) {
@@ -270,6 +273,14 @@ struct StageLayout<TopBar: View, Wings: View, Stage: View>: View {
                     .fill(Theme.sidebar, style: FillStyle(eoFill: true))
                     .clipped()
             )
+            // The card's corners: two half-transparent edges meeting there
+            // let the window behind shine through as a thin ring. Slivers in
+            // the gutter's color, a touch rounder, cover it.
+            .overlay(
+                StageGutter(leading: wingsWidth, radius: StageMetrics.radius + 1.5, margin: StageMetrics.margin, cornersOnly: true)
+                    .fill(Theme.sidebar, style: FillStyle(eoFill: true))
+                    .allowsHitTesting(false)
+            )
         }
     }
 }
@@ -281,13 +292,15 @@ struct StageGutter: Shape {
     var leading: CGFloat
     var radius: CGFloat = 10
     var margin: CGFloat = 8
+    /// Only the card's four corner slivers, not the whole gutter.
+    var cornersOnly = false
 
     func path(in rect: CGRect) -> Path {
-        var path = Path(rect)
         let card = CGRect(
             x: rect.minX + leading, y: rect.minY,
             width: rect.width - leading - margin, height: rect.height - margin
         )
+        var path = Path(cornersOnly ? card : rect)
         path.addRoundedRect(in: card, cornerSize: CGSize(width: radius, height: radius), style: .continuous)
         return path
     }

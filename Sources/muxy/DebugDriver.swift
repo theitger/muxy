@@ -40,6 +40,12 @@ enum DebugDriver {
             return reply(true, text)
         case "sidebar":
             store.toggleSidebar()
+        case "chrome":
+            guard let nsWindow = window.nsWindow, let close = nsWindow.standardWindowButton(.closeButton) else { return reply(false, "no window") }
+            let frame = close.convert(close.bounds, to: nil)
+            let fromTop = nsWindow.frame.height - frame.midY
+            let titlebar = nsWindow.frame.height - nsWindow.contentLayoutRect.height
+            return reply(true, "close button center \(fromTop) from top, titlebar \(titlebar), window \(nsWindow.frame.height)")
         case "settings":
             store.openSettings?()
         case "shot-other":
