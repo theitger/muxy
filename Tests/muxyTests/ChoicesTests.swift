@@ -23,6 +23,19 @@ final class ChoicesTests: XCTestCase {
         XCTAssertEqual(choices.map(\.number), [1, 2, 3])
         XCTAssertEqual(choices.first?.label, "Yes")
         XCTAssertEqual(choices.last?.label, "No, and tell Claude what to do differently")
+        XCTAssertEqual(choices.map(\.selected), [true, false, false])
+    }
+
+    func testKeysMoveTheCursorThenConfirm() {
+        let choices = [
+            Choice(number: 1, label: "Yes"),
+            Choice(number: 2, label: "Always", selected: true),
+            Choice(number: 3, label: "No"),
+        ]
+        XCTAssertEqual(Choices.keys(to: choices[2], in: choices), ["down", "enter"])
+        XCTAssertEqual(Choices.keys(to: choices[0], in: choices), ["up", "enter"])
+        XCTAssertEqual(Choices.keys(to: choices[1], in: choices), ["enter"])
+        XCTAssertEqual(Choices.keys(to: choices[2], in: []), ["down", "down", "enter"])
     }
 
     func testCodexApproval() {

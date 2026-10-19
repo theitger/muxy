@@ -7,6 +7,8 @@ import SwiftUI
 struct Choice: Equatable {
     var number: Int
     var label: String
+    /// The one the agent's cursor (❯, ›) is on.
+    var selected = false
 }
 
 enum Choices {
@@ -34,16 +36,24 @@ enum Choices {
         return best
     }
 
+    /// The keys from the marked choice to `target`, then Enter. Without a
+    /// marked one the cursor is assumed on the first.
+    static func keys(to target: Choice, in choices: [Choice]) -> [String] {
+        let from = choices.first(where: \.selected)?.number ?? 1
+        let delta = target.number - from
+        return Array(repeating: delta > 0 ? "down" : "up", count: abs(delta)) + ["enter"]
+    }
+
     private static func choice(in line: String) -> Choice? {
-        guard let match = line.groups(#"^\s*(?:[❯›>▶]\s*)?(\d)[.)]\s+(\S.*)$"#),
-              let number = Int(match[0]) else { return nil }
-        var label = match[1].trimmingCharacters(in: .whitespaces)
+        guard let match = line.groups(#"^\s*([❯›>▶]\s*)?(\d)[.)]\s+(\S.*)$"#),
+              let number = Int(match[1]) else { return nil }
+        var label = match[2].trimmingCharacters(in: .whitespaces)
         // "(esc)", "(y)": the key hint, not the answer.
         if let hint = label.range(of: #"\s*\((?:esc|[a-z])\)$"#, options: .regularExpression) {
             label.removeSubrange(hint)
         }
         guard !label.isEmpty, label.count <= 120 else { return nil }
-        return Choice(number: number, label: label)
+        return Choice(number: number, label: label, selected: !match[0].isEmpty)
     }
 }
 
@@ -109,9 +119,15 @@ final class Inbox: ObservableObject {
         RemoteState.type(trimmed, enter: true, into: session)
     }
 
+    /// Moves the agent's cursor to the choice and confirms it, as you
+    /// would with the arrow keys: both agents take that, while a typed
+    /// digit means "pick" to one and "type a digit" to another.
     static func choose(_ choice: Choice, in session: TerminalSession) {
-        if !RemoteState.press(String(choice.number), in: session) {
-            session.terminalView.sendText(String(choice.number))
+        let current = choices(of: session)
+        for (index, key) in Choices.keys(to: choice, in: current).enumerated() {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.04 * Double(index)) {
+                RemoteState.press(key, in: session)
+            }
         }
         session.needsAttention = false
     }
