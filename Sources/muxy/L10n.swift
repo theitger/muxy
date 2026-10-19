@@ -566,5 +566,8 @@ enum German {
         "Review again": "Erneut reviewen",
         "Show the run's folder": "Ordner des Laufs zeigen",
         "%dm": "%d Min.",
+        "Review model": "Review-Modell",
+        "Fix model": "Fix-Modell",
+        "engine default": "Standard der Engine",
     ]
 }

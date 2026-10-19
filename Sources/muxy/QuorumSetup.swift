@@ -97,12 +97,14 @@ struct QuorumSettings: View {
             }
             if installed {
                 row(L("Review engine")) { picker("REVIEW_ENGINE", Self.engines, fallback: "codex") }
+                row(L("Review model")) { modelField("REVIEW_MODEL") }
                 row(L("Review effort")) { picker("REVIEW_EFFORT", Self.efforts, fallback: "medium") }
                 row(L("Reviewers per round")) {
                     Stepper(values["REVIEWERS"] ?? "6", value: intBinding("REVIEWERS", fallback: 6), in: 1 ... 12)
                         .monospacedDigit()
                 }
                 row(L("Fix engine")) { picker("FIX_ENGINE", Self.engines, fallback: "codex") }
+                row(L("Fix model")) { modelField("FIX_MODEL") }
                 row(L("Fix effort")) { picker("FIX_EFFORT", Self.efforts, fallback: "high") }
                 toggle(L("Post reviews on GitHub"), key: "POST", fallback: true)
                 toggle(L("Bring branches up to date and resolve conflicts"), key: "RESOLVE_CONFLICTS", fallback: false)
@@ -170,6 +172,27 @@ struct QuorumSettings: View {
         }
         .labelsHidden()
         .frame(width: 130)
+    }
+
+    /// Free text: model names change faster than any list. Empty leaves
+    /// the engine's own default.
+    private func modelField(_ key: String) -> some View {
+        TextField(L("engine default"), text: Binding(
+            get: { values[key] ?? "" },
+            set: { values[key] = $0 }
+        ))
+        .onSubmit { commit(key) }
+        .textFieldStyle(.roundedBorder)
+        .font(Theme.mono(size: 12))
+        .frame(width: 170)
+        .onDisappear { commit(key) }
+    }
+
+    /// Written only when it changed: closing Settings rewrites nothing.
+    private func commit(_ key: String) {
+        let value = (values[key] ?? "").trimmingCharacters(in: .whitespaces)
+        guard QuorumConfig.read()[key] ?? "" != value else { return }
+        set(key, value)
     }
 
     private func intBinding(_ key: String, fallback: Int) -> Binding<Int> {
