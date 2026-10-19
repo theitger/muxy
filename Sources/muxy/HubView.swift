@@ -279,7 +279,7 @@ struct HubView: View {
         window.showHub = false
         let workspace = store.makeWorkspace(directory: root, in: window)
         window.select(workspace)
-        store.runInNewTab(Quorum.command(.review, pr: request.number), in: workspace)
+        Quorum.run(.review, pr: request.number, in: workspace)
         if let first = workspace.sessions.first, workspace.sessions.count > 1 { store.close(first, in: workspace) }
     }
 }
@@ -1077,7 +1077,7 @@ private struct ReviewRunRow: View {
         }
         let workspace = Store.shared.makeWorkspace(directory: root, in: window)
         window.select(workspace)
-        Store.shared.runInNewTab(Quorum.command(kind, pr: number), in: workspace)
+        Quorum.run(kind, pr: number, in: workspace)
         if let first = workspace.sessions.first, workspace.sessions.count > 1 { Store.shared.close(first, in: workspace) }
         QuorumWatch.shared.start(always: true)
     }
