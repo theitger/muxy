@@ -491,33 +491,14 @@ private struct NotificationsStep: View {
     }
 }
 
-/// The same switch as in Settings.
+/// The same control as in Settings.
 private struct AwakeStep: View {
-    @ObservedObject private var awake = StayAwake.shared
-
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .top) {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(L("Keep the Mac awake"))
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(Theme.textPrimary)
-                    Text(L("While Muxy runs, even with the lid closed. Asks for your password once."))
-                        .font(.system(size: 12))
-                        .foregroundStyle(Theme.textMuted)
-                        .fixedSize(horizontal: false, vertical: true)
-                    Text(L("Below %d %% battery the Mac may sleep again.", StayAwake.batteryFloor))
-                        .font(.system(size: 12))
-                        .foregroundStyle(Theme.textDim)
-                }
-                Spacer()
-                Toggle(L("Keep the Mac awake"), isOn: Binding(get: { awake.enabled }, set: { awake.setEnabled($0) }))
-                    .labelsHidden()
-                    .toggleStyle(.switch)
-            }
-            if let problem = awake.problem {
-                Text(problem).font(.system(size: 11.5)).foregroundStyle(Theme.red)
-            }
+        VStack(alignment: .leading, spacing: 6) {
+            StayAwakeSettings(titleColor: Theme.textPrimary)
+            Text(L("Below %d %% battery the Mac may sleep again.", StayAwake.batteryFloor))
+                .font(.system(size: 12))
+                .foregroundStyle(Theme.textDim)
         }
     }
 }

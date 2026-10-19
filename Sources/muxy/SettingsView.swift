@@ -46,35 +46,49 @@ struct SettingsView: View {
     }
 }
 
-/// Settings → keep the Mac awake, lid closed included.
-private struct StayAwakeSettings: View {
+/// Settings → keep the Mac awake: not, while open (like caffeinate), or
+/// lid closed too. The same control in the setup.
+struct StayAwakeSettings: View {
     @ObservedObject private var awake = StayAwake.shared
+    var titleColor = Theme.textBody
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(L("Keep the Mac awake"))
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(Theme.textBody)
-                    Text(L("While Muxy runs, even with the lid closed. Asks for your password once."))
-                        .font(.system(size: 11.5))
-                        .foregroundStyle(Theme.textDim)
-                }
-                Spacer()
-                Toggle("", isOn: Binding(get: { awake.enabled }, set: { awake.setEnabled($0) }))
-                    .labelsHidden()
-                    .toggleStyle(.switch)
+            Text(L("Keep the Mac awake"))
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(titleColor)
+            Picker(L("Keep the Mac awake"), selection: Binding(get: { awake.mode }, set: { awake.setMode($0) })) {
+                Text(L("Off")).tag(StayAwake.Mode.off)
+                Text(L("While open")).tag(StayAwake.Mode.open)
+                Text(L("Lid closed too")).tag(StayAwake.Mode.lidClosed)
             }
+            .labelsHidden()
+            .pickerStyle(.segmented)
+            .frame(maxWidth: 340)
+            Text(explanation)
+                .font(.system(size: 11.5))
+                .foregroundStyle(Theme.textDim)
+                .fixedSize(horizontal: false, vertical: true)
             if let problem = awake.problem {
                 Text(problem).font(.system(size: 11.5)).foregroundStyle(Theme.red)
-            } else if awake.enabled, awake.lowBattery {
+            } else if awake.mode != .off, awake.lowBattery {
                 Text(L("Paused: battery below %d %%, the Mac may sleep.", StayAwake.batteryFloor))
                     .font(.system(size: 11.5)).foregroundStyle(Theme.textDim)
             } else if awake.holding {
                 Text(L("On: the Mac won't sleep, lid closed included. Mind the heat in a bag."))
                     .font(.system(size: 11.5)).foregroundStyle(Theme.green)
+            } else if awake.caffeinated {
+                Text(L("On: the Mac stays awake while it is open."))
+                    .font(.system(size: 11.5)).foregroundStyle(Theme.green)
             }
+        }
+    }
+
+    private var explanation: String {
+        switch awake.mode {
+        case .off: L("The Mac sleeps as usual, and agents pause with it.")
+        case .open: L("Like caffeinate: no sleep while Muxy runs and the Mac is open. The display may still turn off. No password needed.")
+        case .lidClosed: L("While Muxy runs, even with the lid closed. Asks for your password once.")
         }
     }
 }

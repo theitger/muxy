@@ -149,6 +149,12 @@ enum German {
 
         // Settings
         "Keep the Mac awake": "Mac wach halten",
+        "Off": "Aus",
+        "While open": "Aufgeklappt",
+        "Lid closed too": "Auch zugeklappt",
+        "The Mac sleeps as usual, and agents pause with it.": "Der Mac schläft wie gewohnt, und die Agents pausieren mit ihm.",
+        "Like caffeinate: no sleep while Muxy runs and the Mac is open. The display may still turn off. No password needed.": "Wie caffeinate: kein Ruhezustand, solange Muxy läuft und der Mac aufgeklappt ist. Der Bildschirm darf trotzdem ausgehen. Ohne Passwort.",
+        "On: the Mac stays awake while it is open.": "An: der Mac bleibt wach, solange er aufgeklappt ist.",
         "While Muxy runs, even with the lid closed. Asks for your password once.": "Solange Muxy läuft, auch zugeklappt. Fragt einmal nach deinem Passwort.",
         "Paused: battery below %d %%, the Mac may sleep.": "Pausiert: Akku unter %d %%, der Mac darf schlafen.",
         "On: the Mac won't sleep, lid closed included. Mind the heat in a bag.": "An: der Mac schläft nicht, auch zugeklappt. Vorsicht mit Wärme in der Tasche.",
