@@ -49,7 +49,8 @@ final class Turns: ObservableObject {
     }
 
     private func record(_ moment: Checkpoint.Moment, label: String, in checkout: String) {
-        Task.detached(priority: .utility) {
+        // "Before" races the agent's first edits: it goes first.
+        Task.detached(priority: moment == .before ? .userInitiated : .utility) {
             Checkpoints.record(moment, label: label, in: checkout)
             let list = Checkpoints.list(in: checkout)
             await MainActor.run { self.byCheckout[checkout] = list }

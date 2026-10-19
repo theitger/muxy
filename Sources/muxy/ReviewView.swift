@@ -39,7 +39,7 @@ final class ReviewModel: ObservableObject {
 
     /// The tab the comments go to: the one running an agent.
     var agentSession: TerminalSession? {
-        workspace.sessions.first { $0.kind != nil && $0.agent != .none } ?? workspace.featured
+        workspace.agentTab
     }
 
     func load() {
@@ -67,7 +67,16 @@ final class ReviewModel: ObservableObject {
     ) -> ([FileDiff], String?) {
         switch scope {
         case .lastTurn:
-            guard let before = checkpoints.first(where: { $0.moment == .before }) else {
+            // The turn's start: its own "before", else (nothing changed in
+            // between, so none was written) the turn before's end.
+            let latestAfter = checkpoints.firstIndex { $0.moment == .after }
+            let start: Checkpoint? = {
+                guard let first = checkpoints.first else { return nil }
+                if first.moment == .before { return first }
+                guard let latestAfter else { return nil }
+                return checkpoints.dropFirst(latestAfter + 1).first
+            }()
+            guard let before = start else {
                 let (files, _) = diff(scope: .branch, checkout: checkout, root: root, checkpoints: checkpoints)
                 return (files, L("No turn recorded yet: the whole branch instead."))
             }

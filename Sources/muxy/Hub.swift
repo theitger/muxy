@@ -203,8 +203,8 @@ enum FanOut {
         let alert = NSAlert()
         alert.messageText = L("Keep “%@”?", winner.title)
         alert.informativeText = others.count == 1
-            ? L("The other variant closes and its worktree goes. Its branch stays.")
-            : L("The %d other variants close and their worktrees go. Their branches stay.", others.count)
+            ? L("The other variant closes and its worktree goes. Its branch stays, and its last files are kept as a checkpoint.")
+            : L("The %d other variants close and their worktrees go. Their branches stay, and their last files are kept as checkpoints.", others.count)
         alert.addButton(withTitle: L("Keep this one"))
         alert.addButton(withTitle: L("Cancel"))
         if alert.runModal() == .alertFirstButtonReturn { keep(winner) }

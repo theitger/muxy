@@ -277,7 +277,7 @@ struct ResultOverlay: View {
     }
 
     private var agentSession: TerminalSession? {
-        workspace.sessions.first { $0.kind != nil && $0.agent != .none }
+        workspace.agentTab
     }
 }
 

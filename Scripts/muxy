@@ -47,7 +47,8 @@ its work before it says it is done.
   --session <id>        a session or tab id from `muxy status`
   --no-wait             start them and return
 
-Exit status: 0 all passed (or nothing to check), 1 a check failed.
+Exit status: 0 all passed (or nothing they check changed), 1 a check
+failed, was stopped, or couldn't run.
 END
 }
 
@@ -294,8 +295,7 @@ cmd_proof() {
         state="$(printf '%s\n' "$REPLY_TEXT" | head -n 1)"
     done
     printf '%s\n' "$REPLY_TEXT"
-    [ "$state" = failed ] && exit 1
-    exit 0
+    case "$state" in passed | skipped) exit 0 ;; *) exit 1 ;; esac
 }
 
 cmd_land() {

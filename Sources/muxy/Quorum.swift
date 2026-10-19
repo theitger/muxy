@@ -28,6 +28,12 @@ struct QuorumStatus: Equatable {
 
     var isClean: Bool { blockers == 0 && critical == 0 }
 
+    /// Finished and quorum says it worked: converged, nothing open. A run
+    /// that failed or was cancelled is never this, whatever its counts.
+    var succeeded: Bool {
+        !running && isClean && ["converged", "ok", "clean", "merged", "success"].contains(outcome ?? "")
+    }
+
     /// One line for a card.
     var summary: String {
         if running {
@@ -167,8 +173,10 @@ final class QuorumWatch: ObservableObject {
     @Published private(set) var slugs: [String: String] = [:]
     private var timer: Timer?
 
-    func start() {
-        guard timer == nil, FileManager.default.fileExists(atPath: Quorum.cache) else { return }
+    /// `always`: also before quorum ever ran (its cache appears with the
+    /// first run muxy starts).
+    func start(always: Bool = false) {
+        guard timer == nil, always || FileManager.default.fileExists(atPath: Quorum.cache) else { return }
         refresh()
         let timer = Timer.scheduledTimer(withTimeInterval: 8, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.refresh() }
@@ -212,6 +220,7 @@ final class QuorumWatch: ObservableObject {
     func start(_ kind: QuorumStatus.Kind, in workspace: Workspace) {
         guard let pr = workspace.context.pr else { return }
         Store.shared.runInNewTab(Quorum.command(kind, pr: pr), in: workspace)
+        start(always: true)
         DispatchQueue.main.asyncAfter(deadline: .now() + 3) { self.refresh() }
     }
 }

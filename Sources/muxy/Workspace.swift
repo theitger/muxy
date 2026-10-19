@@ -71,6 +71,12 @@ final class Workspace: ObservableObject, Identifiable {
         return Paths.abbreviate((directory as NSString).deletingLastPathComponent)
     }
 
+    /// The tab whose agent is running now (idle or at work): the only one
+    /// muxy ever types a message into. Never a plain shell.
+    var agentTab: TerminalSession? {
+        sessions.first { $0.kind != nil && ($0.agent == .idle || $0.agent == .working) }
+    }
+
     /// The fan-out it is one variant of.
     var variantGroup: String? {
         sessions.lazy.compactMap(\.variantGroup).first

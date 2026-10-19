@@ -95,6 +95,9 @@ enum Checkpoints {
     /// files as they were right before are kept as a checkpoint of their
     /// own, so this can be undone. Staging is cleared (back to HEAD).
     static func restore(_ checkpoint: Checkpoint, in checkout: String) -> Bool {
+        // No going back without a way back: the files as they are must be
+        // readable (recorded now, or equal to the last checkpoint).
+        guard WorkState.snapshot(of: checkout) != nil else { return false }
         record(.after, label: L("Before going back"), in: checkout)
         // Everything into the index first, so read-tree also removes files
         // that are new since the checkpoint.

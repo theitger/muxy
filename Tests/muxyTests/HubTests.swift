@@ -57,7 +57,7 @@ final class DiffParseTests: XCTestCase {
             ReviewComment(path: "a.go", line: 12, removed: false, code: "  x := 1", text: "Name it count."),
             ReviewComment(path: "b.go", line: 3, removed: true, code: "return nil", text: "Keep this.")
         ])
-        XCTAssertTrue(text.contains("1. a.go:12\n   > x := 1\n   Name it count."))
+        XCTAssertTrue(text.contains("1. a.go:12\n   » x := 1\n   Name it count."))
         XCTAssertTrue(text.contains("2. b.go:3 (a line you removed)"))
     }
 }
@@ -181,5 +181,53 @@ final class RadarTests: XCTestCase {
         try repo.write("a.txt", "a\n", in: a)
         try repo.write("b.txt", "b\n", in: b)
         XCTAssertTrue(Radar.scan(root: repo.root, checkouts: [a, b], memo: Radar.Memo()).isEmpty)
+    }
+}
+
+final class ReviewFixTests: XCTestCase {
+    func testFailuresAreNotCachedAndCommandsCount() throws {
+        let repo = try TempRepo()
+        try repo.write("x.txt", "\(UUID())\n")
+        let runner = Proofs.Runner()
+        let failing = [ProofCheck(name: "t", command: "exit 1")]
+        XCTAssertEqual(Proofs.prove(checkout: repo.root, root: repo.root, checks: failing, runner: runner) { _, _, _ in }?.verdict, .failed)
+        // Same files, the command fixed: it runs again and passes.
+        let fixed = [ProofCheck(name: "t", command: "true")]
+        XCTAssertEqual(Proofs.prove(checkout: repo.root, root: repo.root, checks: fixed, runner: runner) { _, _, _ in }?.verdict, .passed)
+        // A pass is remembered only for its own command.
+        let other = [ProofCheck(name: "t", command: "exit 2")]
+        XCTAssertEqual(Proofs.prove(checkout: repo.root, root: repo.root, checks: other, runner: runner) { _, _, _ in }?.verdict, .failed)
+    }
+
+    func testQuorumSucceedsOnlyWhenItSaysSo() {
+        var status = QuorumStatus(kind: .babysit, key: "o/r#1", running: false, date: Date())
+        XCTAssertFalse(status.succeeded, "no outcome yet")
+        status.outcome = "failed"
+        XCTAssertFalse(status.succeeded, "failed with zero counts")
+        status.outcome = "converged"
+        XCTAssertTrue(status.succeeded)
+        status.blockers = 1
+        XCTAssertFalse(status.succeeded)
+    }
+
+    func testUnknownGitStateIsNeverFinished() {
+        let info = WorktreeInfo(path: "/x", root: "/r", owner: .other, changes: -1, ahead: 0)
+        XCTAssertFalse(info.isFinished)
+        let behind = WorktreeInfo(path: "/x", root: "/r", owner: .other, changes: 0, ahead: -1)
+        XCTAssertFalse(behind.isFinished)
+        var merged = WorktreeInfo(path: "/x", root: "/r", owner: .other, changes: 0, ahead: 3)
+        merged.prState = .merged
+        XCTAssertFalse(merged.isFinished, "merged PR on the same name, but not this work")
+        merged.mergedHere = true
+        XCTAssertTrue(merged.isFinished)
+    }
+
+    func testRunnerSurvivesAShellThatIgnoresTerm() throws {
+        // A cancel must kill the tree and come back, never crash.
+        let runner = Proofs.Runner()
+        let log = NSTemporaryDirectory() + "muxy-term-\(UUID()).log"
+        DispatchQueue.global().asyncAfter(deadline: .now() + 1) { runner.cancel("k") }
+        let outcome = runner.run("trap '' TERM; sleep 30", in: NSTemporaryDirectory(), log: log, key: "k")
+        XCTAssertEqual(outcome, .cancelled)
     }
 }

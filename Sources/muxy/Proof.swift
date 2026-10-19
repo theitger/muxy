@@ -141,6 +141,16 @@ final class Proofs: ObservableObject {
     private let runner = Runner()
     private var waiters: [String: [(ProofResult?) -> Void]] = [:]
 
+    /// A run asked for while another was going (see `fresh`).
+    private struct Queued {
+        var root: String
+        var checks: [ProofCheck]?
+        var session: TerminalSession?
+        var then: ((ProofResult?) -> Void)?
+    }
+
+    private var queued: [String: Queued] = [:]
+
     nonisolated static let directory = StateDirectory.path + "/proofs"
 
     func result(for checkout: String?) -> ProofResult? {
@@ -154,17 +164,25 @@ final class Proofs: ObservableObject {
     /// The agent ended a turn: its auto checks run, when there are any.
     func turnEnded(in session: TerminalSession) {
         guard auto, let checkout = session.context.checkout, let root = session.context.root else { return }
-        let checks = ProofCheck.load(root: root).filter(\.auto)
-        guard !checks.isEmpty else { return }
-        run(checkout: checkout, root: root, checks: checks, session: session)
+        Task.detached(priority: .utility) {
+            let checks = ProofCheck.load(root: root).filter(\.auto)
+            guard !checks.isEmpty else { return }
+            await MainActor.run { self.run(checkout: checkout, root: root, checks: checks, session: session) }
+        }
     }
 
     /// Runs all of a checkout's checks (or `checks`), then calls back with
-    /// the result. A run already going for it is joined, not doubled.
+    /// the result. A run already going for it is joined, not doubled;
+    /// `fresh` waits for it instead and then runs again, on the files as
+    /// they are by then and with exactly `checks`.
     func run(
         checkout: String, root: String, checks: [ProofCheck]? = nil, session: TerminalSession? = nil,
-        then: ((ProofResult?) -> Void)? = nil
+        fresh: Bool = false, then: ((ProofResult?) -> Void)? = nil
     ) {
+        if fresh, running[checkout] != nil {
+            queued[checkout] = Queued(root: root, checks: checks, session: session, then: then)
+            return
+        }
         if let then { waiters[checkout, default: []].append(then) }
         guard running[checkout] == nil else { return }
         running[checkout] = Running(check: L("Preparing"), index: 0, count: 0, since: Date())
@@ -205,14 +223,16 @@ final class Proofs: ObservableObject {
 
     private func finish(checkout: String, result: ProofResult?, session: TerminalSession?) {
         running[checkout] = nil
-        if let result {
-            results[checkout] = result
-            if let session, result.verdict == .failed {
-                session.markAttentionIfBackground(reason: L("failed its checks"))
-            }
+        // No result (the files couldn't be read): no old verdict either.
+        results[checkout] = result
+        if let session, result?.verdict == .failed {
+            session.markAttentionIfBackground(reason: L("failed its checks"))
         }
         let pending = waiters.removeValue(forKey: checkout) ?? []
         pending.forEach { $0(result) }
+        if let next = queued.removeValue(forKey: checkout) {
+            run(checkout: checkout, root: next.root, checks: next.checks, session: next.session, then: next.then)
+        }
     }
 
     /// Asks the agent to fix what failed: the check, its command and the
@@ -233,8 +253,11 @@ final class Proofs: ObservableObject {
         progress: @escaping @Sendable (String, Int, Int) -> Void
     ) -> ProofResult? {
         guard !checks.isEmpty, let snapshot = WorkState.snapshot(of: checkout) else { return nil }
-        if let cached = cached(tree: snapshot.tree), Set(cached.entries.map(\.name)).isSuperset(of: checks.map(\.name)),
-           cached.verdict != .cancelled {
+        // Only what passed is remembered, per command: a failure (flaky,
+        // Docker down, a fixed command) always runs again.
+        if let cached = cached(tree: snapshot.tree), checks.allSatisfy({ check in
+            cached.entries.contains { $0.name == check.name && $0.command == check.command && ($0.outcome == .passed || $0.outcome == .skipped) }
+        }) {
             return cached
         }
         let base = WorkState.base(of: checkout, root: root) ?? snapshot.head
@@ -257,7 +280,7 @@ final class Proofs: ObservableObject {
             if outcome == .cancelled { break }
         }
         let result = ProofResult(tree: snapshot.tree, entries: entries, finished: Date())
-        store(result)
+        if result.verdict == .passed || result.verdict == .skipped { store(result) }
         return result
     }
 
@@ -297,10 +320,22 @@ final class Proofs: ObservableObject {
         private var cancelled: Set<String> = []
 
         func cancel(_ key: String) {
-            lock.withLock {
+            let pid: pid_t? = lock.withLock {
                 cancelled.insert(key)
-                processes[key]?.terminate()
+                return processes[key]?.processIdentifier
             }
+            if let pid { Self.killTree(pid, signal: SIGTERM) }
+        }
+
+        /// The shell and everything it started (test runners, Compose):
+        /// SIGTERM to the shell alone would orphan them.
+        static func killTree(_ pid: pid_t, signal: Int32) {
+            if let children = Shell.run("/usr/bin/pgrep", ["-P", String(pid)], in: "/") {
+                for child in children.split(separator: "\n").compactMap({ pid_t($0) }) {
+                    killTree(child, signal: signal)
+                }
+            }
+            kill(pid, signal)
         }
 
         /// Your login shell runs it, so it finds what your terminal finds.
@@ -333,15 +368,24 @@ final class Proofs: ObservableObject {
                 return .cancelled
             }
             // Long test suites are fine; a hung one is not.
-            if exited.wait(timeout: .now() + 2700) == .timedOut {
-                process.terminate()
-                _ = exited.wait(timeout: .now() + 5)
+            var finished = exited.wait(timeout: .now() + 2700) == .success
+            if !finished {
+                Self.killTree(process.processIdentifier, signal: SIGTERM)
+                finished = exited.wait(timeout: .now() + 5) == .success
+                if !finished {
+                    Self.killTree(process.processIdentifier, signal: SIGKILL)
+                    finished = exited.wait(timeout: .now() + 5) == .success
+                }
             }
+            // A cancel kills the tree; wait for the shell to actually go.
+            if !finished || process.isRunning { _ = exited.wait(timeout: .now() + 10) }
             let wasCancelled = lock.withLock {
                 processes[key] = nil
                 return cancelled.remove(key) != nil
             }
             if wasCancelled { return .cancelled }
+            // Still running after SIGKILL: reading its status would throw.
+            guard !process.isRunning else { return .failed }
             return process.terminationReason == .exit && process.terminationStatus == 0 ? .passed : .failed
         }
     }

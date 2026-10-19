@@ -115,7 +115,7 @@ enum ReviewMessage {
         var parts = [comments.count == 1 ? "A review comment on your changes:" : "Review comments on your changes:"]
         for (index, comment) in comments.enumerated() {
             let place = "\(comment.path):\(comment.line)" + (comment.removed ? " (a line you removed)" : "")
-            parts.append("\(index + 1). \(place)\n   > \(comment.code.trimmingCharacters(in: .whitespaces))\n   \(comment.text)")
+            parts.append("\(index + 1). \(place)\n   » \(comment.code.trimmingCharacters(in: .whitespaces))\n   \(comment.text)")
         }
         parts.append("Address each one. Say briefly what you changed for each.")
         return parts.joined(separator: "\n\n")

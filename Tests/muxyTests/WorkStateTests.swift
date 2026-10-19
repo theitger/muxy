@@ -140,11 +140,11 @@ final class ProofTests: XCTestCase {
         XCTAssertEqual(result.entries.map(\.outcome), [.passed, .failed, .skipped])
         XCTAssertEqual(result.verdict, .failed)
         XCTAssertTrue(result.entries[1].tail.contains("broken"))
-        // Same files: the cached answer, nothing runs.
-        let again = try XCTUnwrap(Proofs.prove(
-            checkout: repo.root, root: repo.root, checks: [ProofCheck(name: "pass", command: "exit 9")], runner: runner
-        ) { _, _, _ in })
-        XCTAssertEqual(again.entries.first?.outcome, .passed)
+        // A failure is never remembered: the same files run again.
+        try FileManager.default.removeItem(atPath: repo.path("src/a.txt"))
+        try repo.write("src/a.txt", "a\n")
+        let again = try XCTUnwrap(Proofs.prove(checkout: repo.root, root: repo.root, checks: checks, runner: runner) { _, _, _ in })
+        XCTAssertEqual(again.entries.map(\.outcome), [.passed, .failed, .skipped])
     }
 }
 

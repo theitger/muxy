@@ -465,7 +465,8 @@ final class Store: ObservableObject {
     }
 
     /// A variant you didn't keep: it closes without asking and its worktree
-    /// goes, while its branch stays (its commits are not lost).
+    /// goes. Nothing is lost: its branch stays, and its files as they were
+    /// (uncommitted work included) stay as a checkpoint under refs/muxy/turns.
     func discardVariant(_ workspace: Workspace) {
         let context = workspace.context
         let window = window(of: workspace)
@@ -477,8 +478,8 @@ final class Store: ObservableObject {
         guard let root = context.root, let checkout = context.checkout, Worktrees.isManaged(checkout, root: root),
               !workspaces.contains(where: { $0.context.checkout == checkout }) else { return }
         Task.detached(priority: .utility) {
+            Checkpoints.record(.after, label: "Discarded variant", in: checkout)
             Worktrees.remove(checkout, branch: nil, root: root)
-            Checkpoints.forget(checkout, root: root)
         }
     }
 
@@ -694,7 +695,10 @@ final class Store: ObservableObject {
             case "idle":
                 // Esc fires no Stop: this is the first word after it. A
                 // pending permission prompt stays what it is.
-                if session.agent == .working { session.agent = .idle }
+                if session.agent == .working {
+                    session.agent = .idle
+                    Landing.shared.turnEnded(in: workspace)
+                }
             case "error":
                 session.agent = .failed
                 session.markAttentionIfBackground(reason: L("hit an error"))

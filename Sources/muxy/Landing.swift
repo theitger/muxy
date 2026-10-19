@@ -57,12 +57,19 @@ final class Landing: ObservableObject {
     }
 
     @Published private(set) var steps: [Workspace.ID: Step] = [:]
+    /// Each landing's number: a step that finishes after a cancel or a new
+    /// landing finds its number gone and does nothing.
+    private var runs: [Workspace.ID: Int] = [:]
+    /// Since when the current step waits: waiting never goes on forever.
+    private var stepSince: [Workspace.ID: Date] = [:]
     /// When quorum was asked, so an older run's verdict doesn't count.
     private var quorumSince: [Workspace.ID: Date] = [:]
     private var timer: Timer?
     /// The agent asked for something this many times in one landing: then
     /// it is your call, not another loop.
     private var asks: [Workspace.ID: Int] = [:]
+    /// The head that was pushed after the checks passed.
+    private var proven: [Workspace.ID: String?] = [:]
 
     func step(for workspace: Workspace) -> Step? { steps[workspace.id] }
 
@@ -71,13 +78,16 @@ final class Landing: ObservableObject {
     }
 
     func land(_ workspace: Workspace) {
-        guard canLand(workspace) else { return }
+        // One landing per session at a time.
+        guard canLand(workspace), steps[workspace.id]?.isActive != true else { return }
+        runs[workspace.id, default: 0] += 1
         asks[workspace.id] = 0
         advance(workspace)
         startTimer()
     }
 
     func cancel(_ workspace: Workspace) {
+        runs[workspace.id, default: 0] += 1
         steps[workspace.id] = nil
         quorumSince[workspace.id] = nil
     }
@@ -85,8 +95,22 @@ final class Landing: ObservableObject {
     /// The agent's turn ended: a landing waiting on it goes on.
     func turnEnded(in workspace: Workspace) {
         guard case .waitingForAgent = steps[workspace.id] else { return }
+        let run = runs[workspace.id]
         // Give the push that often ends a turn a moment.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 3) { self.advance(workspace) }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+            guard self.runs[workspace.id] == run, case .waitingForAgent = self.steps[workspace.id] else { return }
+            self.advance(workspace)
+        }
+    }
+
+    private func set(_ step: Step, for workspace: Workspace) {
+        if steps[workspace.id] != step { stepSince[workspace.id] = Date() }
+        steps[workspace.id] = step
+    }
+
+    /// Still the landing that started this step, not cancelled meanwhile.
+    private func current(_ workspace: Workspace, _ run: Int?) -> Bool {
+        runs[workspace.id] == run && steps[workspace.id]?.isActive == true
     }
 
     // MARK: Steps
@@ -94,19 +118,23 @@ final class Landing: ObservableObject {
     private func advance(_ workspace: Workspace) {
         guard let checkout = workspace.context.checkout, let root = workspace.context.root,
               let pr = workspace.context.pr else { return }
+        let run = runs[workspace.id]
         if workspace.sessions.contains(where: { $0.agent == .working }) {
-            steps[workspace.id] = .waitingForAgent(L("Waiting for the agent's turn to end"))
+            set(.waitingForAgent(L("Waiting for the agent's turn to end")), for: workspace)
             return
         }
         // Typing now would answer the agent's open question.
         if workspace.sessions.contains(where: { $0.agent == .blocked }) {
-            steps[workspace.id] = .failed(L("The agent asks you something: answer it, then land again"))
+            set(.failed(L("The agent asks you something: answer it, then land again")), for: workspace)
             return
         }
-        steps[workspace.id] = .preparing(L("Looking at the branch"))
+        set(.preparing(L("Looking at the branch")), for: workspace)
         Task.detached(priority: .userInitiated) {
             let state = Self.inspect(checkout: checkout, root: root)
-            await MainActor.run { self.act(on: state, workspace: workspace, checkout: checkout, root: root, pr: pr) }
+            await MainActor.run {
+                guard self.current(workspace, run) else { return }
+                self.act(on: state, workspace: workspace, checkout: checkout, root: root, pr: pr)
+            }
         }
     }
 
@@ -134,7 +162,7 @@ final class Landing: ObservableObject {
     }
 
     private func act(on state: Inspection, workspace: Workspace, checkout: String, root: String, pr: Int) {
-        guard steps[workspace.id] != nil else { return } // cancelled meanwhile
+        let run = runs[workspace.id]
         if state.dirty {
             ask(workspace, L("The agent commits its remaining changes"),
                 "Commit all remaining changes in this checkout with a clear message, then push the branch. Don't change anything else.")
@@ -147,14 +175,17 @@ final class Landing: ObservableObject {
             return
         }
         if state.behind {
-            steps[workspace.id] = .preparing(L("Merging %@ in", state.start))
+            set(.preparing(L("Merging %@ in", state.start)), for: workspace)
             Task.detached(priority: .userInitiated) {
                 let merged = Shell.execute(WorkState.git, ["merge", "--no-edit", "--quiet", state.start], in: checkout, timeout: 300)
+                if merged.status != 0 {
+                    _ = Shell.execute(WorkState.git, ["merge", "--abort"], in: checkout)
+                }
                 await MainActor.run {
+                    guard self.current(workspace, run) else { return }
                     if merged.status == 0 {
                         self.prove(workspace, checkout: checkout, root: root, pr: pr)
                     } else {
-                        _ = Shell.execute(WorkState.git, ["merge", "--abort"], in: checkout)
                         self.ask(workspace, L("The agent merges %@", state.start),
                                  "Merge \(state.start) into this branch, resolve anything that comes up, run the relevant tests, commit and push.")
                     }
@@ -166,46 +197,60 @@ final class Landing: ObservableObject {
     }
 
     private func prove(_ workspace: Workspace, checkout: String, root: String, pr: Int) {
-        let checks = ProofCheck.load(root: root)
-        guard !checks.isEmpty else {
-            push(workspace, checkout: checkout, pr: pr)
-            return
-        }
-        steps[workspace.id] = .proving
-        Proofs.shared.run(checkout: checkout, root: root, checks: checks) { [weak self] result in
-            guard let self, self.steps[workspace.id] == .proving else { return }
-            guard let result else {
-                self.steps[workspace.id] = .failed(L("The checks couldn't run"))
-                return
+        let run = runs[workspace.id]
+        set(.proving, for: workspace)
+        Task.detached(priority: .userInitiated) {
+            let checks = ProofCheck.load(root: root)
+            await MainActor.run {
+                guard self.current(workspace, run) else { return }
+                guard !checks.isEmpty else {
+                    self.push(workspace, checkout: checkout, pr: pr)
+                    return
+                }
+                // Every check, on the files as they are now: never a run
+                // that started before (auto checks only, or before the merge).
+                Proofs.shared.run(checkout: checkout, root: root, checks: checks, fresh: true) { [weak self] result in
+                    guard let self, self.current(workspace, run), self.steps[workspace.id] == .proving else { return }
+                    guard let result else {
+                        self.set(.failed(L("The checks couldn't run")), for: workspace)
+                        return
+                    }
+                    switch result.verdict {
+                    case .failed:
+                        guard let session = self.agent(of: workspace) else {
+                            self.set(.failed(L("Checks failed")), for: workspace)
+                            return
+                        }
+                        guard self.mayAsk(workspace) else { return }
+                        Proofs.sendFailures(result, to: session)
+                        self.set(.waitingForAgent(L("The agent fixes the failed checks")), for: workspace)
+                    case .cancelled:
+                        self.set(.failed(L("Checks cancelled")), for: workspace)
+                    case .passed, .skipped:
+                        self.push(workspace, checkout: checkout, pr: pr)
+                    }
+                }
             }
-            if result.verdict == .failed, let session = self.agent(of: workspace) {
-                guard self.mayAsk(workspace) else { return }
-                Proofs.sendFailures(result, to: session)
-                self.steps[workspace.id] = .waitingForAgent(L("The agent fixes the failed checks"))
-                return
-            }
-            if result.verdict == .cancelled {
-                self.steps[workspace.id] = .failed(L("Checks cancelled"))
-                return
-            }
-            self.push(workspace, checkout: checkout, pr: pr)
         }
     }
 
     private func push(_ workspace: Workspace, checkout: String, pr: Int) {
-        steps[workspace.id] = .pushing
+        let run = runs[workspace.id]
+        set(.pushing, for: workspace)
         Task.detached(priority: .userInitiated) {
             let result = Shell.execute(WorkState.git, ["push", "--quiet", "origin", "HEAD"], in: checkout, timeout: 1200)
+            let head = Shell.run(WorkState.git, ["rev-parse", "HEAD"], in: checkout)
             await MainActor.run {
-                guard self.steps[workspace.id] == .pushing else { return }
+                guard self.current(workspace, run), self.steps[workspace.id] == .pushing else { return }
+                self.proven[workspace.id] = head
                 guard result.status == 0 else {
                     let reason = result.error.split(separator: "\n").last.map(String.init) ?? ""
-                    self.steps[workspace.id] = .failed(L("Push failed: %@", reason))
+                    self.set(.failed(L("Push failed: %@", reason)), for: workspace)
                     return
                 }
                 if self.withQuorum {
                     self.quorumSince[workspace.id] = Date()
-                    self.steps[workspace.id] = .reviewing
+                    self.set(.reviewing, for: workspace)
                     QuorumWatch.shared.start(.babysit, in: workspace)
                 } else {
                     self.merge(workspace, checkout: checkout, pr: pr)
@@ -215,15 +260,19 @@ final class Landing: ObservableObject {
     }
 
     private func merge(_ workspace: Workspace, checkout: String, pr: Int) {
-        steps[workspace.id] = .merging(L("Handing it to GitHub"))
+        let run = runs[workspace.id]
+        // Pushed after the checks (quorum's fixes): only that head merges,
+        // and only quorum's review vouches for it.
+        let head = proven[workspace.id] ?? nil
+        set(.merging(L("Handing it to GitHub")), for: workspace)
         Task.detached(priority: .userInitiated) {
-            let outcome = Self.enableMerge(pr: pr, in: checkout)
+            let outcome = Self.enableMerge(pr: pr, head: head, in: checkout)
             await MainActor.run {
-                guard case .merging = self.steps[workspace.id] else { return }
+                guard self.current(workspace, run), case .merging = self.steps[workspace.id] else { return }
                 switch outcome {
-                case let .armed(text): self.steps[workspace.id] = .merging(text)
-                case .merged: self.steps[workspace.id] = .landed
-                case let .failed(text): self.steps[workspace.id] = .failed(text)
+                case let .armed(text): self.set(.merging(text), for: workspace)
+                case .merged: self.set(.landed, for: workspace)
+                case let .failed(text): self.set(.failed(text), for: workspace)
                 }
                 workspace.primary?.refreshContext()
             }
@@ -236,9 +285,10 @@ final class Landing: ObservableObject {
         case failed(String)
     }
 
-    /// `gh pr merge --auto` with the repository's own default method; where
-    /// auto-merge is off, a direct merge (GitHub refuses it until allowed).
-    nonisolated static func enableMerge(pr: Int, in checkout: String) -> MergeOutcome {
+    /// `gh pr merge --auto` with the repository's own default method, for
+    /// exactly the head that was proven (when known). Where auto-merge is
+    /// off, a direct merge, but only once every CI check on the PR passed.
+    nonisolated static func enableMerge(pr: Int, head: String?, in checkout: String) -> MergeOutcome {
         guard let gh = Shell.find("gh") else { return .failed(L("gh is not installed.")) }
         let view = Shell.execute(gh, ["repo", "view", "--json", "viewerDefaultMergeMethod"], in: checkout, timeout: 30)
         let method = (try? JSONSerialization.jsonObject(with: Data(view.output.utf8)) as? [String: Any])?["viewerDefaultMergeMethod"] as? String
@@ -247,9 +297,16 @@ final class Landing: ObservableObject {
         case "REBASE": "--rebase"
         default: "--merge"
         }
-        let auto = Shell.execute(gh, ["pr", "merge", String(pr), "--auto", flag], in: checkout, timeout: 60)
+        let match = head.map { ["--match-head-commit", $0] } ?? []
+        let auto = Shell.execute(gh, ["pr", "merge", String(pr), "--auto", flag] + match, in: checkout, timeout: 60)
         if auto.status == 0 { return .armed(L("Merges when GitHub allows it")) }
-        let direct = Shell.execute(gh, ["pr", "merge", String(pr), flag], in: checkout, timeout: 60)
+        let view2 = Shell.execute(gh, ["pr", "view", String(pr), "--json", "statusCheckRollup"], in: checkout, timeout: 30)
+        let rollup = (try? JSONSerialization.jsonObject(with: Data(view2.output.utf8)) as? [String: Any])?["statusCheckRollup"] as? [[String: Any]]
+        guard let rollup, Git.checks(from: rollup) == .passed else {
+            let reason = auto.error.split(separator: "\n").first.map(String.init) ?? ""
+            return .failed(L("Auto-merge is off and CI isn't green yet: %@", reason))
+        }
+        let direct = Shell.execute(gh, ["pr", "merge", String(pr), flag] + match, in: checkout, timeout: 60)
         if direct.status == 0 { return .merged }
         let reason = (direct.error.isEmpty ? auto.error : direct.error).split(separator: "\n").first.map(String.init) ?? ""
         return .failed(L("GitHub won't merge yet: %@", reason))
@@ -272,7 +329,19 @@ final class Landing: ObservableObject {
             guard let step = steps[workspace.id] else { continue }
             let context = workspace.context
             if context.prState == .merged {
-                steps[workspace.id] = .landed
+                set(.landed, for: workspace)
+                continue
+            }
+            if context.prState == .closed, step.isActive {
+                set(.failed(L("The pull request was closed")), for: workspace)
+                continue
+            }
+            // Nothing waits forever: a day for GitHub (reviews take time),
+            // three hours for anything else.
+            let waited = Date().timeIntervalSince(stepSince[workspace.id] ?? Date())
+            let limit: TimeInterval = if case .merging = step { 86400 } else { 3 * 3600 }
+            if step.isActive, waited > limit {
+                set(.failed(L("Gave up waiting: land again")), for: workspace)
                 continue
             }
             switch step {
@@ -280,14 +349,20 @@ final class Landing: ObservableObject {
                 guard let status = QuorumWatch.shared.status(for: workspace), !status.running,
                       status.date > (quorumSince[workspace.id] ?? .distantFuture).addingTimeInterval(-5)
                 else { continue }
-                if status.isClean, let checkout = context.checkout, let pr = context.pr {
+                if status.succeeded, let checkout = context.checkout, let pr = context.pr {
+                    // quorum pushes its fixes: the head it converged on merges.
+                    proven[workspace.id] = nil
                     merge(workspace, checkout: checkout, pr: pr)
+                } else if status.outcome == nil, status.isClean {
+                    continue // its verdict isn't in quorum's history yet
                 } else {
-                    steps[workspace.id] = .failed(L("quorum stopped with %d open findings", status.blockers + status.critical))
+                    let open = status.blockers + status.critical
+                    set(.failed(open > 0 ? L("quorum stopped with %d open findings", open)
+                                         : L("quorum stopped: %@", status.reason ?? status.outcome ?? "?")), for: workspace)
                 }
             case .merging:
                 if context.mergeability == .conflicting {
-                    steps[workspace.id] = .failed(L("Conflicts appeared: land again"))
+                    set(.failed(L("Conflicts appeared: land again")), for: workspace)
                 }
             default:
                 continue
@@ -302,7 +377,7 @@ final class Landing: ObservableObject {
     // MARK: The agent
 
     private func agent(of workspace: Workspace) -> TerminalSession? {
-        workspace.sessions.first { $0.kind != nil && $0.agent != .none }
+        workspace.agentTab
     }
 
     /// Three asks per landing; then it stops and says so.
@@ -310,7 +385,7 @@ final class Landing: ObservableObject {
         let count = (asks[workspace.id] ?? 0) + 1
         asks[workspace.id] = count
         if count > 3 {
-            steps[workspace.id] = .failed(L("Still not ready after three rounds: your call"))
+            set(.failed(L("Still not ready after three rounds: your call")), for: workspace)
             return false
         }
         return true
@@ -318,15 +393,15 @@ final class Landing: ObservableObject {
 
     private func ask(_ workspace: Workspace, _ step: String, _ message: String) {
         if workspace.sessions.contains(where: { $0.agent == .blocked }) {
-            steps[workspace.id] = .failed(L("The agent asks you something: answer it, then land again"))
+            set(.failed(L("The agent asks you something: answer it, then land again")), for: workspace)
             return
         }
         guard let session = agent(of: workspace) else {
-            steps[workspace.id] = .failed(step + " — " + L("no agent runs in this session"))
+            set(.failed(step + " — " + L("no agent runs in this session")), for: workspace)
             return
         }
         guard mayAsk(workspace) else { return }
         RemoteState.type(message, enter: true, into: session)
-        steps[workspace.id] = .waitingForAgent(step)
+        set(.waitingForAgent(step), for: workspace)
     }
 }

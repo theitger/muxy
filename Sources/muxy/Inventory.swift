@@ -29,9 +29,14 @@ struct WorktreeInfo: Identifiable, Equatable {
 
     var id: String { path }
 
-    /// Nothing would be lost: no uncommitted work, nothing unmerged.
+    /// The merged PR's head is this worktree's HEAD (or contains it): the
+    /// merge took exactly this work, not an older one on the same name.
+    var mergedHere = false
+
+    /// Nothing would be lost: no uncommitted work, nothing unmerged. When
+    /// git couldn't tell (changes or ahead unknown, -1), it isn't finished.
     var isFinished: Bool {
-        owner != .main && !spare && changes == 0 && (ahead == 0 || prState == .merged)
+        owner != .main && !spare && changes == 0 && (ahead == 0 || mergedHere)
     }
 
     var age: TimeInterval? { lastCommit.map { Date().timeIntervalSince($0) } }
@@ -50,7 +55,7 @@ enum Inventory {
             var root: String
             var start: String
             var disposable: [String]
-            var prs: [String: (number: Int, state: Git.PullRequest.State)]
+            var prs: [String: (number: Int, state: Git.PullRequest.State, head: String?)]
             var mainProject: String
         }
         let compose = composeProjects()
@@ -80,7 +85,7 @@ enum Inventory {
 
     private static func inspect(
         _ entry: Entry, root: String, start: String, disposable: [String],
-        prs: [String: (number: Int, state: Git.PullRequest.State)], mainProject: String, compose: [String: Int]
+        prs: [String: (number: Int, state: Git.PullRequest.State, head: String?)], mainProject: String, compose: [String: Int]
     ) -> WorktreeInfo {
         var info = WorktreeInfo(
             path: entry.path, root: root, branch: entry.branch, owner: owner(of: entry.path, root: root),
@@ -94,10 +99,14 @@ enum Inventory {
             info.lastCommit = Date(timeIntervalSince1970: stamp)
         }
         info.changes = changes(in: entry.path, disposable: disposable)
-        info.ahead = Shell.run(git, ["rev-list", "--count", "\(start)..HEAD"], in: entry.path).flatMap(Int.init) ?? 0
+        info.ahead = Shell.run(git, ["rev-list", "--count", "\(start)..HEAD"], in: entry.path).flatMap(Int.init) ?? -1
         if let branch = entry.branch, let pr = prs[branch] {
             info.pr = pr.number
             info.prState = pr.state
+            if pr.state == .merged, let head = pr.head, let mine = Shell.run(git, ["rev-parse", "HEAD"], in: entry.path) {
+                info.mergedHere = mine == head
+                    || Shell.execute(git, ["merge-base", "--is-ancestor", mine, head], in: entry.path).status == 0
+            }
         }
         let marker = (try? String(contentsOfFile: (root as NSString).appendingPathComponent(".git/muxy-spare"), encoding: .utf8)) ?? ""
         info.spare = marker.trimmingCharacters(in: .whitespacesAndNewlines).hasSuffix(entry.path)
@@ -140,7 +149,7 @@ enum Inventory {
 
     /// Changed files that count as work.
     static func changes(in checkout: String, disposable: [String]) -> Int {
-        guard let status = Shell.run(git, ["status", "--porcelain", "-z", "--untracked-files=normal"], in: checkout) else { return 0 }
+        guard let status = Shell.run(git, ["status", "--porcelain", "-z", "--untracked-files=normal"], in: checkout) else { return -1 }
         return status.split(separator: "\0").filter { entry in
             guard entry.hasPrefix("?? ") else { return true }
             let path = String(entry.dropFirst(3))
@@ -149,13 +158,13 @@ enum Inventory {
     }
 
     /// Newest PR per head branch, one gh call.
-    static func pullRequests(in root: String) -> [String: (number: Int, state: Git.PullRequest.State)] {
+    static func pullRequests(in root: String) -> [String: (number: Int, state: Git.PullRequest.State, head: String?)] {
         guard !Git.rateLimited, let gh = Shell.find("gh") else { return [:] }
         let result = Shell.execute(gh, ["pr", "list", "--state", "all", "--author", "@me", "--limit", "100",
-                                        "--json", "number,headRefName,state"], in: root, timeout: 30)
+                                        "--json", "number,headRefName,state,headRefOid"], in: root, timeout: 30)
         guard result.status == 0,
               let rows = try? JSONSerialization.jsonObject(with: Data(result.output.utf8)) as? [[String: Any]] else { return [:] }
-        var found: [String: (Int, Git.PullRequest.State)] = [:]
+        var found: [String: (Int, Git.PullRequest.State, String?)] = [:]
         for row in rows {
             guard let branch = row["headRefName"] as? String, let number = row["number"] as? Int, found[branch] == nil else { continue }
             let state: Git.PullRequest.State = switch row["state"] as? String {
@@ -163,7 +172,7 @@ enum Inventory {
             case "CLOSED": .closed
             default: .open
             }
-            found[branch] = (number, state)
+            found[branch] = (number, state, row["headRefOid"] as? String)
         }
         return found
     }
@@ -193,6 +202,18 @@ enum Inventory {
         })
     }
 
+    /// The project name Compose resolves for a checkout (its `name:`, the
+    /// environment, .env, the folder: all of Compose's own rules). nil
+    /// without Docker or a Compose file: then nothing is torn down.
+    static func composeName(of checkout: String) -> String? {
+        guard let docker = Shell.find("docker") else { return nil }
+        let result = Shell.execute(docker, ["compose", "config", "--format", "json"], in: checkout, timeout: 30)
+        guard result.status == 0,
+              let json = try? JSONSerialization.jsonObject(with: Data(result.output.utf8)) as? [String: Any]
+        else { return nil }
+        return json["name"] as? String
+    }
+
     /// Takes a worktree away: its own containers down (never ones it shares
     /// with the main checkout), the folder, and its branch when that is
     /// merged or holds nothing of its own. False when git refused.
@@ -201,7 +222,10 @@ enum Inventory {
         if info.prunable || !FileManager.default.fileExists(atPath: info.path) {
             return Shell.execute(git, ["worktree", "prune"], in: info.root).status == 0
         }
-        if projectName(of: info.path) != projectName(of: info.root) {
+        if !info.isFinished { Checkpoints.record(.after, label: "Removed worktree", in: info.path) }
+        // Containers go only when Compose itself says they are this
+        // worktree's own project, never one it shares with the main checkout.
+        if let mine = composeName(of: info.path), let main = composeName(of: info.root), mine != main {
             if let teardown = WorktreeRecipe.load(root: info.root)?.teardown {
                 _ = Worktrees.runInLoginShell(teardown, in: info.path, timeout: 300)
             } else if info.containers != nil, let docker = Shell.find("docker") {
@@ -211,8 +235,10 @@ enum Inventory {
         guard Shell.execute(git, ["worktree", "remove", "--force", info.path], in: info.root, timeout: 120).status == 0 else {
             return false
         }
-        Checkpoints.forget(info.path, root: info.root)
-        if let branch = info.branch, info.prState == .merged || info.ahead == 0 {
+        // Removed with work in it (you confirmed): its files stay as a
+        // checkpoint, so even that can be brought back.
+        if info.isFinished { Checkpoints.forget(info.path, root: info.root) }
+        if let branch = info.branch, info.mergedHere || info.ahead == 0 {
             _ = Shell.execute(git, ["branch", "-D", branch], in: info.root)
         }
         return true

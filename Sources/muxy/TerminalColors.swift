@@ -1,8 +1,8 @@
 import AppKit
 import GhosttyTerminal
 
-/// The terminal's colors: yours (your Ghostty config, untouched, the
-/// default) or muxy's neutral pair, the same zinc greys as the chrome.
+/// The terminal's colors: muxy's neutral pair (the default), the same zinc
+/// greys as the chrome, or yours from your Ghostty config, untouched.
 /// Only colors change; font, size and everything else stay your config's.
 enum TerminalColors: String, CaseIterable, Identifiable {
     case ghostty, neutral
@@ -18,7 +18,7 @@ enum TerminalColors: String, CaseIterable, Identifiable {
     }
 
     static var current: TerminalColors {
-        UserDefaults.standard.string(forKey: storageKey).flatMap(TerminalColors.init) ?? .ghostty
+        UserDefaults.standard.string(forKey: storageKey).flatMap(TerminalColors.init) ?? .neutral
     }
 
     /// Rendered after your config file, so an empty theme leaves it alone.
