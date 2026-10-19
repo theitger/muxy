@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
+import { t } from './i18n'
 import type { Muxy, NewSession } from './useMuxy'
-import type { ChatItem, Key, Screen, Session } from './protocol'
+import type { ChatItem, Issue, Key, Screen, Session, StepKind } from './protocol'
 
 /** Development only (`pnpm dev`, then open /#demo): made-up sessions to design against. */
 export const isDemo = import.meta.env.DEV && typeof location !== 'undefined' && location.hash.includes('demo')
@@ -20,6 +21,8 @@ const sessions: Session[] = [
     attention: true,
     lines: ['Bash command', '  go test ./backend/services/...', '  Run the service tests'],
     pr: { number: 4288, status: 'running' },
+    next: { kind: 'answer', title: 'Answer the agent' },
+    stage: 'working',
     tabs: [
       {
         id: 't1',
@@ -61,11 +64,48 @@ const sessions: Session[] = [
     isGit: true,
     agent: 'idle',
     agentKind: 'claude',
-    attention: true,
-    notice: 'is done',
+    attention: false,
     lines: ['All 93 tests pass. The inbox now answers from notifications too.'],
     pr: { number: 12, status: 'ready' },
-    tabs: [{ id: 't3', kind: 'agent', agentKind: 'claude', title: 'Claude', agent: 'idle', attention: true, since: now - 900 }],
+    agentTab: 't3',
+    next: { kind: 'land', title: 'Land' },
+    stage: 'ready',
+    proof: 'passed',
+    quorum: { summary: 'quorum: clean', running: false, clean: true },
+    tabs: [{ id: 't3', kind: 'agent', agentKind: 'claude', title: 'Claude', agent: 'idle', attention: false, since: now - 900 }],
+  },
+  {
+    id: 'w6',
+    group: 'project-phoenix',
+    title: '#3400 Personalaustritt behält Kontolink',
+    subtitle: '3400-personalaustritt',
+    directory: '~/project-phoenix/.worktrees/3400',
+    isGit: true,
+    agent: 'idle',
+    agentKind: 'codex',
+    attention: false,
+    agentTab: 't6',
+    next: { kind: 'openPR', title: 'Open a pull request' },
+    stage: 'working',
+    proof: 'failed',
+    collisions: ['#4045 Löschfrist'],
+    tabs: [{ id: 't6', kind: 'agent', agentKind: 'codex', title: 'Codex', agent: 'idle', attention: false }],
+  },
+  {
+    id: 'w7',
+    group: 'project-phoenix',
+    title: '#4045 Löschfrist Schulinhalte',
+    subtitle: 'feat/4045-retention',
+    directory: '~/project-phoenix/.worktrees/4045',
+    isGit: true,
+    agent: 'idle',
+    agentKind: 'claude',
+    attention: false,
+    pr: { number: 4378, status: 'running' },
+    agentTab: 't7',
+    next: { kind: 'review', title: 'Review with quorum' },
+    stage: 'review',
+    tabs: [{ id: 't7', kind: 'agent', agentKind: 'claude', title: 'Claude', agent: 'idle', attention: false }],
   },
   {
     id: 'w4',
@@ -91,6 +131,14 @@ const sessions: Session[] = [
     attention: false,
     tabs: [{ id: 't5', kind: 'shell', title: 'fish', agent: 'none', attention: false }],
   },
+]
+
+const issues: Issue[] = [
+  { repo: 'moto-nrw/project-phoenix', number: 3949, title: 'Spec: Löschfristen für alle Datenarten durchsetzen (#3839, #2788)', url: 'https://github.com/moto-nrw/project-phoenix/issues/3949', labels: ['ready-for-agent'], local: true, created: now - 6 * 86400 },
+  { repo: 'moto-nrw/project-phoenix', number: 3839, title: 'Löschfristen für weitere Tabellen ergänzen (Ergänzung zu #2788)', url: '', labels: ['priority: high'], local: true, created: now - 16 * 86400 },
+  { repo: 'moto-nrw/website', number: 151, title: 'Preise auf der Startseite aktualisieren', url: '', labels: [], local: false, created: now - 20 * 86400 },
+  { repo: 'moto-nrw/project-phoenix', number: 3472, title: 'Öffentliche Demo: Abnahme vor der Messe', url: '', labels: ['feature', 'priority: high'], local: true, created: now - 28 * 86400 },
+  { repo: 'moto-nrw/PyrePortal', number: 439, title: 'Terminal zeigt eindeutig, ob Raum oder Aktivität voll ist', url: '', labels: ['ready-for-agent'], local: true, created: now - 40 * 86400 },
 ]
 
 const claudeScreen = `⏺ I'll run the service tests to make sure the cleanup works.
@@ -189,15 +237,21 @@ export function useDemo(): Muxy {
     key: useCallback((_tab: string, _k: Key | string) => {}, []),
     choose: useCallback((tab: string) => resolve(tab), [resolve]),
     loadRepos: useCallback(() => {}, []),
+    issues,
+    account: { login: 'theitger', name: 'trizzy', avatar: 'https://avatars.githubusercontent.com/u/169249101?v=4' },
+    step: useCallback((session: string, _kind: StepKind) => {
+      setList((l) => l.map((s) => (s.id === session ? { ...s, next: { kind: 'wait', title: t('Working') }, agent: 'working', activity: 'Opening the pull request' } : s)))
+    }, []),
+    startIssue: useCallback(() => {}, []),
     start: useCallback((spec: NewSession) => {
       const id = `n${Date.now()}`
       setList((l) => [
         ...l,
         {
           id,
-          group: spec.directory.split('/').at(-1) ?? 'neu',
-          title: spec.prompt.slice(0, 40) || 'Neue Session',
-          subtitle: spec.worktree ? 'neuer Worktree' : spec.directory,
+          group: spec.directory.split('/').at(-1) ?? t('new'),
+          title: spec.prompt.slice(0, 40) || t('New Session'),
+          subtitle: spec.worktree ? t('new worktree') : spec.directory,
           directory: spec.directory,
           isGit: true,
           agent: spec.agent === 'none' ? 'none' : 'working',

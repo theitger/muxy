@@ -17,6 +17,20 @@ struct WingFace {
     var result: ResultFace?
     /// The web app it runs, if any (Open app).
     var appPort: Int?
+    /// Branch, or where it runs outside git.
+    var subtitle: String = ""
+    /// The agent the card speaks for.
+    var kind: AgentKind?
+    /// muxy's own checks: running, or how they came out.
+    var proof: ProofResult.Outcome?
+    var proving = false
+    /// Sessions (or the base) it would conflict with.
+    var collisions: [String] = []
+    /// quorum on its PR, as a short line.
+    var quorum: String?
+    var quorumRunning = false
+    /// Landing in progress.
+    var landing: String?
 
     /// The outcome line replaces the activity while nothing runs.
     var showsResult: Bool { result != nil && (agent == .idle || agent == .none) }
@@ -35,10 +49,9 @@ struct WingCardFace: View {
     /// nothing jumps when you switch), upright and framed.
     var onStage = false
 
-    static let radius: CGFloat = 10
+    static let radius: CGFloat = 9
 
     private var blocked: Bool { face.agent == .blocked }
-    private var leaning: Bool { detailed && !hovered && !onStage }
 
     var body: some View {
         if detailed {
@@ -50,28 +63,46 @@ struct WingCardFace: View {
 
     // MARK: Detailed
 
+    /// What a session is, where it stands and what muxy knows about its
+    /// work, as facts rather than a picture of its terminal. Its screen
+    /// shows only while the agent asks you something: that is what to read.
     private var card: some View {
-        VStack(alignment: .leading, spacing: 0) {
+        VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 8) {
-                SessionTile(agent: face.agent, attention: face.attention, isGit: face.isGit, size: 20)
+                SessionTile(agent: face.agent, attention: face.attention, isGit: face.isGit, kind: face.kind, size: 20)
                 Text(face.title)
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.system(size: 12.5, weight: .semibold))
                     .foregroundStyle(Theme.textPrimary)
                     .lineLimit(1)
                 Spacer(minLength: 4)
                 PRBadge(pr: face.pr, status: face.prStatus)
             }
-            .padding(.horizontal, 10)
-            .padding(.top, 9)
-            .padding(.bottom, 7)
-
-            preview
-
-            ticker
-                .padding(.horizontal, 10)
-                .padding(.top, 7)
-                .padding(.bottom, 9)
+            if !face.subtitle.isEmpty, face.subtitle != face.title {
+                Text(face.subtitle)
+                    .font(Theme.mono(size: 10.5))
+                    .foregroundStyle(Theme.textDim)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+            if face.showsResult || (face.activity != face.subtitle && face.activity != face.title) {
+                status
+            }
+            if blocked, !face.lines.isEmpty {
+                VStack(alignment: .leading, spacing: 1.5) {
+                    ForEach(Array(face.lines.suffix(3).enumerated()), id: \.offset) { _, line in
+                        Text(Theme.displayable(line)).lineLimit(1).truncationMode(.tail)
+                    }
+                }
+                .font(Theme.mono(size: 9.5))
+                .foregroundStyle(Theme.textMuted)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 7)
+                .padding(.vertical, 5)
+                .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(Theme.orange.soft))
+            }
+            facts
         }
+        .padding(10)
         .background(
             RoundedRectangle(cornerRadius: Self.radius, style: .continuous)
                 .fill(Theme.surfaceActive)
@@ -83,37 +114,17 @@ struct WingCardFace: View {
                     .strokeBorder(Theme.orange.strong.opacity(0.6), lineWidth: onStage ? 1.5 : 1)
             } else if onStage {
                 RoundedRectangle(cornerRadius: Self.radius, style: .continuous)
-                    .strokeBorder(Theme.textPrimary.opacity(0.5), lineWidth: 1.5)
+                    .strokeBorder(Theme.textPrimary.opacity(0.55), lineWidth: 1.5)
+            } else {
+                RoundedRectangle(cornerRadius: Self.radius, style: .continuous)
+                    .strokeBorder(hovered ? Theme.textDim.opacity(0.6) : Theme.border, lineWidth: 1)
             }
         }
-        .opacity(face.isQuiet && !hovered && !onStage ? 0.62 : 1)
-        .rotation3DEffect(
-            .degrees(leaning ? 13 : 0), axis: (x: 0, y: 1, z: 0),
-            anchor: .leading, perspective: 0.3
-        )
-        .scaleEffect(leaning ? 0.97 : 1, anchor: .leading)
+        .opacity(face.isQuiet && !hovered && !onStage ? 0.7 : 1)
     }
 
-    private var preview: some View {
-            VStack(alignment: .leading, spacing: 1.5) {
-                ForEach(Array(face.lines.enumerated()), id: \.offset) { _, line in
-                    Text(Theme.displayable(line)).lineLimit(1).truncationMode(.tail)
-                }
-            }
-            .font(Theme.mono(size: 9.5))
-            .foregroundStyle(Theme.textDim)
-            .frame(maxWidth: .infinity, minHeight: 58, maxHeight: 58, alignment: .bottomLeading)
-            .padding(.horizontal, 7)
-            .padding(.vertical, 6)
-            .clipped()
-            .background(
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .fill(Theme.textPrimary.opacity(0.05))
-            )
-            .padding(.horizontal, 8)
-    }
-
-    private var ticker: some View {
+    /// One line: what is happening now, or what the last turn came to.
+    private var status: some View {
         HStack(spacing: 6) {
             switch face.agent {
             case .working:
@@ -129,28 +140,59 @@ struct WingCardFace: View {
                 ResultLine(face: result)
             } else {
                 Text(face.activity)
-                    .font(.system(size: 11, weight: blocked ? .semibold : .regular))
-                    .foregroundStyle(tone)
+                    .font(.system(size: 11.5, weight: blocked ? .semibold : .regular))
+                    .foregroundStyle(tone == Theme.textDim ? Theme.textMuted : tone)
                     .lineLimit(1)
                     .truncationMode(.tail)
             }
-            Spacer(minLength: 4)
-            if let port = face.appPort {
-                HStack(spacing: 2) {
-                    Image(systemName: "globe").font(.system(size: 9, weight: .semibold))
-                    Text(":\(port)").font(.system(size: 10, weight: .medium)).monospacedDigit()
-                }
-                .foregroundStyle(Theme.textDim)
-                .accessibilityLabel(L("Runs an app on port %d", port))
-            }
-            HStack(spacing: 4) {
-                ForEach(Array(face.agents.enumerated()), id: \.offset) { _, state in
-                    Image(systemName: "sparkle")
-                        .font(.system(size: 9, weight: .semibold))
-                        .foregroundStyle(state == .none || state == .idle ? Theme.textFaint : Theme.tone(for: state).strong)
-                }
+            Spacer(minLength: 0)
+        }
+    }
+
+    /// What muxy knows beyond the agent, in words: checks, collisions,
+    /// quorum, landing, the app it serves. Nothing when there is nothing.
+    @ViewBuilder
+    private var facts: some View {
+        let chips = factChips
+        if !chips.isEmpty {
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 4) { ForEach(chips, id: \.text) { chip($0) } }
+                VStack(alignment: .leading, spacing: 4) { ForEach(chips, id: \.text) { chip($0) } }
             }
         }
+    }
+
+    private struct Fact {
+        var text: String
+        var symbol: String
+        var tone: Theme.Tone
+    }
+
+    private var factChips: [Fact] {
+        var chips: [Fact] = []
+        if let landing = face.landing { chips.append(Fact(text: landing, symbol: "airplane", tone: Theme.blue)) }
+        if face.proving {
+            chips.append(Fact(text: L("checking"), symbol: "shield", tone: Theme.blue))
+        } else if face.proof == .failed {
+            chips.append(Fact(text: L("checks fail"), symbol: "xmark.shield.fill", tone: Theme.redTone))
+        } else if face.proof == .passed {
+            chips.append(Fact(text: L("proven"), symbol: "checkmark.shield.fill", tone: Theme.greenTone))
+        }
+        for other in face.collisions.prefix(2) {
+            chips.append(Fact(text: L("collides: %@", other), symbol: "arrow.triangle.merge", tone: Theme.orange))
+        }
+        if let quorum = face.quorum {
+            chips.append(Fact(text: quorum, symbol: "person.3", tone: face.quorumRunning ? Theme.blue : Theme.neutral))
+        }
+        if let port = face.appPort {
+            chips.append(Fact(text: ":" + String(port), symbol: "globe", tone: Theme.neutral))
+        }
+        return chips
+    }
+
+    private func chip(_ fact: Fact) -> some View {
+        Badge(text: fact.text, tone: fact.tone)
+            .lineLimit(1)
     }
 
     private var tone: Color {
@@ -167,7 +209,7 @@ struct WingCardFace: View {
 
     private var row: some View {
         HStack(spacing: 10) {
-            SessionTile(agent: face.agent, attention: face.attention, isGit: face.isGit)
+            SessionTile(agent: face.agent, attention: face.attention, isGit: face.isGit, kind: face.kind)
             VStack(alignment: .leading, spacing: 1) {
                 Text(face.title)
                     .font(.system(size: 13, weight: onStage ? .semibold : .medium))
@@ -184,6 +226,7 @@ struct WingCardFace: View {
                 }
             }
             Spacer(minLength: 4)
+            FaceSignals(face: face)
             PRBadge(pr: face.pr, status: face.prStatus)
         }
         .padding(.horizontal, 8)
@@ -200,6 +243,9 @@ enum StageMetrics {
     static let radius: CGFloat = 10
     /// Gutter between the stage card and the window edge.
     static let margin: CGFloat = 8
+    /// The title bar: a compact toolbar's height, so the window's own
+    /// buttons (centered in it by macOS) line up with muxy's.
+    static let topBar: CGFloat = 40
 }
 
 /// The window with the wings out: a title bar across, the wings on the
@@ -213,7 +259,7 @@ struct StageLayout<TopBar: View, Wings: View, Stage: View>: View {
     var body: some View {
         VStack(spacing: 0) {
             topBar
-                .frame(height: 46)
+                .frame(height: StageMetrics.topBar)
                 .frame(maxWidth: .infinity)
                 .background(Theme.sidebar)
             HStack(spacing: 0) {
@@ -227,6 +273,14 @@ struct StageLayout<TopBar: View, Wings: View, Stage: View>: View {
                     .fill(Theme.sidebar, style: FillStyle(eoFill: true))
                     .clipped()
             )
+            // The card's corners: two half-transparent edges meeting there
+            // let the window behind shine through as a thin ring. Slivers in
+            // the gutter's color, a touch rounder, cover it.
+            .overlay(
+                StageGutter(leading: wingsWidth, radius: StageMetrics.radius + 1.5, margin: StageMetrics.margin, cornersOnly: true)
+                    .fill(Theme.sidebar, style: FillStyle(eoFill: true))
+                    .allowsHitTesting(false)
+            )
         }
     }
 }
@@ -238,13 +292,15 @@ struct StageGutter: Shape {
     var leading: CGFloat
     var radius: CGFloat = 10
     var margin: CGFloat = 8
+    /// Only the card's four corner slivers, not the whole gutter.
+    var cornersOnly = false
 
     func path(in rect: CGRect) -> Path {
-        var path = Path(rect)
         let card = CGRect(
             x: rect.minX + leading, y: rect.minY,
             width: rect.width - leading - margin, height: rect.height - margin
         )
+        var path = Path(cornersOnly ? card : rect)
         path.addRoundedRect(in: card, cornerSize: CGSize(width: radius, height: radius), style: .continuous)
         return path
     }
@@ -256,6 +312,7 @@ struct StageTitle: View {
     let place: String
     let pr: Int?
     let prStatus: PRStatus
+    var prURL: URL?
 
     var body: some View {
         HStack(spacing: 8) {
@@ -266,13 +323,19 @@ struct StageTitle: View {
                 .font(.system(size: 12.5))
                 .foregroundStyle(Theme.textMuted)
                 .truncationMode(.middle)
-            PRBadge(pr: pr, status: prStatus)
+            Button {
+                if let prURL { NSWorkspace.shared.open(prURL) }
+            } label: {
+                PRBadge(pr: pr, status: prStatus)
+            }
+            .buttonStyle(.plain)
+            .disabled(prURL == nil)
         }
         .lineLimit(1)
     }
 }
 
-/// "login-fix ⌘J" — someone else wants you.
+/// "login-fix": someone else wants you.
 struct WaitingPill: View {
     let text: String
 
@@ -281,14 +344,13 @@ struct WaitingPill: View {
             Circle().fill(Theme.orange.strong).frame(width: 6, height: 6)
             Text(text.count > 30 ? text.prefix(29) + "…" : text)
                 .lineLimit(1)
-            Text("⌘J").opacity(0.55)
         }
         .font(.system(size: 12, weight: .medium))
         .foregroundStyle(Theme.orange.strong)
         .padding(.horizontal, 11)
         .frame(height: 26)
-        .background(Capsule().fill(Theme.orange.soft))
-        .contentShape(Capsule())
+        .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(Theme.orange.soft))
+        .contentShape(Rectangle())
     }
 }
 
@@ -303,8 +365,7 @@ struct TitleBarButton: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: 7) {
-                Image(systemName: symbol)
-                    .font(.system(size: 10.5, weight: .semibold))
+                Icon(symbol, size: 10.5)
                 Text(title)
                     .font(.system(size: 12, weight: .medium))
                 Kbd(keys)
@@ -314,16 +375,54 @@ struct TitleBarButton: View {
             .padding(.trailing, 4)
             .frame(height: 28)
             .background(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
                     .fill(hovered ? Theme.fillHover : .clear)
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
                     .strokeBorder(Theme.hairline, lineWidth: 0.5)
             )
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .onHover { hovered = $0 }
+    }
+}
+
+/// A card's quiet icons for what muxy knows beyond the agent: its checks,
+/// collisions, quorum, landing. Each says more on hover.
+struct FaceSignals: View {
+    let face: WingFace
+
+    var body: some View {
+        HStack(spacing: 5) {
+            if face.landing != nil {
+                icon("airplane", Theme.blue.strong, face.landing ?? "")
+            }
+            if !face.collisions.isEmpty {
+                icon("arrow.triangle.merge", Theme.orange.strong, L("Collides with %@", face.collisions.joined(separator: ", ")))
+            }
+            if face.quorumRunning {
+                icon("person.3.fill", Theme.blue.strong, face.quorum ?? "")
+            } else if let quorum = face.quorum {
+                icon("person.3.fill", Theme.textDim, quorum)
+            }
+            if face.proving {
+                icon("shield", Theme.blue.strong, L("muxy runs the checks"))
+            } else if let proof = face.proof {
+                switch proof {
+                case .passed: icon("checkmark.shield.fill", Theme.greenTone.strong, L("muxy's checks pass"))
+                case .failed: icon("xmark.shield.fill", Theme.redTone.strong, L("muxy's checks fail"))
+                default: EmptyView()
+                }
+            }
+        }
+    }
+
+    private func icon(_ symbol: String, _ tone: Color, _ help: String) -> some View {
+        Icon(symbol, size: 9.5)
+            .foregroundStyle(tone)
+            .help(help)
+            .accessibilityLabel(help)
     }
 }

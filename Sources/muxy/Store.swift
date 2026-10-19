@@ -55,6 +55,13 @@ final class Store: ObservableObject {
         CommandCenter.shared.start(store: self)
         RemoteServer.shared.startIfEnabled()
         StayAwake.shared.start()
+        QuorumWatch.shared.start()
+        Radar.shared.start()
+        HubModel.shared.start()
+        // Restored sessions: what was proven on their files before.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 4) {
+            Proofs.shared.recall(self.workspaces.compactMap(\.context.checkout))
+        }
         // PRs get opened and checks finish while you work — poll gently.
         prTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.refreshPullRequests() }
@@ -332,7 +339,20 @@ final class Store: ObservableObject {
         workspace.selectedSessionID = session.id
     }
 
-    /// Visual order across all windows — ⌘J walks it.
+    /// A tab that runs `line` in the session's checkout (quorum, a check):
+    /// in front, and started even while another session holds the stage.
+    @discardableResult
+    func runInNewTab(_ line: String, in workspace: Workspace) -> TerminalSession {
+        let session = TerminalSession(
+            directory: workspace.context.checkout ?? workspace.directory,
+            command: Launcher.shellCommand(running: line)
+        )
+        add(session, to: workspace)
+        BackgroundStart.start(session)
+        return session
+    }
+
+    /// Visual order across all windows.
     var orderedWorkspaces: [Workspace] {
         windows.flatMap(\.orderedWorkspaces)
     }
@@ -342,22 +362,6 @@ final class Store: ObservableObject {
         if let session { workspace.selectedSessionID = session.id }
         window.select(workspace)
         if window !== activeWindow { window.bringToFront() }
-    }
-
-    /// ⌘J: the next session that wants you, in any window, in the inbox's
-    /// order (blocked, then failed, then news; oldest first). Repeated
-    /// presses walk on from the one on stage. Says so when nobody waits.
-    func jumpToAttention() {
-        let items = Inbox.items(in: self)
-        let current = activeWindow?.selectedWorkspace?.selectedSession?.id
-        let start = items.firstIndex { $0.session.id == current } ?? -1
-        for step in 0 ..< items.count {
-            let item = items[(start + 1 + step) % items.count]
-            if item.session.id == current { continue }
-            select(item.workspace, session: item.session)
-            return
-        }
-        activeWindow?.show(L("Nobody is waiting right now"))
     }
 
     func toggleInbox() {
@@ -441,6 +445,25 @@ final class Store: ObservableObject {
         Task.detached(priority: .utility) {
             guard Worktrees.isFinished(checkout, pullRequest: merged, root: root) else { return }
             Worktrees.remove(checkout, branch: branch, root: root)
+        }
+    }
+
+    /// A variant you didn't keep: it closes without asking and its worktree
+    /// goes. Nothing is lost: its branch stays, and its files as they were
+    /// (uncommitted work included) stay as a checkpoint under refs/muxy/turns.
+    func discardVariant(_ workspace: Workspace) {
+        let context = workspace.context
+        let window = window(of: workspace)
+        let index = window?.orderedWorkspaces.firstIndex { $0.id == workspace.id } ?? 0
+        workspace.sessions.forEach { $0.terminate() }
+        workspaces.removeAll { $0.id == workspace.id }
+        window?.repairSelection(near: index)
+        updateBadge()
+        guard let root = context.root, let checkout = context.checkout, Worktrees.isManaged(checkout, root: root),
+              !workspaces.contains(where: { $0.context.checkout == checkout }) else { return }
+        Task.detached(priority: .utility) {
+            Checkpoints.record(.after, label: "Discarded variant", in: checkout)
+            Worktrees.remove(checkout, branch: nil, root: root)
         }
     }
 
@@ -644,7 +667,11 @@ final class Store: ObservableObject {
             switch event.name {
             case "start":
                 if session.agent == .none { session.agent = .idle }
-            case "prompt", "tool":
+            case "prompt":
+                // What the turn starts from, for its diff and to go back to.
+                if session.agent != .working { Turns.shared.turnStarted(in: session) }
+                session.agent = .working
+            case "tool":
                 session.agent = .working
             case "notify":
                 session.agent = .blocked
@@ -652,7 +679,10 @@ final class Store: ObservableObject {
             case "idle":
                 // Esc fires no Stop: this is the first word after it. A
                 // pending permission prompt stays what it is.
-                if session.agent == .working { session.agent = .idle }
+                if session.agent == .working {
+                    session.agent = .idle
+                    Landing.shared.turnEnded(in: workspace)
+                }
             case "error":
                 session.agent = .failed
                 session.markAttentionIfBackground(reason: L("hit an error"))
@@ -660,6 +690,7 @@ final class Store: ObservableObject {
                 session.agent = .idle
                 session.markAttentionIfBackground(reason: L("is done"))
                 Results.shared.turnEnded(in: session)
+                Landing.shared.turnEnded(in: workspace)
                 // A turn often ends with a push: don't wait for the poll.
                 if let primary = workspace.primary, Git.mayHavePR(primary.context.branch) {
                     primary.refreshContext()
@@ -727,6 +758,7 @@ final class Store: ObservableObject {
             case "n": newWindow()
             case "b": toggleDetailedWings()
             case "j": toggleInbox()
+            case "d": window?.toggleReview()
             // Without a search open, ⇧⌘G stays the terminal's.
             case "g":
                 guard let search = window?.selectedWorkspace?.selectedSession?.search else { return false }
@@ -743,10 +775,10 @@ final class Store: ObservableObject {
             return true
         }
         switch key {
+        case "h": targetWindow().showHub.toggle()
         case "n": targetWindow().showNewSession.toggle()
         case "t": targetWindow().newTab()
         case "w": window?.closeCurrent()
-        case "j": jumpToAttention()
         case "i": if let window { Results.shared.togglePanel(in: window) }
         case "k": window?.showSwitcher.toggle()
         case "b": toggleSidebar()
@@ -793,6 +825,7 @@ final class Store: ObservableObject {
         session.agentSessionID = conversation
         session.skipsPermissions = spec.agent != nil && skipPermissions
         session.issue = spec.issue
+        session.variantGroup = spec.variantGroup
         if spec.agent != nil { session.agent = .idle }
         let workspace = makeWorkspace(directory: spec.directory, in: window, session: session)
         window.select(workspace)
@@ -844,8 +877,10 @@ final class Store: ObservableObject {
     /// follows a few seconds later.
     private func nameBranch(of session: TerminalSession, placeholder: String, task: String, agent: AgentKind?) {
         let directory = session.cwd
+        // Variants of one task keep their agent in the name, side by side.
+        let suffix = session.variantGroup != nil ? agent.map { "-" + $0.rawValue } ?? "" : ""
         Task.detached(priority: .utility) {
-            let wanted = BranchNamer.suggest(for: task, agent: agent, in: directory)
+            let wanted = BranchNamer.suggest(for: task, agent: agent, in: directory).map { $0 + suffix }
             let renamed = wanted.flatMap { BranchNamer.rename(in: directory, from: placeholder, to: $0) }
             #if DEBUG
             if let path = ProcessInfo.processInfo.environment["MUXY_DEBUG_TIMING"],

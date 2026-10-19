@@ -55,7 +55,13 @@ final class Workspace: ObservableObject, Identifiable {
     /// conversation title when there is one, else the folder.
     var title: String {
         if context.pr == nil, let issue = sessions.lazy.compactMap(\.issue).first { return issue.heading }
-        return sessions.lazy.compactMap(\.agentTitle).first ?? context.shortFolder
+        if let agentTitle = sessions.lazy.compactMap(\.agentTitle).first { return agentTitle }
+        // A worktree muxy made (often a spare, "session-…"): its branch says more.
+        if let checkout = context.checkout, let root = context.root, let branch = context.branch,
+           Worktrees.isManaged(checkout, root: root) {
+            return branch
+        }
+        return context.shortFolder
     }
 
     /// Branch in a git checkout, the parent path anywhere else.
@@ -63,6 +69,26 @@ final class Workspace: ObservableObject, Identifiable {
         if context.repo != nil { return context.branch ?? "detached" }
         if directory == Paths.home { return L("Home") }
         return Paths.abbreviate((directory as NSString).deletingLastPathComponent)
+    }
+
+    /// The tab whose agent is running now (idle or at work): the only one
+    /// muxy ever types a message into. Never a plain shell.
+    var agentTab: TerminalSession? {
+        sessions.first { $0.kind != nil && ($0.agent == .idle || $0.agent == .working) }
+    }
+
+    /// Its pull request on GitHub, once the repository's name is known.
+    var pullRequestURL: URL? {
+        guard let pr = context.pr, let root = context.root,
+              let slug = QuorumWatch.shared.slugs[root] ?? HubModel.shared.checkouts.first(where: { $0.value == root })?.key
+        else { return nil }
+        let host = slug.split(separator: "/").count == 3 ? "" : "github.com/"
+        return URL(string: "https://\(host)\(slug)/pull/\(pr)")
+    }
+
+    /// The fan-out it is one variant of.
+    var variantGroup: String? {
+        sessions.lazy.compactMap(\.variantGroup).first
     }
 
     var groupName: String {

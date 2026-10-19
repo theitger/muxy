@@ -3,6 +3,7 @@ import { memo, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { cn } from '@/lib/utils'
 import { Composer } from '@/components/Composer'
 import { Tap } from '@/components/touch'
+import { t } from '@/lib/i18n'
 import type { Key, Screen } from '@/lib/protocol'
 
 export function stored(name: string, fallback: string) {
@@ -118,7 +119,7 @@ export function TerminalView({
       {behind && (
         <div className="pointer-events-none absolute inset-x-0 bottom-3 z-10 flex justify-center">
           <Tap
-            label="Zum Ende"
+            label={t('Jump to the end')}
             onPress={() => {
               stick.current = true
               setBehind(false)
@@ -138,7 +139,7 @@ export function TerminalView({
           screen={screen?.text}
           busy={busy}
           history={commands}
-          placeholder="Befehl"
+          placeholder={t('Command')}
           onType={(text, enter) => {
             stick.current = true
             onType(text, enter)

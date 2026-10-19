@@ -4,6 +4,7 @@ import UserNotifications
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate {
     func applicationDidFinishLaunching(_: Notification) {
+        AppAppearance.apply()
         Notifier.setUp(delegate: self)
         // On the first launch the setup asks, with a reason, instead.
         if !Onboarding.isDue { Notifier.requestPermission() }
@@ -119,6 +120,13 @@ struct MuxyApp: App {
             CommandGroup(after: .appInfo) {
                 CheckForUpdatesButton()
             }
+            // ⌘H opens the hub; hiding muxy stays in this menu, without it.
+            CommandGroup(replacing: .appVisibility) {
+                Button(L("Hide muxy")) { NSApplication.shared.hide(nil) }
+                Button(L("Hide Others")) { NSApplication.shared.hideOtherApplications(nil) }
+                    .keyboardShortcut("h", modifiers: [.command, .option])
+                Button(L("Show All")) { NSApplication.shared.unhideAllApplications(nil) }
+            }
             CommandGroup(replacing: .newItem) {
                 Button(L("New Session")) { store.newWorkspaceInFront() }
                     .keyboardShortcut("n", modifiers: .command)
@@ -129,7 +137,15 @@ struct MuxyApp: App {
                 Button(L("New Tab")) { store.newTabInFront() }
                     .keyboardShortcut("t", modifiers: .command)
                 Divider()
-                Button(L("Close Tab")) { store.activeWindow?.closeCurrent() }
+                Button(L("Close Tab")) {
+                    // Settings and other panels close themselves; ⌘W must
+                    // never reach the session behind them.
+                    if let key = NSApplication.shared.keyWindow, store.window(for: key) == nil {
+                        key.performClose(nil)
+                    } else {
+                        store.activeWindow?.closeCurrent()
+                    }
+                }
                     .keyboardShortcut("w", modifiers: .command)
             }
             CommandGroup(after: .pasteboard) {
@@ -142,10 +158,12 @@ struct MuxyApp: App {
             CommandMenu(L("Sessions")) {
                 Button(L("Search…")) { store.activeWindow?.showSwitcher.toggle() }
                     .keyboardShortcut("k", modifiers: .command)
-                Button(L("Next one waiting")) { store.jumpToAttention() }
-                    .keyboardShortcut("j", modifiers: .command)
                 Button(L("Inbox")) { store.toggleInbox() }
                     .keyboardShortcut("j", modifiers: [.command, .shift])
+                Button(L("Hub")) { store.activeWindow?.showHub.toggle() }
+                    .keyboardShortcut("h", modifiers: .command)
+                Button(L("Review Changes")) { store.activeWindow?.toggleReview() }
+                    .keyboardShortcut("d", modifiers: [.command, .shift])
                 Divider()
                 Button(L("Previous Session")) { store.activeWindow?.selectWorkspace(offset: -1) }
                     .keyboardShortcut(.upArrow, modifiers: [.command, .option])

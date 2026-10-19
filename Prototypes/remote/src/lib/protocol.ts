@@ -38,7 +38,38 @@ export type Session = {
   notice?: string
   pr?: { number: number; status: PRStatus }
   tabs: Tab[]
+  branch?: string
+  /** The tab running the agent (idle or at work): where messages go. */
+  agentTab?: string
+  /** What the session needs next, as the Mac's hub suggests it. */
+  next?: { kind: StepKind; title: string }
+  stage?: 'working' | 'review' | 'ready' | 'none'
+  /** muxy's own checks on the session's files. */
+  proof?: 'running' | 'passed' | 'failed'
+  /** Sessions (or the base branch) its work would conflict with. */
+  collisions?: string[]
+  quorum?: { summary: string; running: boolean; clean: boolean }
 }
+
+export type StepKind = 'wait' | 'answer' | 'openPR' | 'review' | 'fix' | 'land' | 'landing' | 'none'
+
+/** Steps a tap takes; the others only say what is going on. */
+export const actionable = (kind?: StepKind) => kind === 'openPR' || kind === 'review' || kind === 'fix' || kind === 'land'
+
+/** An issue assigned to you that no session works on yet. */
+export type Issue = {
+  repo: string
+  number: number
+  title: string
+  url: string
+  labels: string[]
+  /** Cloned on the Mac: it can start there. */
+  local: boolean
+  /** Seconds since 1970. */
+  created?: number
+}
+
+export type Account = { login: string; name?: string; avatar?: string }
 
 export type Repo = { path: string; name: string }
 

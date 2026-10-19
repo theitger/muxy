@@ -54,7 +54,13 @@ enum Git {
         if !common.hasPrefix("/") {
             common = (directory as NSString).appendingPathComponent(common)
         }
-        common = (common as NSString).standardizingPath
+        // Real path, like --show-toplevel's: standardizingPath would turn
+        // /private/tmp into /tmp and the root would no longer contain its
+        // own worktrees.
+        common = realpath(common, nil).map { pointer in
+            defer { free(pointer) }
+            return String(cString: pointer)
+        } ?? (common as NSString).standardizingPath
         // ".../repo/.git" → "repo"; bare repos: ".../repo.git" → "repo".
         let repoDir = (common as NSString).lastPathComponent == ".git"
             ? (common as NSString).deletingLastPathComponent

@@ -10,12 +10,13 @@ struct WindowRoot: View {
     /// Rebuilds the window when the language changes (terminals survive:
     /// they are only reparented).
     @AppStorage(Language.storageKey) private var language = Language.english.rawValue
+    @ObservedObject private var appearance = AppearanceWatch.shared
 
     var body: some View {
         Group {
             if let model = store.window(windowID) {
                 ContentView(store: store, window: model)
-                    .id(language)
+                    .id("\(language)-\(appearance.isDark)")
             } else {
                 Color.clear
             }
@@ -60,12 +61,15 @@ struct ContentView: View {
             } else {
                 // Wings away: the terminal fills the window, like Ghostty.
                 VStack(spacing: 0) {
-                    if let workspace = window.selectedWorkspace {
+                    if window.showHub {
+                        HubView(store: store, window: window, sidebarFolded: true)
+                    } else if let workspace = window.selectedWorkspace {
                         TabBarView(store: store, window: window, workspace: workspace)
                         WithPreview(workspace: workspace, cornerRadius: 0) {
                             WorkspaceContent(workspace: workspace)
                         }
                             .overlay { ResultOverlay(window: window, workspace: workspace) }
+                            .overlay { ReviewOverlay(window: window) }
                     } else {
                         EmptyState()
                     }
@@ -76,7 +80,7 @@ struct ContentView: View {
         .overlay(alignment: .top) {
             if window.showSwitcher {
                 ZStack(alignment: .top) {
-                    Color.black.opacity(0.32)
+                    Color.black.opacity(0.12)
                         .contentShape(Rectangle())
                         .onTapGesture { window.showSwitcher = false }
                     SwitcherView(store: store, window: window)
@@ -89,7 +93,7 @@ struct ContentView: View {
         .overlay(alignment: .top) {
             if window.showNewSession {
                 ZStack(alignment: .top) {
-                    Color.black.opacity(0.32)
+                    Color.black.opacity(0.12)
                         .contentShape(Rectangle())
                         .onTapGesture { window.showNewSession = false }
                     NewSessionView(store: store, window: window)
@@ -107,10 +111,10 @@ struct ContentView: View {
                     .padding(.horizontal, 14)
                     .frame(height: 32)
                     .background(
-                        Capsule().fill(Theme.surface)
+                        RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Theme.surface)
                             .shadow(color: .black.opacity(0.12), radius: 12, y: 4)
                     )
-                    .overlay(Capsule().strokeBorder(Theme.hairline, lineWidth: 0.5))
+                    .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(Theme.hairline, lineWidth: 0.5))
                     .padding(.bottom, 28)
                     .transition(.opacity.combined(with: .offset(y: 6)))
             }
@@ -118,13 +122,23 @@ struct ContentView: View {
         .animation(Theme.ease, value: window.toast)
         .animation(Theme.ease, value: window.showSwitcher)
         .animation(Theme.ease, value: window.showNewSession)
+        .animation(Theme.ease, value: window.showHub)
         .animation(.easeOut(duration: 0.2), value: window.attentionWorkspaces.map(\.id))
         .background(WindowConfigurator(model: window))
+        // Controls in ink, not the system accent: color means state here.
+        .tint(Theme.textPrimary)
         .ignoresSafeArea()
     }
 
     /// Wings out: a title bar across, the wings, the session in front as a card.
     private var stage: some View {
+        VStack(spacing: 0) {
+            stageLayout
+            StatusBar(store: store, window: window)
+        }
+    }
+
+    private var stageLayout: some View {
         StageLayout(wingsWidth: store.sidebarWidth) {
             StageTopBar(store: store, window: window)
         } wings: {
@@ -132,12 +146,16 @@ struct ContentView: View {
                 .overlay(alignment: .trailing) { SidebarHandle(store: store) }
         } stage: {
             VStack(spacing: 0) {
-                if let workspace = window.selectedWorkspace {
+                if window.showHub {
+                    HubView(store: store, window: window)
+                        .clipShape(RoundedRectangle(cornerRadius: StageMetrics.radius, style: .continuous))
+                } else if let workspace = window.selectedWorkspace {
                     TabBarView(store: store, window: window, workspace: workspace, onStage: true)
                     WithPreview(workspace: workspace, cornerRadius: StageMetrics.radius) {
                         WorkspaceContent(workspace: workspace, cornerRadius: StageMetrics.radius)
                     }
                         .overlay { ResultOverlay(window: window, workspace: workspace) }
+                        .overlay { ReviewOverlay(window: window) }
                         // What a session fades in over when it takes the stage.
                         .background(
                             UnevenRoundedRectangle(
@@ -180,12 +198,14 @@ private struct StageTopBar: View {
                     title: workspace.title,
                     place: [workspace.context.repo, workspace.subtitle].compactMap { $0 }.joined(separator: " · "),
                     pr: workspace.context.pr,
-                    prStatus: workspace.prStatus
+                    prStatus: workspace.prStatus,
+                    prURL: workspace.pullRequestURL
                 )
             }
             Spacer(minLength: 12)
             HStack(spacing: 8) {
                 InboxPill(store: store, window: window)
+                HubButton(window: window)
                 TitleBarButton(symbol: "plus", title: L("New Session"), keys: "⌘N") {
                     window.showNewSession = true
                 }
@@ -325,23 +345,21 @@ private struct EmptyState: View {
                 divider
                 hint(L("Search sessions"), "⌘K")
                 divider
-                hint(L("Next one waiting"), "⌘J")
-                divider
                 hint(L("New Window"), "⇧⌘N")
             }
             .padding(.horizontal, 16)
             .background(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
                     .fill(Theme.surface.opacity(0.7))
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
                     .strokeBorder(Theme.hairline, lineWidth: 0.5)
             )
             .frame(width: 360)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Theme.terminal)
+        .background(Theme.bg)
     }
 
     private var divider: some View {
@@ -357,5 +375,46 @@ private struct EmptyState: View {
             Kbd(keys)
         }
         .frame(height: 40)
+    }
+}
+
+/// Opens the hub (⌘H): issues, sessions in flight, worktrees.
+private struct HubButton: View {
+    @ObservedObject var window: WindowModel
+    @ObservedObject private var hub = HubModel.shared
+    @State private var hovered = false
+
+    var body: some View {
+        Button { window.showHub.toggle() } label: {
+            HStack(spacing: 6) {
+                Icon("square.grid.2x2", size: 10.5)
+                Text(L("Hub"))
+                    .font(.system(size: 12, weight: .medium))
+                let waiting = hub.issues.filter { hub.session(for: $0) == nil }.count
+                if waiting > 0 {
+                    Text(String(waiting))
+                        .font(.system(size: 10.5, weight: .semibold))
+                        .monospacedDigit()
+                        .padding(.horizontal, 5)
+                        .frame(height: 16)
+                        .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(Theme.textPrimary.opacity(0.08)))
+                }
+            }
+            .foregroundStyle(window.showHub || hovered ? Theme.textPrimary : Theme.textBody)
+            .padding(.horizontal, 10)
+            .frame(height: 28)
+            .background(
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .fill(window.showHub ? Theme.fillActive : (hovered ? Theme.fillHover : .clear))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .strokeBorder(Theme.hairline, lineWidth: 0.5)
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(L("Hub: issues, sessions, worktrees (⌘H)"))
+        .onHover { hovered = $0 }
     }
 }

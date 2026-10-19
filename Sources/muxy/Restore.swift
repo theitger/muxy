@@ -12,6 +12,8 @@ struct SavedSessions: Codable, Equatable {
         var skipPermissions: Bool?
         /// The issue the tab works on; absent in files from before issues.
         var issue: Issue?
+        /// Its fan-out, when it was one of several agents on a task.
+        var variantGroup: String?
     }
 
     struct Workspace: Codable, Equatable {
@@ -56,6 +58,7 @@ extension SavedSessions.Tab {
         guard session.preparing == nil else { return nil }
         directory = session.cwd
         issue = session.issue?.saved
+        variantGroup = session.variantGroup
         if session.agent != .none, let kind = session.kind {
             agent = kind.rawValue
             conversation = session.agentSessionID
@@ -74,6 +77,7 @@ extension SavedSessions.Tab {
         guard let kind = agent.flatMap(AgentKind.init(rawValue:)) else {
             let shell = TerminalSession(directory: directory)
             shell.issue = issue
+            shell.variantGroup = variantGroup
             return shell
         }
         let skip = skipPermissions ?? false
@@ -86,6 +90,7 @@ extension SavedSessions.Tab {
         session.agentSessionID = conversation
         session.skipsPermissions = skip
         session.issue = issue
+        session.variantGroup = variantGroup
         return session
     }
 }

@@ -159,6 +159,30 @@ final class CommandCenter {
                 branch: text("branch", max: 200), issue: text("issue", max: 300), prompt: text("prompt", max: 32 * 1024),
                 reply: reply
             )
+        case "proof", "proof-status":
+            guard let id = text("session", max: 64) else { return reply(Reply(ok: false, output: "proof needs a session (or run it inside one)")) }
+            switch resolve(id) {
+            case let .failure(problem): reply(problem)
+            case let .success((workspace, _)):
+                proof(workspace, start: request["command"] as? String == "proof", reply: reply)
+            }
+        case "land":
+            guard let id = text("session", max: 64) else { return reply(Reply(ok: false, output: "land needs a session (or run it inside one)")) }
+            switch resolve(id) {
+            case let .failure(problem): reply(problem)
+            case let .success((workspace, _)):
+                guard Landing.shared.canLand(workspace) else {
+                    return reply(Reply(ok: false, output: "nothing to land: the session has no open pull request"))
+                }
+                Landing.shared.land(workspace)
+                reply(Reply(ok: true, output: "landing \(workspace.title)"))
+            }
+        #if DEBUG
+        case "debug":
+            // Development only: drive the UI and photograph a window
+            // without screen-recording rights.
+            DebugDriver.handle(action: text("action", max: 40) ?? "", value: text("value", max: 4096), store: store, reply: { reply(Reply(ok: $0, output: $1)) })
+        #endif
         default:
             reply(Reply(ok: false, output: "unknown command; is the muxy app older than this muxy tool?"))
         }
@@ -187,6 +211,34 @@ final class CommandCenter {
         case 0: return .failure(Reply(ok: false, output: "no session \(id) (see muxy status)"))
         default: return .failure(Reply(ok: false, output: "\(id) matches \(matches.count) sessions; use more of the id"))
         }
+    }
+
+    // MARK: proof
+
+    /// Starts the session's checks (`proof`) or says where they stand
+    /// (`proof-status`). The first line is the state: running, passed,
+    /// failed, skipped, cancelled or none; then one line per check.
+    private func proof(_ workspace: Workspace, start: Bool, reply: (Reply) -> Void) {
+        guard let checkout = workspace.context.checkout, let root = workspace.context.root else {
+            return reply(Reply(ok: false, output: "not a git checkout"))
+        }
+        let proofs = Proofs.shared
+        if start, proofs.running[checkout] == nil {
+            guard !ProofCheck.load(root: root).isEmpty else {
+                return reply(Reply(ok: false, output: "no checks: add [check \"name\"] run = … to .wtconfig"))
+            }
+            proofs.run(checkout: checkout, root: root, session: workspace.primary)
+        }
+        if let running = proofs.running[checkout] {
+            return reply(Reply(ok: true, output: "running\n\(running.check)"))
+        }
+        guard let result = proofs.result(for: checkout) else { return reply(Reply(ok: true, output: "none")) }
+        var lines = [result.verdict.rawValue]
+        for entry in result.entries {
+            lines.append("\(entry.outcome.rawValue)\t\(entry.name)\t\(entry.command)")
+            if entry.outcome == .failed { lines.append(entry.tail) }
+        }
+        reply(Reply(ok: true, output: lines.joined(separator: "\n")))
     }
 
     // MARK: notify
@@ -237,9 +289,11 @@ final class CommandCenter {
             return reply(Reply(ok: false, output: "no such folder: \(directory)"))
         }
         let defaults = UserDefaults.standard
-        let choice = agent ?? defaults.string(forKey: "newSessionAgent") ?? AgentKind.claude.rawValue
-        guard choice == "none" || choice == "shell" || AgentKind(rawValue: choice) != nil else {
-            return reply(Reply(ok: false, output: "unknown agent \(choice): claude, codex or none"))
+        var choice = agent ?? defaults.string(forKey: "newSessionAgent") ?? AgentKind.claude.rawValue
+        // The panel's last choice was both agents: one, unless asked for both.
+        if agent == nil, choice == NewSessionView.both { choice = AgentKind.claude.rawValue }
+        guard choice == "none" || choice == "shell" || choice == NewSessionView.both || AgentKind(rawValue: choice) != nil else {
+            return reply(Reply(ok: false, output: "unknown agent \(choice): claude, codex, both or none"))
         }
         let wantsWorktree = worktree.map { $0 == "on" } ?? (defaults.object(forKey: "newSessionWorktree") as? Bool ?? true)
         if let branch, !Self.plausibleBranch(branch) {
@@ -273,6 +327,15 @@ final class CommandCenter {
                     store.openWindow?(id: "main", value: model.id)
                     return model
                 }()
+                if choice == NewSessionView.both, inRepo, let root = Launcher.mainCheckout(of: directory) {
+                    if let issueFound {
+                        FanOut.launch(issue: issueFound, root: root, agents: AgentKind.allCases, in: window)
+                    } else {
+                        FanOut.launch(prompt: prompt ?? "", root: root, agents: AgentKind.allCases, branch: branch, in: window)
+                    }
+                    reply(Reply(ok: true, output: store.workspaces.suffix(AgentKind.allCases.count).map(\.id.uuidString).joined(separator: "\n")))
+                    return
+                }
                 let spec = SessionSpec(
                     directory: directory, agent: AgentKind(rawValue: choice), prompt: prompt ?? "",
                     worktree: inRepo && wantsWorktree, branch: branch

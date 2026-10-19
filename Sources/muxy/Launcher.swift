@@ -12,6 +12,8 @@ struct SessionSpec {
     var autoName = false
     /// The GitHub issue the task is; `prompt` already says it.
     var issue: Issue?
+    /// Started together with other agents on the same task (fan-out).
+    var variantGroup: String?
 }
 
 extension SessionSpec {

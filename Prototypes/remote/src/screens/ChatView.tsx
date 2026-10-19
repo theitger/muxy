@@ -4,6 +4,7 @@ import { cn } from '@/lib/utils'
 import { Markdown } from '@/components/Markdown'
 import { Live } from '@/components/muxy'
 import { Tap } from '@/components/touch'
+import { t } from '@/lib/i18n'
 import { agentName, type ChatItem, type Session, type Tab } from '@/lib/protocol'
 
 type Tool = Extract<ChatItem, { kind: 'tool' }>
@@ -68,10 +69,10 @@ export function ChatView({
       >
         {items === undefined && tab.agent === 'working' ? null : items === undefined ? (
           <p className="fade-in mt-16 px-8 text-center text-[15px] leading-snug text-t4">
-            Der Verlauf erscheint, sobald {who} in dieser Session etwas tut. Bis dahin zeigt das Terminal alles.
+            {t('The conversation appears once %s does something in this session. Until then the terminal shows everything.', who)}
           </p>
         ) : list.length === 0 ? (
-          <p className="fade-in mt-16 text-center text-[15px] text-t4">Noch nichts in diesem Gespräch.</p>
+          <p className="fade-in mt-16 text-center text-[15px] text-t4">{t('Nothing in this conversation yet.')}</p>
         ) : (
           <div className="flex flex-col gap-4">
             {list.map((e, i) => (
@@ -83,13 +84,13 @@ export function ChatView({
         {tab.agent === 'working' && (
           <div className="fade-in mt-4 flex items-center gap-2 text-[15px] text-t3">
             <span className="size-2 rounded-full bg-tone-blue pulse-soft" />
-            <Live>{session.activity ?? `${who} arbeitet`}</Live>
+            <Live>{session.activity ?? t('%s is working', who)}</Live>
           </div>
         )}
 
         {tab.agent === 'blocked' && (
           <div className="arrive mt-5 overflow-hidden rounded-[14px] border border-tone-orange/25 bg-raised">
-            <div className="bg-tone-orange-soft px-3.5 py-2.5 text-[14.5px] font-semibold text-tone-orange">{who} braucht deine Entscheidung</div>
+            <div className="bg-tone-orange-soft px-3.5 py-2.5 text-[14.5px] font-semibold text-tone-orange">{t('%s needs your decision', who)}</div>
             {session.lines && session.lines.length > 0 && (
               <div className="border-b border-hair px-3.5 py-2.5 font-mono text-[12.5px] leading-[1.45] text-t2">
                 {session.lines.slice(-3).map((l, i) => (
@@ -108,14 +109,14 @@ export function ChatView({
                 <span className="leading-snug">{c.label}</span>
               </Tap>
             ))}
-            {!tab.choices?.length && <div className="px-3.5 py-2.5 text-[14px] text-t3">Die Frage steht im Terminal.</div>}
+            {!tab.choices?.length && <div className="px-3.5 py-2.5 text-[14px] text-t3">{t('The question is in the terminal.')}</div>}
           </div>
         )}
 
         {tab.agent === 'failed' && (
           <div className="arrive mt-5 rounded-[14px] bg-tone-red-soft px-3.5 py-3">
-            <div className="text-[15px] font-semibold text-tone-red">Die Runde ist an einem Fehler gestorben</div>
-            <p className="mt-0.5 text-[14px] text-t2">Die Details stehen im Terminal. Schreib „weiter“, dann versucht {who} es neu.</p>
+            <div className="text-[15px] font-semibold text-tone-red">{t('The turn died on an error')}</div>
+            <p className="mt-0.5 text-[14px] text-t2">{t('The details are in the terminal. Write “continue” and %s tries again.', who)}</p>
           </div>
         )}
       </div>
@@ -123,7 +124,7 @@ export function ChatView({
       {behind && (
         <div className="pointer-events-none absolute inset-x-0 bottom-3 z-10 flex justify-center">
           <Tap
-            label="Zum Ende"
+            label={t('Jump to the end')}
             onPress={() => {
               stick.current = true
               setBehind(false)
@@ -162,18 +163,18 @@ const EntryView = memo(
 )
 
 const VERB: Record<string, string> = {
-  Bash: 'Befehl',
-  Shell: 'Befehl',
-  Read: 'Gelesen',
-  Edit: 'Geändert',
-  MultiEdit: 'Geändert',
-  Write: 'Geschrieben',
-  Grep: 'Gesucht',
-  Glob: 'Gesucht',
-  WebFetch: 'Abgerufen',
-  WebSearch: 'Gesucht',
-  Task: 'Teilaufgabe',
-  Agent: 'Teilaufgabe',
+  Bash: t('Command'),
+  Shell: t('Command'),
+  Read: t('Read'),
+  Edit: t('Edited'),
+  MultiEdit: t('Edited'),
+  Write: t('Wrote'),
+  Grep: t('Searched'),
+  Glob: t('Searched'),
+  WebFetch: t('Fetched'),
+  WebSearch: t('Searched'),
+  Task: t('Subtask'),
+  Agent: t('Subtask'),
   TodoWrite: 'Plan',
 }
 
@@ -201,10 +202,10 @@ function Tools({ tools }: { tools: Tool[] }) {
     const edits = tools.filter((t) => ['Edit', 'Write', 'MultiEdit'].includes(t.tool)).length
     const commands = tools.filter((t) => t.tool === 'Bash' || t.tool === 'Shell').length
     const parts = [
-      tools.length === 1 ? '1 Schritt' : `${tools.length} Schritte`,
-      edits && `${edits} geändert`,
-      commands && (commands === 1 ? '1 Befehl' : `${commands} Befehle`),
-      failed && `${failed} fehlgeschlagen`,
+      tools.length === 1 ? t('1 step') : t('%d steps', tools.length),
+      edits && t('%d edited', edits),
+      commands && (commands === 1 ? t('1 command') : t('%d commands', commands)),
+      failed && t('%d failed', failed),
     ].filter(Boolean)
     return (
       <button type="button" onClick={() => setOpen(true)} className="arrive flex items-center gap-1.5 self-start rounded-full bg-code py-1.5 pr-2.5 pl-3 text-[13.5px] text-t3 active:opacity-60">

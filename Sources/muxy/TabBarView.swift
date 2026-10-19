@@ -25,7 +25,7 @@ struct TabBarView: View {
             }
             .padding(3)
             .background(
-                RoundedRectangle(cornerRadius: 9, style: .continuous)
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
                     .fill(Theme.textPrimary.opacity(0.05))
             )
             IconButton(symbol: "plus", help: L("New Tab (⌘T)")) {
@@ -41,7 +41,7 @@ struct TabBarView: View {
         // Folded sidebar: leave room for the traffic lights.
         .padding(.leading, onStage ? 8 : 80)
         .padding(.trailing, 12)
-        .frame(height: onStage ? 42 : 46)
+        .frame(height: onStage ? 42 : StageMetrics.topBar)
         // Matches the terminal and reaches 1pt under it: Ghostty leaves its
         // outermost pixels unpainted, which shows as a seam wherever the
         // window blur is missing (Mission Control).
@@ -64,16 +64,12 @@ private struct SegmentTab: View {
 
     private var isActive: Bool { workspace.selectedSessionID == session.id }
 
-    private var symbol: String {
-        if session.agent != .none { return "sparkle" }
-        return "chevron.forward"
-    }
 
     var body: some View {
         HStack(spacing: 6) {
-            Image(systemName: symbol)
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundStyle(isActive ? Theme.textMuted : Theme.textFaint)
+            if let kind = session.kind, session.agent != .none {
+                AgentGlyph(kind: kind, size: 11)
+            }
             Text(session.tabTitle)
                 .font(.system(size: 12, weight: .medium))
                 .foregroundStyle(isActive ? Theme.textPrimary : (hovered ? Theme.textBody : Theme.textMuted))
@@ -84,8 +80,7 @@ private struct SegmentTab: View {
                 Button {
                     store.close(session, in: workspace)
                 } label: {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 7.5, weight: .bold))
+                    Icon("xmark", size: 7.5)
                         .foregroundStyle(Theme.textDim)
                         .frame(width: 12, height: 12)
                         .contentShape(Rectangle())
@@ -96,7 +91,7 @@ private struct SegmentTab: View {
         .padding(.horizontal, 10)
         .frame(height: 26)
         .background(
-            RoundedRectangle(cornerRadius: 6.5, style: .continuous)
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
                 .fill(isActive ? Theme.bg : .clear)
                 .shadow(color: .black.opacity(isActive ? 0.08 : 0), radius: 1.5, y: 1)
         )

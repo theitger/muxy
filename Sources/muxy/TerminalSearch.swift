@@ -123,8 +123,7 @@ private struct FindBar: View {
 
     var body: some View {
         HStack(spacing: 2) {
-            Image(systemName: "magnifyingglass")
-                .font(.system(size: 11, weight: .medium))
+            Icon("magnifyingglass", size: 11)
                 .foregroundStyle(Theme.textDim)
                 .padding(.leading, 8)
                 .accessibilityHidden(true)
@@ -161,12 +160,12 @@ private struct FindBar: View {
         }
         .padding(3)
         .background(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
                 .fill(Theme.surface)
                 .shadow(color: .black.opacity(0.14), radius: 12, y: 4)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
                 .strokeBorder(Theme.hairline, lineWidth: 0.5)
         )
         .onAppear { focused = true }

@@ -89,12 +89,12 @@ final class Results: ObservableObject {
     /// The agent ended a turn: its log may still be catching up, so the
     /// result is read a moment later.
     func turnEnded(in session: TerminalSession) {
-        refresh(session, after: 1)
+        refresh(session, after: 1, turnEnded: true)
     }
 
     /// Builds the session's result off the main thread. Blocking work:
     /// the log's tail, one git diff, one gh call when there may be a PR.
-    func refresh(_ session: TerminalSession, after delay: TimeInterval = 0) {
+    func refresh(_ session: TerminalSession, after delay: TimeInterval = 0, turnEnded: Bool = false) {
         let id = session.id
         let token = (tokens[id] ?? 0) + 1
         tokens[id] = token
@@ -113,6 +113,13 @@ final class Results: ObservableObject {
                 guard self.tokens[id] == token else { return }
                 self.building.remove(id)
                 self.bySession[id] = result
+                // The turn's checkpoint carries the agent's words; then
+                // muxy checks the work itself.
+                if turnEnded, let checkout = context.checkout {
+                    Turns.shared.turnEnded(in: checkout, summary: result.summary)
+                    Proofs.shared.turnEnded(in: session)
+                    Radar.shared.poke()
+                }
             }
         }
     }

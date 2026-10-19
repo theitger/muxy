@@ -23,8 +23,7 @@ struct SwitcherView: View {
         let results = results
         VStack(spacing: 0) {
             HStack(spacing: 10) {
-                Image(systemName: "magnifyingglass")
-                    .font(.system(size: 13, weight: .medium))
+                Icon("magnifyingglass", size: 13)
                     .foregroundStyle(Theme.textDim)
                 TextField(L("Search sessions …"), text: $query)
                     .textFieldStyle(.plain)
@@ -66,12 +65,12 @@ struct SwitcherView: View {
         }
         .frame(width: 540)
         .background(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .fill(Theme.surface)
-                .shadow(color: .black.opacity(0.12), radius: 30, y: 16)
+                .shadow(color: .black.opacity(0.14), radius: 8, y: 3)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .strokeBorder(Theme.hairline, lineWidth: 0.5)
         )
         .onAppear { focused = true }
@@ -94,7 +93,7 @@ struct SwitcherView: View {
         HStack(spacing: 10) {
             SessionTile(
                 agent: workspace.agent, attention: workspace.needsAttention,
-                isGit: workspace.context.repo != nil, size: 24
+                isGit: workspace.context.repo != nil, kind: workspace.featured?.kind, size: 24
             )
             Text(workspace.title)
                 .font(.system(size: 13, weight: .medium))
@@ -117,7 +116,7 @@ struct SwitcherView: View {
         .padding(.horizontal, 8)
         .frame(height: 38)
         .background(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
+            RoundedRectangle(cornerRadius: 7, style: .continuous)
                 .fill(index == highlighted ? Theme.fillActive : .clear)
         )
         .contentShape(Rectangle())

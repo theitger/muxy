@@ -428,6 +428,27 @@ final class RemoteConnection {
             }
         case "repos":
             sendRepos()
+        case "step":
+            // The session's suggested next step, only while it still is
+            // the one the phone showed (it may have moved on meanwhile).
+            guard let id = message["session"] as? String,
+                  let workspace = Store.shared.workspaces.first(where: { $0.id.uuidString == id }),
+                  let window = Store.shared.window(of: workspace) ?? Store.shared.activeWindow
+            else { return }
+            let next = Flow.next(for: workspace)
+            let done = RemoteState.stepName(next) == message["kind"] as? String && Flow.take(next, in: workspace, window: window)
+            send(["t": "stepped", "session": id, "ok": done])
+            push()
+        case "issue":
+            // An assigned issue becomes a session, like "Start" in the hub.
+            guard let repo = message["repo"] as? String, let number = message["number"] as? Int,
+                  let issue = HubModel.shared.issues.first(where: { $0.repo == repo && $0.number == number }),
+                  let window = Store.shared.activeWindow ?? Store.shared.windows.first
+            else { return send(["t": "opened", "session": NSNull(), "error": "unknown issue"]) }
+            let agents = ((message["agents"] as? [String]) ?? ["claude"]).compactMap(AgentKind.init(rawValue:))
+            HubModel.shared.start(issue, agents: agents.isEmpty ? [.claude] : agents, in: window, hideHub: false) { [weak self] id in
+                self?.send(["t": "opened", "session": id ?? NSNull(), "error": id == nil ? "not cloned on this Mac" : NSNull()])
+            }
         default:
             break
         }
@@ -437,10 +458,11 @@ final class RemoteConnection {
     /// watched tab's screen, its chat.
     func push() {
         let sessions = RemoteState.sessions()
-        let payload: [String: Any] = [
+        var payload: [String: Any] = [
             "t": "sessions", "sessions": sessions, "recent": RemoteState.recentDirectories(),
-            "history": ShellHistory.recent(),
+            "history": ShellHistory.recent(), "issues": RemoteState.issues(),
         ]
+        if let account = RemoteState.account() { payload["account"] = account }
         if let json = Self.encode(payload), json != lastSessions {
             lastSessions = json
             sendJSON(json)

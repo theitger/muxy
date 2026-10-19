@@ -21,24 +21,24 @@
 @custom-variant dark (&:where([data-theme=dark], [data-theme=dark] *));
 
 /*
- * Muxy's Theme.swift, 1:1: the background is the Ghostty theme
- * (Porsche GT3 RS / GT3 RS Light), chrome tones are derived from it, status
- * tones are a soft tint plus a strong shade.
+ * Muxy's Theme.swift: one neutral palette (zinc greys), ink as the
+ * accent, color only for states: a soft tint plus a strong shade.
  */
 :root {
-  --m-bg: #f4f4f0;
-  --m-surface: #e9e9e5;
-  --m-raised: #fbfbf9;
-  --m-t1: #1a1a1a;
-  --m-t2: #3a3a3a;
-  --m-t3: #707070;
-  --m-t4: #909090;
-  --m-t5: #a6a6a6;
-  --m-hover: rgb(26 26 26 / 0.04);
-  --m-active: rgb(26 26 26 / 0.075);
-  --m-hair: rgb(26 26 26 / 0.09);
-  --m-accent: #e8630c;
-  --m-claude: #be5a38;
+  --m-bg: #f4f4f5;
+  --m-surface: #ececee;
+  --m-raised: #ffffff;
+  --m-t1: #09090b;
+  --m-t2: #3f3f46;
+  --m-t3: #71717a;
+  --m-t4: #8e8e96;
+  --m-t5: #b0b0b7;
+  --m-hover: rgb(9 9 11 / 0.04);
+  --m-active: rgb(9 9 11 / 0.07);
+  --m-hair: rgb(9 9 11 / 0.08);
+  --m-accent: #09090b;
+  --m-claude: #d97757;
+  --m-codex: #0d0d0d;
 
   --m-blue-soft: #edf3fc;   --m-blue: #315c9b;
   --m-green-soft: #eef9e1;  --m-green: #3f6f12;
@@ -48,7 +48,7 @@
   --m-neutral-soft: rgb(26 26 26 / 0.06);
   --m-keycap: #ffffff;
   --m-code: rgb(26 26 26 / 0.05);
-  --m-bubble: #e4e4df;
+  --m-bubble: #e4e4e7;
   --m-switch: #34c759;
 
   /* Ghostty palette (GT3 RS Light) for terminal output. */
@@ -96,19 +96,20 @@
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --m-bg: #0f0f0f;
-    --m-surface: #161616;
-    --m-raised: #1b1b1b;
-    --m-t1: #f0f0f0;
-    --m-t2: #c8c8c8;
-    --m-t3: #9a9a9a;
-    --m-t4: #6a6a6a;
-    --m-t5: #5a5a5a;
-    --m-hover: rgb(240 240 240 / 0.04);
-    --m-active: rgb(240 240 240 / 0.075);
-    --m-hair: rgb(240 240 240 / 0.09);
-    --m-accent: #ff8a2e;
+    --m-bg: #09090b;
+    --m-surface: #111113;
+    --m-raised: #18181b;
+    --m-t1: #fafafa;
+    --m-t2: #d4d4d8;
+    --m-t3: #a1a1aa;
+    --m-t4: #7a7a83;
+    --m-t5: #55555c;
+    --m-hover: rgb(250 250 250 / 0.04);
+    --m-active: rgb(250 250 250 / 0.08);
+    --m-hair: rgb(250 250 250 / 0.09);
+    --m-accent: #fafafa;
     --m-claude: #d97757;
+    --m-codex: #f5f5f5;
     --m-blue-soft: rgb(80 128 216 / 0.16);   --m-blue: #9dbaf0;
     --m-green-soft: rgb(131 205 45 / 0.16);  --m-green: #a9de6e;
     --m-yellow-soft: rgb(242 183 5 / 0.16);  --m-yellow: #f5cf5b;
@@ -117,7 +118,7 @@
     --m-neutral-soft: rgb(240 240 240 / 0.06);
     --m-keycap: #3a3a3c;
     --m-code: rgb(240 240 240 / 0.07);
-    --m-bubble: #2a2a2a;
+    --m-bubble: #27272a;
     --m-switch: #30d158;
     --ansi-red: #e63946;
     --ansi-green: #7ab870;
@@ -132,19 +133,20 @@
 }
 
 :root[data-theme="dark"] {
-  --m-bg: #0f0f0f;
-  --m-surface: #161616;
-  --m-raised: #1b1b1b;
-  --m-t1: #f0f0f0;
-  --m-t2: #c8c8c8;
-  --m-t3: #9a9a9a;
-  --m-t4: #6a6a6a;
-  --m-t5: #5a5a5a;
-  --m-hover: rgb(240 240 240 / 0.04);
-  --m-active: rgb(240 240 240 / 0.075);
-  --m-hair: rgb(240 240 240 / 0.09);
-  --m-accent: #ff8a2e;
+  --m-bg: #09090b;
+  --m-surface: #111113;
+  --m-raised: #18181b;
+  --m-t1: #fafafa;
+  --m-t2: #d4d4d8;
+  --m-t3: #a1a1aa;
+  --m-t4: #7a7a83;
+  --m-t5: #55555c;
+  --m-hover: rgb(250 250 250 / 0.04);
+  --m-active: rgb(250 250 250 / 0.08);
+  --m-hair: rgb(250 250 250 / 0.09);
+  --m-accent: #fafafa;
   --m-claude: #d97757;
+  --m-codex: #f5f5f5;
   --m-blue-soft: rgb(80 128 216 / 0.16);   --m-blue: #9dbaf0;
   --m-green-soft: rgb(131 205 45 / 0.16);  --m-green: #a9de6e;
   --m-yellow-soft: rgb(242 183 5 / 0.16);  --m-yellow: #f5cf5b;
@@ -153,7 +155,7 @@
   --m-neutral-soft: rgb(240 240 240 / 0.06);
   --m-keycap: #3a3a3c;
   --m-code: rgb(240 240 240 / 0.07);
-  --m-bubble: #2a2a2a;
+  --m-bubble: #27272a;
   --m-switch: #30d158;
   --ansi-red: #e63946;
   --ansi-green: #7ab870;
@@ -182,6 +184,7 @@
   --color-hair: var(--m-hair);
   --color-brand: var(--m-accent);
   --color-claude: var(--m-claude);
+  --color-codex: var(--m-codex);
   --color-tone-blue: var(--m-blue);
   --color-tone-blue-soft: var(--m-blue-soft);
   --color-tone-green: var(--m-green);

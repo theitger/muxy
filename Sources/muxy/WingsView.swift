@@ -12,12 +12,7 @@ struct WingsView: View {
             LazyVStack(alignment: .leading, spacing: 14) {
                 ForEach(window.groups) { group in
                     VStack(alignment: .leading, spacing: store.detailedWings ? 9 : 2) {
-                        Text(group.name)
-                            .font(.system(size: 10.5, weight: .semibold))
-                            .tracking(0.9)
-                            .textCase(.uppercase)
-                            .foregroundStyle(Theme.textFaint)
-                            .lineLimit(1)
+                        SectionLabel(group.name)
                             .padding(.horizontal, 10)
                             .frame(height: 20, alignment: .center)
                         ForEach(group.workspaces) { workspace in
@@ -41,6 +36,10 @@ private struct WingCard: View {
     @ObservedObject var workspace: Workspace
     @ObservedObject private var results = Results.shared
     @ObservedObject private var previews = Previews.shared
+    @ObservedObject private var proofs = Proofs.shared
+    @ObservedObject private var radar = Radar.shared
+    @ObservedObject private var quorum = QuorumWatch.shared
+    @ObservedObject private var landing = Landing.shared
     @State private var hovered = false
 
     var body: some View {
@@ -67,6 +66,22 @@ private struct WingCard: View {
         // Taking the stage and leaving it ease like the hover does.
         .animation(Theme.ease, value: window.selectedWorkspaceID == workspace.id)
         .contextMenu {
+            if workspace.context.checkout != nil {
+                Button(L("Review Changes")) { window.openReview(workspace, scope: .branch) }
+                if let root = workspace.context.root, let checkout = workspace.context.checkout {
+                    Button(L("Run Checks")) { Proofs.shared.run(checkout: checkout, root: root, session: workspace.primary) }
+                }
+            }
+            if Landing.shared.canLand(workspace) {
+                Button(L("Land")) { Landing.shared.land(workspace) }
+            }
+            if workspace.context.pr != nil, Quorum.isInstalled {
+                Button(L("Babysit with quorum")) { QuorumWatch.shared.start(.babysit, in: workspace) }
+            }
+            if workspace.variantGroup != nil {
+                Button(L("Keep This Variant")) { FanOut.confirmKeep(workspace) }
+            }
+            Divider()
             Button(L("Close")) { store.requestCloseWorkspace(workspace) }
         }
         .help(Paths.abbreviate(workspace.directory))
@@ -87,7 +102,17 @@ extension Workspace {
             lines: featured?.snapshot?.lines ?? [],
             agents: sessions.filter { $0.agent != .none }.map(\.agent),
             result: resultFace,
-            appPort: Previews.shared.ports(of: self).first(where: \.isWeb)?.port
+            appPort: Previews.shared.ports(of: self).first(where: \.isWeb)?.port,
+            subtitle: subtitle,
+            kind: featured?.kind,
+            proof: Proofs.shared.result(for: context.checkout)?.verdict,
+            proving: Proofs.shared.isRunning(context.checkout),
+            collisions: Radar.shared.collisions(for: context.checkout).map {
+                $0.withBase ? $0.other : Radar.shared.title(of: $0.other)
+            },
+            quorum: QuorumWatch.shared.status(for: self)?.summary,
+            quorumRunning: QuorumWatch.shared.status(for: self)?.running == true,
+            landing: Landing.shared.step(for: self).flatMap { $0.isActive ? $0.text : nil }
         )
     }
 }

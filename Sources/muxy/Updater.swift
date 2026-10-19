@@ -104,7 +104,7 @@ struct UpdateSettings: View {
                     set: { updater.setAutomaticChecks($0) }
                 ))
                 .labelsHidden()
-                .toggleStyle(.switch)
+                .toggleStyle(.offOn)
                 .accessibilityLabel(L("Check for updates automatically"))
             }
         }

@@ -24,6 +24,8 @@ Usage: muxy [dir]                 open a session in dir (default: here)
        muxy notify [--session <id>] [--title <title>] <message...>
        muxy status [--json]
        muxy focus <id>
+       muxy proof [--session <id>] [--no-wait]
+       muxy land [--session <id>]
        muxy <command> --help
 
 Exit status: 0 done, 1 muxy refused (the reason is printed), 2 bad usage,
@@ -31,6 +33,33 @@ Exit status: 0 done, 1 muxy refused (the reason is printed), 2 bad usage,
 Environment: MUXY_STATE_DIR picks the muxy instance (default: the installed
 app), MUXY_TIMEOUT seconds to wait for an answer (default 10).
 EOF
+}
+
+usage_proof() {
+    cat <<'END'
+Usage: muxy proof [--session <id>] [--no-wait]
+
+Runs the session's checks (the [check] sections of the repository's
+.wtconfig) on its files as they are now, waits for them and prints what
+failed. Inside a muxy terminal the session is your own: an agent can prove
+its work before it says it is done.
+
+  --session <id>        a session or tab id from `muxy status`
+  --no-wait             start them and return
+
+Exit status: 0 all passed (or nothing they check changed), 1 a check
+failed, was stopped, or couldn't run.
+END
+}
+
+usage_land() {
+    cat <<'END'
+Usage: muxy land [--session <id>]
+
+Lands the session's pull request: up to date with its base, checks, push,
+quorum (when installed), merge. Steps that need thought go back to the
+session's agent; the session's card shows where it stands.
+END
 }
 
 usage_new() {
@@ -41,7 +70,8 @@ Starts a session like the New Session panel (Cmd-N) does and prints its id.
 Options not given use the panel's last choices.
 
   --repo <dir>          where it starts (default: the current folder)
-  --agent <name>        claude, codex or none (a plain terminal)
+  --agent <name>        claude, codex, both (side by side, each in its
+                        own worktree) or none (a plain terminal)
   --worktree            its own worktree on a new branch (in a repository)
   --no-worktree         right in <dir>
   --branch <name>       the new branch (default: named after the task)
@@ -181,7 +211,7 @@ cmd_new() {
         *) break ;;
         esac
     done
-    case "$agent" in '' | claude | codex | none) ;; *) die 2 "--agent takes claude, codex or none" ;; esac
+    case "$agent" in '' | claude | codex | both | none) ;; *) die 2 "--agent takes claude, codex, both or none" ;; esac
     if [ "$*" = "-" ]; then
         prompt="$(cat)"
     else
@@ -242,9 +272,49 @@ cmd_focus() {
     request focus session "$1"
 }
 
+cmd_proof() {
+    local session="${MUXY_SESSION:-}" wait=1 state
+    while [ $# -gt 0 ]; do
+        case "$1" in
+        -h | --help) usage_proof; exit 0 ;;
+        --session) need "$@"; session="$2"; shift 2 ;;
+        --no-wait) wait=""; shift ;;
+        *) die 2 "unknown argument $1 (see muxy proof --help)" ;;
+        esac
+    done
+    [ -n "$session" ] || die 2 "proof needs --session outside a muxy terminal"
+    request proof session "$session"
+    if [ -z "$wait" ]; then
+        printf '%s\n' "$REPLY_TEXT"
+        exit 0
+    fi
+    state="$(printf '%s\n' "$REPLY_TEXT" | head -n 1)"
+    while [ "$state" = running ]; do
+        sleep 3
+        request proof-status session "$session"
+        state="$(printf '%s\n' "$REPLY_TEXT" | head -n 1)"
+    done
+    printf '%s\n' "$REPLY_TEXT"
+    case "$state" in passed | skipped) exit 0 ;; *) exit 1 ;; esac
+}
+
+cmd_land() {
+    local session="${MUXY_SESSION:-}"
+    while [ $# -gt 0 ]; do
+        case "$1" in
+        -h | --help) usage_land; exit 0 ;;
+        --session) need "$@"; session="$2"; shift 2 ;;
+        *) die 2 "unknown argument $1 (see muxy land --help)" ;;
+        esac
+    done
+    [ -n "$session" ] || die 2 "land needs --session outside a muxy terminal"
+    request land session "$session"
+    printf '%s\n' "$REPLY_TEXT"
+}
+
 COMMAND="${1:-}"
 case "$COMMAND" in
-new | notify | status | focus)
+new | notify | status | focus | proof | land)
     shift
     "cmd_$COMMAND" "$@"
     ;;

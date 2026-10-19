@@ -30,8 +30,11 @@ struct NewSessionView: View {
     /// Repositories offered as chips; the rest sit behind "Other".
     private static let chipCount = 6
 
-    /// nil: a plain shell.
-    private var agent: AgentKind? { AgentKind(rawValue: agentChoice) }
+    /// The fan-out choice: Claude and Codex side by side.
+    static let both = "both"
+    private var fanOut: Bool { agentChoice == Self.both }
+    /// nil: a plain shell. Fan-out names Claude here (its first variant).
+    private var agent: AgentKind? { fanOut ? .claude : AgentKind(rawValue: agentChoice) }
     private var target: String { directory ?? Paths.home }
     /// The repository the chosen folder belongs to.
     private var repo: Repos.Repo? {
@@ -65,15 +68,15 @@ struct NewSessionView: View {
         }
         .frame(width: 600)
         .background(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .fill(Theme.surface)
-                .shadow(color: .black.opacity(0.35), radius: 40, y: 18)
+                .shadow(color: .black.opacity(0.14), radius: 8, y: 3)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .strokeBorder(Theme.textPrimary.opacity(0.16), lineWidth: 1)
         )
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         .background(shortcuts)
         .onAppear(perform: prepare)
         .onChange(of: repo?.path, initial: true) { _, path in
@@ -210,14 +213,23 @@ struct NewSessionView: View {
 
     private var agentRow: some View {
         HStack(spacing: 6) {
-            ForEach([AgentKind.claude.rawValue, AgentKind.codex.rawValue, "shell"], id: \.self) { choice in
+            ForEach([AgentKind.claude.rawValue, AgentKind.codex.rawValue, Self.both, "shell"], id: \.self) { choice in
                 let kind = AgentKind(rawValue: choice)
-                Chip(selected: agentChoice == choice, help: "⇥") {
+                Chip(selected: agentChoice == choice, help: choice == Self.both
+                     ? L("Both agents on the same task, each in its own worktree: keep the better one") : "⇥") {
                     agentChoice = choice
                 } label: {
                     HStack(spacing: 7) {
-                        AgentGlyph(kind: kind, size: 13)
-                        Text(kind?.name ?? L("Terminal only"))
+                        if choice == Self.both {
+                            HStack(spacing: 2) {
+                                AgentGlyph(kind: .claude, size: 12)
+                                AgentGlyph(kind: .codex, size: 12)
+                            }
+                            Text(L("Both"))
+                        } else {
+                            AgentGlyph(kind: kind, size: 13)
+                            Text(kind?.name ?? L("Terminal only"))
+                        }
                     }
                 }
             }
@@ -237,13 +249,12 @@ struct NewSessionView: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
-            .toggleStyle(.switch)
+            .toggleStyle(.offOn)
             .controlSize(.small)
             Spacer(minLength: 8)
             if worktree {
                 HStack(spacing: 6) {
-                    Image(systemName: "arrow.triangle.branch")
-                        .font(.system(size: 10.5, weight: .semibold))
+                    Icon("arrow.triangle.branch", size: 10.5)
                         .foregroundStyle(Theme.textDim)
                     TextField(L("Name: automatic"), text: $branch)
                         .textFieldStyle(.plain)
@@ -268,14 +279,14 @@ struct NewSessionView: View {
 
             Button(action: start) {
                 HStack(spacing: 8) {
-                    Text(agent.map { L("Start %@", $0.name) } ?? L("Open"))
+                    Text(fanOut ? L("Start both") : agent.map { L("Start %@", $0.name) } ?? L("Open"))
                     Text("↩").opacity(0.6)
                 }
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(Theme.bg)
                 .padding(.horizontal, 14)
                 .frame(height: 32)
-                .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Theme.textPrimary))
+                .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(Theme.textPrimary))
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -312,15 +323,20 @@ struct NewSessionView: View {
         case (nil, false):
             text = L("A terminal opens in %@.", Paths.abbreviate(target))
         }
+        if fanOut {
+            text = repo == nil
+                ? L("Side by side needs a repository.")
+                : L("Claude and Codex each work on it in their own worktree in %@. Keep the better one.", place)
+        }
         if agent != nil, store.skipPermissions { text += " " + L("No permission prompts.") }
         return text
     }
 
     private func field(active: Bool) -> some View {
-        RoundedRectangle(cornerRadius: 8, style: .continuous)
+        RoundedRectangle(cornerRadius: 7, style: .continuous)
             .fill(Theme.textPrimary.opacity(0.04))
             .overlay(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
                     .strokeBorder(active ? Theme.textPrimary.opacity(0.28) : Theme.hairline, lineWidth: 1)
             )
     }
@@ -367,7 +383,7 @@ struct NewSessionView: View {
     }
 
     private func cycleAgent() {
-        let order = AgentKind.allCases.map(\.rawValue) + ["shell"]
+        let order = AgentKind.allCases.map(\.rawValue) + [Self.both, "shell"]
         let index = order.firstIndex(of: agentChoice) ?? 0
         agentChoice = order[(index + 1) % order.count]
     }
@@ -392,6 +408,17 @@ struct NewSessionView: View {
             return
         }
         let resolved = issues.resolved
+        if fanOut, let root = repo?.path {
+            if let resolved {
+                FanOut.launch(issue: resolved.issue, root: root, agents: AgentKind.allCases, in: window)
+            } else if !prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                FanOut.launch(prompt: prompt, root: root, agents: AgentKind.allCases, in: window)
+            } else {
+                return
+            }
+            window.showNewSession = false
+            return
+        }
         var spec = SessionSpec(
             directory: target, agent: agent,
             prompt: resolved.map { Issues.prompt(for: $0.issue, note: $0.note, localRepo: issues.targetRepo) } ?? prompt,

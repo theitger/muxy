@@ -233,8 +233,7 @@ struct IssueAccessory: View {
             }
         case let .failed(message):
             HStack(spacing: 6) {
-                Image(systemName: "exclamationmark.circle")
-                    .font(.system(size: 11, weight: .semibold))
+                Icon("exclamationmark.circle", size: 11)
                 Text(message)
             }
             .font(.system(size: 12))
@@ -270,7 +269,7 @@ struct IssueAccessory: View {
         }
         .padding(.vertical, 6)
         .background(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
+            RoundedRectangle(cornerRadius: 7, style: .continuous)
                 .strokeBorder(Theme.hairline, lineWidth: 1)
         )
     }
@@ -283,10 +282,9 @@ struct IssueRow: View {
 
     var body: some View {
         HStack(spacing: 7) {
-            Image(systemName: issue.isOpen ? "smallcircle.filled.circle" : "checkmark.circle")
-                .font(.system(size: 11, weight: .semibold))
+            Icon(issue.isOpen ? "smallcircle.filled.circle" : "checkmark.circle", size: 11)
                 .foregroundStyle(issue.isOpen ? Theme.greenTone.strong : Theme.purple.strong)
-            Text("#\(issue.number)")
+            Text("#" + String(issue.number))
                 .font(.system(size: 12, weight: .semibold))
                 .monospacedDigit()
                 .foregroundStyle(Theme.textMuted)

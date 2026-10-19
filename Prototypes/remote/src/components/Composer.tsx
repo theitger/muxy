@@ -2,6 +2,7 @@ import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Square } from 'lucide-react'
 import { useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { cn } from '@/lib/utils'
 import { keysFor, readHint } from '@/lib/hints'
+import { t } from '@/lib/i18n'
 import type { Key } from '@/lib/protocol'
 import { Tap } from './touch'
 
@@ -79,10 +80,10 @@ export function Composer({
       {hint?.kind === 'yesno' && (
         <div className="fade-in grid grid-cols-2 gap-2 px-3 pt-2.5">
           <Tap onPress={() => onKey('y')} className="h-11 rounded-[12px] bg-raised text-[16px] font-semibold text-brand">
-            Ja
+            {t('Yes')}
           </Tap>
           <Tap onPress={() => onKey('n')} className="h-11 rounded-[12px] bg-raised text-[16px] text-t1">
-            Nein
+            {t('No')}
           </Tap>
         </div>
       )}
@@ -109,16 +110,16 @@ export function Composer({
           <KeyChip onPress={() => onKey('ctrl-c')} label="Control C">
             ^C
           </KeyChip>
-          <KeyChip onPress={() => onKey('up')} label="Hoch">
+          <KeyChip onPress={() => onKey('up')} label={t('Up')}>
             <ArrowUp className="size-4" />
           </KeyChip>
-          <KeyChip onPress={() => onKey('down')} label="Runter">
+          <KeyChip onPress={() => onKey('down')} label={t('Down')}>
             <ArrowDown className="size-4" />
           </KeyChip>
-          <KeyChip onPress={() => onKey('left')} label="Links">
+          <KeyChip onPress={() => onKey('left')} label={t('Left')}>
             <ArrowLeft className="size-4" />
           </KeyChip>
-          <KeyChip onPress={() => onKey('right')} label="Rechts">
+          <KeyChip onPress={() => onKey('right')} label={t('Right')}>
             <ArrowRight className="size-4" />
           </KeyChip>
           <KeyChip onPress={() => onKey('shift-tab')} label="Shift Tab">
@@ -174,7 +175,7 @@ export function Composer({
             autoComplete="off"
             spellCheck={!terminal}
             enterKeyHint={terminal ? 'send' : 'enter'}
-            placeholder={ctrl ? 'Buchstabe für ctrl' : placeholder}
+            placeholder={ctrl ? t('Letter for ctrl') : placeholder}
             className={cn(
               'block max-h-[148px] w-full resize-none bg-transparent py-[8px] text-[16px] leading-[22px] text-t1 outline-none placeholder:text-t4',
               terminal && 'font-mono placeholder:font-sans',
@@ -182,15 +183,15 @@ export function Composer({
           />
         </div>
         {busy && !draft ? (
-          <Tap label="Stoppen" onPress={() => onKey('esc')} className="size-[38px] shrink-0 rounded-full bg-t1 text-bg">
+          <Tap label={t('Stop')} onPress={() => onKey('esc')} className="size-[38px] shrink-0 rounded-full bg-t1 text-bg">
             <Square className="size-[13px]" fill="currentColor" strokeWidth={0} />
           </Tap>
         ) : (
           <Tap
-            label={draft ? 'Senden' : 'Return'}
+            label={draft ? t('Send') : 'Return'}
             onPress={submit}
             disabled={!terminal && !draft.trim()}
-            className={cn('size-[38px] shrink-0 rounded-full transition-colors duration-150', draft.trim() ? 'bg-brand text-white' : 'bg-active text-t3')}
+            className={cn('size-[38px] shrink-0 rounded-full transition-colors duration-150', draft.trim() ? 'bg-brand text-bg' : 'bg-active text-t3')}
           >
             <ArrowUp className="size-[20px]" strokeWidth={2.6} />
           </Tap>
@@ -205,7 +206,7 @@ function KeyChip({ children, onPress, active, label }: { children: React.ReactNo
     <Tap
       onPress={onPress}
       label={label}
-      className={cn('h-[34px] min-w-[44px] shrink-0 rounded-[8px] px-2.5 font-mono text-[14px] shadow-[0_1px_0_rgb(0_0_0/0.18)]', active ? 'bg-brand text-white' : 'bg-keycap text-t1')}
+      className={cn('h-[34px] min-w-[44px] shrink-0 rounded-[8px] px-2.5 font-mono text-[14px] shadow-[0_1px_0_rgb(0_0_0/0.18)]', active ? 'bg-brand text-bg' : 'bg-keycap text-t1')}
     >
       {children}
     </Tap>

@@ -183,7 +183,7 @@ struct OnboardingView: View {
                 .foregroundStyle(Theme.bg)
                 .padding(.horizontal, 14)
                 .frame(height: 32)
-                .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Theme.textPrimary))
+                .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(Theme.textPrimary))
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -232,8 +232,7 @@ private struct RepositoriesStep: View {
                         OnboardingRow(selected: chosen.contains(folder.path)) {
                             toggle(folder.path)
                         } content: {
-                            Image(systemName: "folder")
-                                .font(.system(size: 12))
+                            Icon("folder", size: 12)
                                 .foregroundStyle(Theme.textMuted)
                             Text(Paths.abbreviate(folder.path))
                                 .font(Theme.mono(size: 12.5))
@@ -406,7 +405,7 @@ private struct HooksStep: View {
             .padding(12)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(
-                RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Theme.textPrimary.opacity(0.04))
+                RoundedRectangle(cornerRadius: 7, style: .continuous).fill(Theme.textPrimary.opacity(0.04))
             )
 
             if setup.checked {
@@ -455,7 +454,7 @@ private struct NotificationsStep: View {
             } else {
                 switch status {
                 case .authorized?, .provisional?:
-                    Label(L("Notifications are on."), systemImage: "checkmark.circle.fill")
+                    Label { Text(L("Notifications are on.")) } icon: { Icon("checkmark.circle.fill", size: 12) }
                         .font(.system(size: 13, weight: .medium))
                         .foregroundStyle(Theme.green)
                 case .denied?:
@@ -513,19 +512,18 @@ private struct OnboardingRow<Content: View>: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: 10) {
-                Image(systemName: selected ? "checkmark.circle.fill" : "circle")
-                    .font(.system(size: 13))
+                Icon(selected ? "checkmark.circle.fill" : "circle", size: 13)
                     .foregroundStyle(selected ? Theme.textPrimary : Theme.textFaint)
                 content
             }
             .padding(.horizontal, 12)
             .frame(height: 38)
             .background(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
                     .fill(selected ? Theme.fillActive : (hovered ? Theme.fillHover : .clear))
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
                     .strokeBorder(selected ? Theme.textPrimary.opacity(0.3) : Theme.hairline, lineWidth: 1)
             )
             .contentShape(Rectangle())

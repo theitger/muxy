@@ -84,7 +84,7 @@ enum DragGhost {
             HStack(spacing: 10) {
                 SessionTile(
                     agent: workspace.agent, attention: workspace.needsAttention,
-                    isGit: workspace.context.repo != nil, size: 24
+                    isGit: workspace.context.repo != nil, kind: workspace.featured?.kind, size: 24
                 )
                 VStack(alignment: .leading, spacing: 1) {
                     Text(workspace.title)
@@ -100,12 +100,12 @@ enum DragGhost {
             .padding(.horizontal, 8)
             .frame(height: 44)
             .background(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
                     .fill(Theme.surface)
                     .shadow(color: .black.opacity(0.16), radius: 10, y: 4)
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
                     .strokeBorder(Theme.hairline, lineWidth: 0.5)
             )
         }
@@ -123,7 +123,7 @@ enum DragGhost {
                     HStack(spacing: 7) {
                         SessionTile(
                             agent: workspace.agent, attention: workspace.needsAttention,
-                            isGit: workspace.context.repo != nil, size: 18
+                            isGit: workspace.context.repo != nil, kind: workspace.featured?.kind, size: 18
                         )
                         Text(workspace.title)
                             .font(.system(size: 10.5, weight: .semibold))
@@ -156,7 +156,7 @@ enum DragGhost {
                 RoundedRectangle(cornerRadius: 11, style: .continuous)
                     .strokeBorder(Theme.hairline, lineWidth: 0.5)
             )
-            .shadow(color: .black.opacity(0.22), radius: 14, y: 6)
+            .shadow(color: .black.opacity(0.14), radius: 8, y: 3)
             .opacity(0.96)
         }
     }

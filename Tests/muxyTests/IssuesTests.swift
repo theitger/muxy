@@ -87,3 +87,11 @@ final class IssuesTests: XCTestCase {
         XCTAssertFalse(list.issues.isEmpty)
     }
 }
+
+final class PromptTemplateTests: XCTestCase {
+    func testCustomTemplateAndEmptyFields() {
+        let issue = Issue(repo: "o/r", number: 9, title: "Crash", url: "https://x/9", state: "OPEN", body: "Use {braces} here")
+        let text = Issues.prompt(for: issue, localRepo: "o/r", template: "Plan first.\n\n{reference} {title}\n\n{labels}\n\n{body}\n\n{note}\n\nThen: Closes {reference}")
+        XCTAssertEqual(text, "Plan first.\n\n#9 Crash\n\nUse {braces} here\n\nThen: Closes #9")
+    }
+}

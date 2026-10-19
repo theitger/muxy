@@ -21,11 +21,11 @@ final class TerminalSession: NSObject, ObservableObject, Identifiable {
         // The user's config 1:1 — Ghostty paints its own background too.
         // (Turning that off to let the window paint it renders the default
         // text washed out, so it is not an option.)
-        // Empty theme: the wrapper renders its theme AFTER the config file,
-        // so any non-empty value would override the user's own colors.
+        // The wrapper renders its theme AFTER the config file: empty (the
+        // default) leaves your colors alone; muxy's neutral one replaces them.
         return TerminalController(
             configFilePath: existing,
-            theme: TerminalTheme(light: .init(), dark: .init())
+            theme: TerminalColors.currentTheme
         )
     }()
 
@@ -56,6 +56,8 @@ final class TerminalSession: NSObject, ObservableObject, Identifiable {
     var skipsPermissions = false
     /// The GitHub issue this tab was started on (see Issues).
     var issue: Issue?
+    /// One of several agents on the same task (see FanOut).
+    var variantGroup: String?
     /// Something happened here while you were looking elsewhere — the
     /// single orange signal.
     @Published var needsAttention = false {
@@ -215,7 +217,7 @@ final class TerminalSession: NSObject, ObservableObject, Identifiable {
         guard agent != .none else { return nil }
         let clean = Self.clean(title)
         if clean.isEmpty || clean == "Claude Code" || AgentKind(commandLine: clean) != nil || clean.hasPrefix("~")
-            || clean.hasPrefix("/") { return nil }
+            || clean.hasPrefix("/") || clean == Paths.folderName(cwd) { return nil }
         return clean
     }
 
@@ -274,6 +276,9 @@ final class TerminalSession: NSObject, ObservableObject, Identifiable {
                 self.onContextChange?()
                 guard let number = pr?.number else { return }
                 let workspace = Store.shared.workspace(of: self)
+                if before.pr == nil, self.context.prState == .open, let workspace {
+                    Flow.pullRequestOpened(in: workspace)
+                }
                 if before.checks == .pending, before.pr == number {
                     switch self.context.checks {
                     case .passed: self.markAttentionIfBackground(reason: L("· #%d passed", number))
