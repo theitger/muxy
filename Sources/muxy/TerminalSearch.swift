@@ -123,8 +123,7 @@ private struct FindBar: View {
 
     var body: some View {
         HStack(spacing: 2) {
-            Image(systemName: "magnifyingglass")
-                .font(.system(size: 11, weight: .medium))
+            Icon("magnifyingglass", size: 11)
                 .foregroundStyle(Theme.textDim)
                 .padding(.leading, 8)
                 .accessibilityHidden(true)

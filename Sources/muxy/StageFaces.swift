@@ -145,7 +145,7 @@ struct WingCardFace: View {
             FaceSignals(face: face)
             if let port = face.appPort {
                 HStack(spacing: 2) {
-                    Image(systemName: "globe").font(.system(size: 9, weight: .semibold))
+                    Icon("globe", size: 9)
                     Text(":" + String(port)).font(.system(size: 10, weight: .medium)).monospacedDigit()
                 }
                 .foregroundStyle(Theme.textDim)
@@ -153,8 +153,7 @@ struct WingCardFace: View {
             }
             HStack(spacing: 4) {
                 ForEach(Array(face.agents.enumerated()), id: \.offset) { _, state in
-                    Image(systemName: "sparkle")
-                        .font(.system(size: 9, weight: .semibold))
+                    Icon("sparkle", size: 9)
                         .foregroundStyle(state == .none || state == .idle ? Theme.textFaint : Theme.tone(for: state).strong)
                 }
             }
@@ -312,8 +311,7 @@ struct TitleBarButton: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: 7) {
-                Image(systemName: symbol)
-                    .font(.system(size: 10.5, weight: .semibold))
+                Icon(symbol, size: 10.5)
                 Text(title)
                     .font(.system(size: 12, weight: .medium))
                 Kbd(keys)
@@ -368,8 +366,7 @@ struct FaceSignals: View {
     }
 
     private func icon(_ symbol: String, _ tone: Color, _ help: String) -> some View {
-        Image(systemName: symbol)
-            .font(.system(size: 9.5, weight: .semibold))
+        Icon(symbol, size: 9.5)
             .foregroundStyle(tone)
             .help(help)
             .accessibilityLabel(help)

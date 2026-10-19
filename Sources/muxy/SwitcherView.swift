@@ -23,8 +23,7 @@ struct SwitcherView: View {
         let results = results
         VStack(spacing: 0) {
             HStack(spacing: 10) {
-                Image(systemName: "magnifyingglass")
-                    .font(.system(size: 13, weight: .medium))
+                Icon("magnifyingglass", size: 13)
                     .foregroundStyle(Theme.textDim)
                 TextField(L("Search sessions …"), text: $query)
                     .textFieldStyle(.plain)

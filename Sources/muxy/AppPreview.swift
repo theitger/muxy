@@ -156,8 +156,7 @@ struct AppButton: View {
 
     private func label(port: Int, open: Bool) -> some View {
         HStack(spacing: 5) {
-            Image(systemName: "globe")
-                .font(.system(size: 11, weight: .semibold))
+            Icon("globe", size: 11)
             Text(L("App :%d", port))
                 .font(.system(size: 11.5, weight: .medium))
                 .monospacedDigit()

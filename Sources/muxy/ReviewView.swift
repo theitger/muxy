@@ -192,7 +192,7 @@ struct ReviewView: View {
                     if model.send() { close() }
                 } label: {
                     HStack(spacing: 6) {
-                        Image(systemName: "paperplane.fill").font(.system(size: 10.5, weight: .semibold))
+                        Icon("paperplane.fill", size: 10.5)
                         Text(model.comments.count == 1 ? L("Send 1 comment to the agent") : L("Send %d comments to the agent", model.comments.count))
                     }
                     .font(.system(size: 12, weight: .semibold))
@@ -259,8 +259,7 @@ private struct FileRow: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: 6) {
-                Image(systemName: symbol)
-                    .font(.system(size: 9.5, weight: .semibold))
+                Icon(symbol, size: 9.5)
                     .foregroundStyle(tone)
                     .frame(width: 12)
                 VStack(alignment: .leading, spacing: 1) {
@@ -400,8 +399,7 @@ private struct DiffLineRow: View {
                     Button {
                         model.drafting = (path, line)
                     } label: {
-                        Image(systemName: "plus")
-                            .font(.system(size: 8.5, weight: .bold))
+                        Icon("plus", size: 8.5)
                             .foregroundStyle(.white)
                             .frame(width: 15, height: 15)
                             .background(RoundedRectangle(cornerRadius: 6).fill(Theme.blue.strong))
@@ -465,8 +463,7 @@ private struct CommentCard: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
-            Image(systemName: "text.bubble.fill")
-                .font(.system(size: 10.5))
+            Icon("text.bubble.fill", size: 10.5)
                 .foregroundStyle(Theme.blue.strong)
             Text(text)
                 .font(.system(size: 12))

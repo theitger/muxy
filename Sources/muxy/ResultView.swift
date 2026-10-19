@@ -45,8 +45,7 @@ struct TestsIcon: View {
     var size: CGFloat = 11
 
     var body: some View {
-        Image(systemName: "testtube.2")
-            .font(.system(size: size - 1, weight: .semibold))
+        Icon("testtube.2", size: size - 1)
             .foregroundStyle(tone)
             .help(Self.label(outcome))
             .accessibilityLabel(Self.label(outcome))
@@ -74,8 +73,7 @@ struct ChecksIcon: View {
     var size: CGFloat = 11
 
     var body: some View {
-        Image(systemName: symbol)
-            .font(.system(size: size - 1, weight: .semibold))
+        Icon(symbol, size: size - 1)
             .foregroundStyle(tone)
             .help(Self.label(checks))
             .accessibilityLabel(Self.label(checks))
@@ -125,8 +123,7 @@ struct ResultButton: View {
     private func button(open: Bool) -> some View {
         Button { results.togglePanel(in: window) } label: {
             HStack(spacing: 5) {
-                Image(systemName: "checklist")
-                    .font(.system(size: 11, weight: .semibold))
+                Icon("checklist", size: 11)
                 Text(L("Result"))
                     .font(.system(size: 11.5, weight: .medium))
             }
@@ -481,7 +478,7 @@ struct ResultPanel: View {
                 ForEach(Array(extras.collisions.enumerated()), id: \.offset) { _, item in
                     VStack(alignment: .leading, spacing: 4) {
                         row(icon: {
-                            Image(systemName: "arrow.triangle.merge").foregroundStyle(Theme.orange.strong)
+                            Icon("arrow.triangle.merge").foregroundStyle(Theme.orange.strong)
                         }, item.collision.withBase
                             ? L("Conflicts with %@", item.title)
                             : L("Collides with “%@”", item.title),
@@ -542,7 +539,7 @@ struct ResultPanel: View {
                     if status.running {
                         ProgressView().controlSize(.mini)
                     } else {
-                        Image(systemName: status.isClean ? "person.3.fill" : "exclamationmark.bubble.fill")
+                        Icon(status.isClean ? "person.3.fill" : "exclamationmark.bubble.fill")
                             .foregroundStyle(status.isClean ? Theme.greenTone.strong : Theme.orange.strong)
                     }
                 }
@@ -566,9 +563,9 @@ struct ResultPanel: View {
                 HStack(spacing: 8) {
                     Group {
                         switch step {
-                        case .landed: Image(systemName: "checkmark.circle.fill").foregroundStyle(Theme.purple.strong)
-                        case .failed: Image(systemName: "xmark.octagon.fill").foregroundStyle(Theme.redTone.strong)
-                        case .waitingForAgent: Image(systemName: "sparkle").foregroundStyle(Theme.blue.strong)
+                        case .landed: Icon("checkmark.circle.fill").foregroundStyle(Theme.purple.strong)
+                        case .failed: Icon("xmark.octagon.fill").foregroundStyle(Theme.redTone.strong)
+                        case .waitingForAgent: Icon("sparkle").foregroundStyle(Theme.blue.strong)
                         default: ProgressView().controlSize(.mini)
                         }
                     }
@@ -592,7 +589,7 @@ struct ResultPanel: View {
     private func changesRow(_ changes: DiffCount?) -> some View {
         if let changes {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Image(systemName: "doc.on.doc").foregroundStyle(Theme.textDim).frame(width: 16)
+                Icon("doc.on.doc").foregroundStyle(Theme.textDim).frame(width: 16)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(changes.files == 0 ? L("No files changed")
                         : changes.files == 1 ? L("1 file changed") : L("%d files changed", changes.files))
@@ -615,7 +612,7 @@ struct ResultPanel: View {
     @ViewBuilder
     private func prRows(_ pr: PullRequestResult?) -> some View {
         if let pr {
-            row(icon: { Image(systemName: "arrow.triangle.pull").foregroundStyle(Theme.textDim) }, prText(pr))
+            row(icon: { Icon("arrow.triangle.pull").foregroundStyle(Theme.textDim) }, prText(pr))
             // Checks as the PR poll knows them, names from the last build.
             let checks = livePR == pr.number ? liveChecks : pr.checks
             row(
@@ -624,7 +621,7 @@ struct ResultPanel: View {
                 detail: checks == .failed && !pr.failing.isEmpty ? pr.failing.joined(separator: ", ") : nil
             )
         } else {
-            row(icon: { Image(systemName: "arrow.triangle.pull").foregroundStyle(Theme.textFaint) }, L("No pull request yet"))
+            row(icon: { Icon("arrow.triangle.pull").foregroundStyle(Theme.textFaint) }, L("No pull request yet"))
         }
     }
 
@@ -675,8 +672,7 @@ struct ProofIcon: View {
     let outcome: ProofResult.Outcome
 
     var body: some View {
-        Image(systemName: symbol)
-            .font(.system(size: 12, weight: .semibold))
+        Icon(symbol, size: 12)
             .foregroundStyle(tone)
     }
 
@@ -709,7 +705,7 @@ struct SmallButton: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: 4) {
-                if let symbol { Image(systemName: symbol).font(.system(size: 9, weight: .bold)) }
+                if let symbol { Icon(symbol, size: 9) }
                 Text(title)
             }
             .font(.system(size: 11.5, weight: .medium))
@@ -738,7 +734,7 @@ struct PanelButton: View {
         Button(action: action) {
             HStack(spacing: 5) {
                 Text(title)
-                Image(systemName: symbol).font(.system(size: 9.5, weight: .bold))
+                Icon(symbol, size: 9.5)
             }
             .font(.system(size: 12, weight: prominent ? .semibold : .medium))
             .foregroundStyle(prominent ? Theme.bg : Theme.textPrimary)

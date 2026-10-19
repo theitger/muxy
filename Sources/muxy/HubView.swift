@@ -53,7 +53,7 @@ struct HubView: View {
     private var account: some View {
         if let login = hub.account.login {
             HStack(spacing: 5) {
-                Image(systemName: "person.crop.circle.fill").font(.system(size: 12))
+                Icon("person.crop.circle.fill", size: 12)
                 Text(login).font(.system(size: 12, weight: .medium))
             }
             .foregroundStyle(Theme.textMuted)
@@ -179,7 +179,7 @@ private struct Column<Content: View>: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 6) {
-                Image(systemName: symbol).font(.system(size: 10, weight: .semibold)).foregroundStyle(Theme.textDim)
+                Icon(symbol, size: 10).foregroundStyle(Theme.textDim)
                 SectionLabel(title, tone: Theme.textMuted)
                 Text(String(count)).font(Theme.label(size: 10.5)).foregroundStyle(Theme.textDim)
                 Spacer()
@@ -236,7 +236,7 @@ private struct IssueCard: View {
                 Button {
                     if let url = URL(string: issue.url) { NSWorkspace.shared.open(url) }
                 } label: {
-                    Image(systemName: "arrow.up.right").font(.system(size: 9.5, weight: .bold)).foregroundStyle(Theme.textDim)
+                    Icon("arrow.up.right", size: 9.5).foregroundStyle(Theme.textDim)
                 }
                 .buttonStyle(.plain)
                 .help(L("Open on GitHub"))
@@ -286,7 +286,7 @@ private struct ReviewRequestCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 6) {
-                Image(systemName: "arrow.triangle.pull").font(.system(size: 10, weight: .semibold)).foregroundStyle(Theme.textDim)
+                Icon("arrow.triangle.pull", size: 10).foregroundStyle(Theme.textDim)
                 Text("#" + String(request.number)).font(.system(size: 11, weight: .medium)).foregroundStyle(Theme.textDim)
                 Text(request.author).font(.system(size: 11)).foregroundStyle(Theme.textFaint)
                 Spacer()
@@ -511,8 +511,7 @@ private struct WorktreeRow: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            Image(systemName: icon)
-                .font(.system(size: 11, weight: .semibold))
+            Icon(icon, size: 11)
                 .foregroundStyle(Theme.textDim)
                 .frame(width: 18)
                 .help(ownerText)

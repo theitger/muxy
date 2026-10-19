@@ -254,8 +254,7 @@ struct NewSessionView: View {
             Spacer(minLength: 8)
             if worktree {
                 HStack(spacing: 6) {
-                    Image(systemName: "arrow.triangle.branch")
-                        .font(.system(size: 10.5, weight: .semibold))
+                    Icon("arrow.triangle.branch", size: 10.5)
                         .foregroundStyle(Theme.textDim)
                     TextField(L("Name: automatic"), text: $branch)
                         .textFieldStyle(.plain)

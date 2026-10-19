@@ -34,11 +34,10 @@ struct SessionTile: View {
             .fill(!attention && (agent == .none || agent == .idle) ? .clear : look.tone.soft)
             .frame(width: size, height: size)
             .overlay {
-                Image(systemName: look.symbol)
-                    .font(.system(size: size * 0.42, weight: .semibold))
+                Icon(look.symbol, size: size * 0.42)
                     .foregroundStyle(look.tone.strong)
                     // The only motion in the sidebar, and only while work runs.
-                    .symbolEffect(.pulse, isActive: agent == .working)
+                    .modifier(Pulse(active: agent == .working))
             }
             .animation(.easeOut(duration: 0.2), value: look.symbol)
     }
@@ -53,8 +52,7 @@ struct Badge: View {
     var body: some View {
         HStack(spacing: 3) {
             if let symbol {
-                Image(systemName: symbol)
-                    .font(.system(size: 8.5, weight: .bold))
+                Icon(symbol, size: 8.5)
             }
             Text(text)
         }
@@ -150,8 +148,7 @@ struct IconButton: View {
 
     var body: some View {
         Button(action: action) {
-            Image(systemName: symbol)
-                .font(.system(size: 11, weight: .semibold))
+            Icon(symbol, size: 11)
                 .foregroundStyle(hovered ? Theme.textPrimary : Theme.textDim)
                 .frame(width: 28, height: 28)
                 .background(
@@ -180,8 +177,7 @@ struct AgentGlyph: View {
                 .frame(width: size, height: size)
                 .foregroundStyle(kind == .claude ? Theme.claude : Theme.codex)
         } else {
-            Image(systemName: "chevron.forward")
-                .font(.system(size: size * 0.85, weight: .bold))
+            Icon("chevron.forward", size: size * 0.85)
                 .foregroundStyle(Theme.textMuted)
                 .frame(width: size, height: size)
         }
@@ -259,5 +255,20 @@ struct Segments<Value: Hashable>: View {
         .padding(2)
         .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(Theme.textPrimary.opacity(0.05)))
         .fixedSize()
+    }
+}
+
+/// A slow breathing of opacity while `active`: the one motion that says
+/// work is running.
+struct Pulse: ViewModifier {
+    let active: Bool
+    @State private var dim = false
+
+    func body(content: Content) -> some View {
+        content
+            .opacity(active && dim ? 0.35 : 1)
+            .animation(active ? .easeInOut(duration: 0.9).repeatForever(autoreverses: true) : .default, value: dim)
+            .onAppear { dim = active }
+            .onChange(of: active) { dim = active }
     }
 }

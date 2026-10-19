@@ -73,7 +73,7 @@ struct StatusBar: View {
     private func fact(_ symbol: String, _ count: Int, _ label: String, tone: Color?) -> some View {
         if count > 0 {
             HStack(spacing: 4) {
-                Image(systemName: symbol).font(.system(size: 9, weight: .semibold))
+                Icon(symbol, size: 9)
                 Text("\(String(count)) \(label)")
             }
             .foregroundStyle(tone ?? Theme.textMuted)

@@ -387,8 +387,7 @@ private struct HubButton: View {
     var body: some View {
         Button { window.showHub.toggle() } label: {
             HStack(spacing: 6) {
-                Image(systemName: "square.grid.2x2")
-                    .font(.system(size: 10.5, weight: .semibold))
+                Icon("square.grid.2x2", size: 10.5)
                 Text(L("Hub"))
                     .font(.system(size: 12, weight: .medium))
                 let waiting = hub.issues.filter { hub.session(for: $0) == nil }.count

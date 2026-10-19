@@ -232,8 +232,7 @@ private struct RepositoriesStep: View {
                         OnboardingRow(selected: chosen.contains(folder.path)) {
                             toggle(folder.path)
                         } content: {
-                            Image(systemName: "folder")
-                                .font(.system(size: 12))
+                            Icon("folder", size: 12)
                                 .foregroundStyle(Theme.textMuted)
                             Text(Paths.abbreviate(folder.path))
                                 .font(Theme.mono(size: 12.5))
@@ -455,7 +454,7 @@ private struct NotificationsStep: View {
             } else {
                 switch status {
                 case .authorized?, .provisional?:
-                    Label(L("Notifications are on."), systemImage: "checkmark.circle.fill")
+                    Label { Text(L("Notifications are on.")) } icon: { Icon("checkmark.circle.fill", size: 12) }
                         .font(.system(size: 13, weight: .medium))
                         .foregroundStyle(Theme.green)
                 case .denied?:
@@ -513,8 +512,7 @@ private struct OnboardingRow<Content: View>: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: 10) {
-                Image(systemName: selected ? "checkmark.circle.fill" : "circle")
-                    .font(.system(size: 13))
+                Icon(selected ? "checkmark.circle.fill" : "circle", size: 13)
                     .foregroundStyle(selected ? Theme.textPrimary : Theme.textFaint)
                 content
             }

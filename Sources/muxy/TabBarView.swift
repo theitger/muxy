@@ -71,8 +71,7 @@ private struct SegmentTab: View {
 
     var body: some View {
         HStack(spacing: 6) {
-            Image(systemName: symbol)
-                .font(.system(size: 10, weight: .semibold))
+            Icon(symbol, size: 10)
                 .foregroundStyle(isActive ? Theme.textMuted : Theme.textFaint)
             Text(session.tabTitle)
                 .font(.system(size: 12, weight: .medium))
@@ -84,8 +83,7 @@ private struct SegmentTab: View {
                 Button {
                     store.close(session, in: workspace)
                 } label: {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 7.5, weight: .bold))
+                    Icon("xmark", size: 7.5)
                         .foregroundStyle(Theme.textDim)
                         .frame(width: 12, height: 12)
                         .contentShape(Rectangle())
