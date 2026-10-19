@@ -89,6 +89,7 @@ enum RemoteState {
         case .review: "review"
         case .fix: "fix"
         case .land: "land"
+        case .reviewing: "reviewing"
         case .landing: "landing"
         case .none: "none"
         }

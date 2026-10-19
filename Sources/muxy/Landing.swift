@@ -13,6 +13,11 @@ import Foundation
 ///  5. quorum's review loop, when it is installed and you want it
 ///  6. GitHub merges it once it may (auto-merge), or muxy does when checks
 ///     are green and auto-merge is off for the repository
+///
+/// "Review and fix with quorum" takes the same way and stops after 5:
+/// quorum's babysit refuses uncommitted or unpushed work, so the branch
+/// is made ready for it first. What quorum does itself (conflicts with
+/// RESOLVE_CONFLICTS, merging with AUTO_MERGE) is left to it.
 @MainActor
 final class Landing: ObservableObject {
     static let shared = Landing()
@@ -24,6 +29,8 @@ final class Landing: ObservableObject {
         case proving
         case pushing
         case reviewing
+        /// quorum is done and the goal was its review: nothing merges.
+        case reviewed
         /// Handed to GitHub: merges when checks and rules allow.
         case merging(String)
         case landed
@@ -31,7 +38,7 @@ final class Landing: ObservableObject {
 
         var isActive: Bool {
             switch self {
-            case .landed, .failed: false
+            case .landed, .reviewed, .failed: false
             default: true
             }
         }
@@ -43,6 +50,7 @@ final class Landing: ObservableObject {
             case .proving: L("Running the checks")
             case .pushing: L("Pushing")
             case .reviewing: L("quorum reviews and fixes")
+            case .reviewed: L("quorum is done")
             case let .merging(text): text
             case .landed: L("Merged")
             case let .failed(text): text
@@ -56,7 +64,11 @@ final class Landing: ObservableObject {
         (UserDefaults.standard.object(forKey: Self.quorumKey) as? Bool ?? true) && Quorum.isInstalled
     }
 
+    /// Where a run ends: merged, or quorum's review and fixes.
+    enum Goal { case land, review }
+
     @Published private(set) var steps: [Workspace.ID: Step] = [:]
+    private(set) var goals: [Workspace.ID: Goal] = [:]
     /// Each landing's number: a step that finishes after a cancel or a new
     /// landing finds its number gone and does nothing.
     private var runs: [Workspace.ID: Int] = [:]
@@ -78,8 +90,21 @@ final class Landing: ObservableObject {
     }
 
     func land(_ workspace: Workspace) {
-        // One landing per session at a time.
+        begin(workspace, goal: .land)
+    }
+
+    /// The branch made ready for quorum (committed, pushed, quorum's fixes
+    /// taken in), then quorum's babysit; it stops there.
+    func review(_ workspace: Workspace) {
+        begin(workspace, goal: .review)
+    }
+
+    func goal(for workspace: Workspace) -> Goal { goals[workspace.id] ?? .land }
+
+    private func begin(_ workspace: Workspace, goal: Goal) {
+        // One run per session at a time.
         guard canLand(workspace), steps[workspace.id]?.isActive != true else { return }
+        goals[workspace.id] = goal
         runs[workspace.id, default: 0] += 1
         asks[workspace.id] = 0
         advance(workspace)
@@ -111,6 +136,11 @@ final class Landing: ObservableObject {
     /// Still the landing that started this step, not cancelled meanwhile.
     private func current(_ workspace: Workspace, _ run: Int?) -> Bool {
         runs[workspace.id] == run && steps[workspace.id]?.isActive == true
+    }
+
+    /// quorum works on this run: the review goal, or landing with it.
+    private func usesQuorum(_ workspace: Workspace) -> Bool {
+        goal(for: workspace) == .review ? Quorum.isInstalled : withQuorum
     }
 
     // MARK: Steps
@@ -149,7 +179,15 @@ final class Landing: ObservableObject {
         let behind = Shell.execute(git, ["merge-base", "--is-ancestor", start, "HEAD"], in: checkout).status != 0
         let conflicts = behind ? WorkState.conflicts(between: "HEAD", and: start, in: checkout) ?? [] : []
         let unpushed = Shell.run(git, ["rev-list", "--count", "@{push}..HEAD"], in: checkout).flatMap(Int.init)
-        return Inspection(dirty: dirty, start: start, behind: behind, conflicts: conflicts, unpushed: unpushed ?? 1)
+        // What origin has of the branch that this checkout doesn't: quorum
+        // pushes its fixes there.
+        var fromOrigin = 0
+        if let branch = Shell.run(git, ["branch", "--show-current"], in: checkout), !branch.isEmpty,
+           Shell.execute(git, ["fetch", "--quiet", "origin", branch], in: checkout, timeout: 60).status == 0 {
+            fromOrigin = Shell.run(git, ["rev-list", "--count", "HEAD..FETCH_HEAD"], in: checkout).flatMap(Int.init) ?? 0
+        }
+        return Inspection(dirty: dirty, start: start, behind: behind, conflicts: conflicts, unpushed: unpushed ?? 1,
+                          fromOrigin: fromOrigin)
     }
 
     struct Inspection {
@@ -159,6 +197,8 @@ final class Landing: ObservableObject {
         var conflicts: [String]
         /// Commits origin doesn't have (1 when there is no upstream yet).
         var unpushed: Int
+        /// Commits origin's branch has that this checkout doesn't.
+        var fromOrigin = 0
     }
 
     private func act(on state: Inspection, workspace: Workspace, checkout: String, root: String, pr: Int) {
@@ -166,6 +206,36 @@ final class Landing: ObservableObject {
         if state.dirty {
             ask(workspace, L("The agent commits its remaining changes"),
                 "Commit all remaining changes in this checkout with a clear message, then push the branch. Don't change anything else.")
+            return
+        }
+        // quorum pushed fixes: taken in first, or the push below is refused.
+        if state.fromOrigin > 0 {
+            set(.preparing(L("Taking in quorum's fixes")), for: workspace)
+            Task.detached(priority: .userInitiated) {
+                let git = WorkState.git
+                var taken = Shell.execute(git, ["merge", "--ff-only", "--quiet", "FETCH_HEAD"], in: checkout, timeout: 120).status == 0
+                if !taken {
+                    // Both moved: merged when that is clean.
+                    taken = Shell.execute(git, ["merge", "--no-edit", "--quiet", "FETCH_HEAD"], in: checkout, timeout: 300).status == 0
+                    if !taken { _ = Shell.execute(git, ["merge", "--abort"], in: checkout) }
+                }
+                let again = Self.inspect(checkout: checkout, root: root)
+                let done = taken
+                await MainActor.run {
+                    guard self.current(workspace, run) else { return }
+                    if done {
+                        self.act(on: again, workspace: workspace, checkout: checkout, root: root, pr: pr)
+                    } else {
+                        self.ask(workspace, L("The agent merges quorum's fixes"),
+                                 "The branch on origin has commits this checkout doesn't (quorum's fixes). Pull them in (git pull --no-rebase origin HEAD), resolve anything that comes up, run the relevant tests, commit and push.")
+                    }
+                }
+            }
+            return
+        }
+        // quorum brings the branch up to date itself (RESOLVE_CONFLICTS).
+        if usesQuorum(workspace), QuorumBehavior.current.resolvesConflicts {
+            prove(workspace, checkout: checkout, root: root, pr: pr)
             return
         }
         if state.behind, !state.conflicts.isEmpty {
@@ -252,7 +322,10 @@ final class Landing: ObservableObject {
                     self.set(.failed(L("Push failed: %@", reason)), for: workspace)
                     return
                 }
-                if self.withQuorum, !(reviewed && unpushed == 0) {
+                // The review goal always asks quorum; landing only when
+                // quorum hasn't passed exactly what is on origin now.
+                let review = self.goal(for: workspace) == .review
+                if review || (self.withQuorum && !(reviewed && unpushed == 0)) {
                     self.quorumSince[workspace.id] = Date()
                     self.set(.reviewing, for: workspace)
                     QuorumWatch.shared.start(.babysit, in: workspace)
@@ -354,9 +427,15 @@ final class Landing: ObservableObject {
                       status.date > (quorumSince[workspace.id] ?? .distantFuture).addingTimeInterval(-5)
                 else { continue }
                 if status.succeeded, let checkout = context.checkout, let pr = context.pr {
-                    // quorum pushes its fixes: the head it converged on merges.
-                    proven[workspace.id] = nil
-                    merge(workspace, checkout: checkout, pr: pr)
+                    Self.takeFixes(in: checkout)
+                    if goal(for: workspace) == .review || QuorumBehavior.current.merges {
+                        // Done, or quorum merges it itself (AUTO_MERGE).
+                        set(status.outcome == "merged" ? .landed : .reviewed, for: workspace)
+                    } else {
+                        // quorum pushes its fixes: the head it converged on merges.
+                        proven[workspace.id] = nil
+                        merge(workspace, checkout: checkout, pr: pr)
+                    }
                 } else if status.outcome == nil, status.isClean {
                     continue // its verdict isn't in quorum's history yet
                 } else {
@@ -375,6 +454,19 @@ final class Landing: ObservableObject {
         if !steps.values.contains(where: \.isActive) {
             timer?.invalidate()
             timer = nil
+        }
+    }
+
+    /// quorum pushed its fixes: the session's checkout follows when it
+    /// can without a merge (clean, nothing of its own on top).
+    nonisolated static func takeFixes(in checkout: String) {
+        Task.detached(priority: .utility) {
+            let git = WorkState.git
+            guard (Shell.run(git, ["status", "--porcelain"], in: checkout) ?? "x").isEmpty,
+                  let branch = Shell.run(git, ["branch", "--show-current"], in: checkout), !branch.isEmpty,
+                  Shell.execute(git, ["fetch", "--quiet", "origin", branch], in: checkout, timeout: 60).status == 0
+            else { return }
+            _ = Shell.execute(git, ["merge", "--ff-only", "--quiet", "FETCH_HEAD"], in: checkout, timeout: 120)
         }
     }
 

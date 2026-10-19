@@ -18,6 +18,8 @@ enum NextStep: Equatable {
     case fix(String)
     /// Reviewed, green, mergeable.
     case land
+    /// quorum (or muxy getting the branch ready for it) works on the PR.
+    case reviewing(String)
     /// Landing runs.
     case landing(String)
     /// Merged, closed, or nothing started.
@@ -31,6 +33,7 @@ enum NextStep: Equatable {
         case .review: L("Review and fix with quorum")
         case let .fix(why): why
         case .land: L("Land")
+        case let .reviewing(text): text
         case let .landing(text): text
         case .none: ""
         }
@@ -40,7 +43,7 @@ enum NextStep: Equatable {
     var stage: Stage {
         switch self {
         case .wait, .answer, .openPR: .working
-        case .review, .fix: .review
+        case .review, .fix, .reviewing: .review
         case .land, .landing: .ready
         case .none: .none
         }
@@ -58,7 +61,8 @@ enum Flow {
         let context = workspace.context
         guard context.repo != nil else { return .none }
         if let step = Landing.shared.step(for: workspace), step.isActive || step == .landed {
-            return step == .landed ? .none : .landing(step.text)
+            if step == .landed { return .none }
+            return Landing.shared.goal(for: workspace) == .review ? .reviewing(step.text) : .landing(step.text)
         }
         if workspace.agent == .blocked { return .answer }
         if workspace.agent == .working { return .wait(L("Working")) }
@@ -71,12 +75,7 @@ enum Flow {
         guard context.prState == .open else { return .none }
         let quorumInstalled = Quorum.isInstalled
         let review = QuorumWatch.shared.status(for: workspace)
-        if let review, review.running { return .wait(review.summary) }
-        if quorumInstalled, review == nil { return .review }
-        if let review, !review.succeeded {
-            let open = review.open
-            return .fix(open > 0 ? L("Fix %d findings", open) : L("Review again"))
-        }
+        if let step = quorumStep(review, installed: quorumInstalled) { return step }
         if context.mergeability == .conflicting { return .fix(L("Resolve conflicts")) }
         switch context.checks {
         case .failed: return .fix(L("Fix CI"))
@@ -85,6 +84,18 @@ enum Flow {
         }
         if Proofs.shared.result(for: context.checkout)?.verdict == .failed { return .fix(L("Fix the checks")) }
         return .land
+    }
+
+    /// What quorum's state asks for, if anything. quorum's babysit always
+    /// reviews first, then fixes: there is no "fix these findings" without
+    /// it. A review that only commented (or none yet) leads to it; a
+    /// babysit that stopped is run again, its reason on the card.
+    nonisolated static func quorumStep(_ status: QuorumStatus?, installed: Bool) -> NextStep? {
+        if let status, status.running { return .reviewing(status.summary) }
+        guard installed else { return nil }
+        guard let status else { return .review }
+        if status.succeeded { return nil }
+        return status.kind == .review ? .review : .fix(L("Run quorum again"))
     }
 
     /// Takes the step. Returns false when it can't (no agent to ask).
@@ -102,12 +113,13 @@ enum Flow {
                 enter: true, into: agent
             )
         case .review:
-            QuorumWatch.shared.start(.babysit, in: workspace)
+            Landing.shared.review(workspace)
         case .fix:
-            // quorum's babysit fixes findings, CI and (when set) conflicts;
+            // quorum's babysit fixes findings and CI (and conflicts, with
+            // RESOLVE_CONFLICTS), after the branch is made ready for it;
             // without quorum the agent gets the job.
             if Quorum.isInstalled, workspace.context.pr != nil {
-                QuorumWatch.shared.start(.babysit, in: workspace)
+                Landing.shared.review(workspace)
             } else if let agent = workspace.agentTab {
                 RemoteState.type("The pull request isn't ready: CI or checks fail, or it conflicts with its base. Find out why, fix it, and push.", enter: true, into: agent)
             } else {
@@ -115,7 +127,7 @@ enum Flow {
             }
         case .land:
             Landing.shared.land(workspace)
-        case .wait, .landing, .none:
+        case .wait, .reviewing, .landing, .none:
             return false
         }
         return true
@@ -126,6 +138,6 @@ enum Flow {
     static func pullRequestOpened(in workspace: Workspace) {
         guard UserDefaults.standard.bool(forKey: autoReviewKey), Quorum.isInstalled,
               QuorumWatch.shared.status(for: workspace) == nil else { return }
-        QuorumWatch.shared.start(.babysit, in: workspace)
+        Landing.shared.review(workspace)
     }
 }

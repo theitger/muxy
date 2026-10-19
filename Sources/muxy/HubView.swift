@@ -680,7 +680,7 @@ private struct SessionCard: View {
     private func nextStep(_ next: NextStep) -> some View {
         HStack(spacing: 6) {
             switch next {
-            case .wait, .landing:
+            case .wait, .reviewing, .landing:
                 ProgressView().controlSize(.mini).frame(width: 12)
                 Text(next.title).font(.system(size: 11.5)).foregroundStyle(Theme.textMuted).lineLimit(1)
             case .none:
@@ -1070,7 +1070,8 @@ private struct ReviewRunRow: View {
     private func again(_ kind: QuorumStatus.Kind, number: Int, root: String) {
         window.showHub = false
         if let workspace = Store.shared.workspaces.first(where: { $0.context.pr == number && $0.context.root == root }) {
-            QuorumWatch.shared.start(kind, in: workspace)
+            // Its branch made ready first, as for the board's step.
+            if kind == .babysit { Landing.shared.review(workspace) } else { QuorumWatch.shared.start(kind, in: workspace) }
             Store.shared.select(workspace)
             return
         }

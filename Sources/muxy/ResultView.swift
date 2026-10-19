@@ -264,7 +264,9 @@ struct ResultOverlay: View {
                     window.show(done ? L("Files are back to that turn") : L("Couldn't go back"))
                 }
             },
-            quorum: { kind in quorum.start(kind, in: workspace) },
+            quorum: { kind in
+                if kind == .babysit { Landing.shared.review(workspace) } else { quorum.start(kind, in: workspace) }
+            },
             openReport: {
                 if let report = quorum.status(for: workspace)?.report { NSWorkspace.shared.open(URL(fileURLWithPath: report)) }
             },
