@@ -627,7 +627,13 @@ private struct PullCard: View {
                         .lineLimit(1)
                     Spacer(minLength: 4)
                     if let log = Quorum.latestLog(pr: pull.number) {
-                        Button(L("Log")) { NSWorkspace.shared.open(URL(fileURLWithPath: log)) }
+                        Button(L("Log")) {
+                            let directory = pull.branch.flatMap { branch in
+                                HubModel.shared.checkout(of: pull.repo).flatMap { HubModel.worktree(of: branch, root: $0) ?? $0 }
+                            } ?? Paths.home
+                            Quorum.showLog(log, in: directory)
+                        }
+                        .help(L("quorum's output in a terminal, live"))
                             .buttonStyle(.plain)
                             .font(.system(size: 11)).foregroundStyle(Theme.textDim)
                     }
@@ -694,7 +700,9 @@ private struct PullCard: View {
                     starting = false
                     return
                 }
-                if !Quorum.start(.babysit, pr: number, draft: draft, root: root) {
+                // The run live in a session of its own, in its branch's checkout.
+                let follow = HubModel.worktree(of: branch, root: root) ?? root
+                if !Quorum.start(.babysit, pr: number, draft: draft, root: root, follow: follow) {
                     problem = L("quorum didn't start.")
                 }
                 // Until quorum's own files say it runs.

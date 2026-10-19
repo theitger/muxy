@@ -321,12 +321,28 @@ enum Quorum {
 
     /// quorum for a PR without a session: from the repository's checkout,
     /// on its own; the PR's card shows how it goes.
+    /// `follow`: the folder whose new session shows the run live, in the
+    /// background (as it showed when it ran in a tab).
     @MainActor
-    static func start(_ kind: QuorumStatus.Kind, pr: Int, draft: Bool, root: String) -> Bool {
-        guard launch(command(kind, pr: pr, draft: draft), in: root, name: "\(kind.rawValue)-\(pr)") != nil else { return false }
+    static func start(_ kind: QuorumStatus.Kind, pr: Int, draft: Bool, root: String, follow: String? = nil) -> Bool {
+        guard let log = launch(command(kind, pr: pr, draft: draft), in: root, name: "\(kind.rawValue)-\(pr)") else { return false }
+        if let follow { showLog(log, in: follow, focus: false) }
         QuorumWatch.shared.start(always: true)
         DispatchQueue.main.asyncAfter(deadline: .now() + 3) { QuorumWatch.shared.refresh() }
         return true
+    }
+
+    /// A run's output in a terminal of its own, live: quorum's own view,
+    /// as when it ran in a tab. Closing it doesn't touch the run.
+    @MainActor
+    static func showLog(_ log: String, in directory: String, focus: Bool = true) {
+        guard let window = Store.shared.activeWindow ?? Store.shared.windows.first else { return }
+        let workspace = Store.shared.makeWorkspace(directory: directory, in: window)
+        Store.shared.runInNewTab("tail -n +1 -F \(quoted(log))", in: workspace)
+        if let first = workspace.sessions.first, workspace.sessions.count > 1 { Store.shared.close(first, in: workspace) }
+        guard focus else { return }
+        window.showHub = false
+        window.select(workspace)
     }
 
     /// The newest log muxy has of a run for this PR.

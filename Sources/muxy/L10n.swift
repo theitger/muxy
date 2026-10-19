@@ -373,6 +373,7 @@ enum German {
         "Not cloned here": "Hier nicht geklont",
         "Your PRs without a session": "Deine PRs ohne Session",
         "Queue": "Warteschlange",
+        "quorum's output in a terminal, live": "quorums Ausgabe live in einem Terminal",
         "week": "Woche",
         "%@: %d%% used, resets %@": "%@: %d %% verbraucht, frei ab %@",
         "%@: %d%% used": "%@: %d %% verbraucht",
