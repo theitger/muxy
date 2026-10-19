@@ -574,5 +574,6 @@ enum German {
         "Show All": "Alle einblenden",
         "Signed in to GitHub through gh. Opens your profile.": "Über gh bei GitHub angemeldet. Öffnet dein Profil.",
         "Open the pull request on GitHub": "Pull Request auf GitHub öffnen",
+        "All": "Alle",
     ]
 }

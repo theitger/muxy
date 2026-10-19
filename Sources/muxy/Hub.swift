@@ -107,7 +107,7 @@ final class HubModel: ObservableObject {
         guard let gh = Shell.find("gh") else { return nil }
         let result = Shell.execute(gh, [
             "search", "issues", "--assignee", "@me", "--state", "open", "--limit", "200",
-            "--sort", "updated", "--json", "number,title,url,labels,repository,state,updatedAt"
+            "--sort", "created", "--json", "number,title,url,labels,repository,state,createdAt"
         ], in: Paths.home, timeout: 30)
         guard result.status == 0,
               let rows = try? JSONSerialization.jsonObject(with: Data(result.output.utf8)) as? [[String: Any]] else { return nil }
@@ -115,8 +115,10 @@ final class HubModel: ObservableObject {
             guard let number = row["number"] as? Int, let title = row["title"] as? String,
                   let repo = (row["repository"] as? [String: Any])?["nameWithOwner"] as? String else { return nil }
             let labels = (row["labels"] as? [[String: Any]] ?? []).compactMap { $0["name"] as? String }
-            return Issue(repo: repo, number: number, title: title, url: row["url"] as? String ?? "",
-                         state: (row["state"] as? String ?? "open").uppercased(), labels: labels)
+            var issue = Issue(repo: repo, number: number, title: title, url: row["url"] as? String ?? "",
+                              state: (row["state"] as? String ?? "open").uppercased(), labels: labels)
+            issue.created = (row["createdAt"] as? String).flatMap { ISO8601DateFormatter().date(from: $0) }
+            return issue
         }
     }
 

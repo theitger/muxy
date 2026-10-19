@@ -12,8 +12,16 @@ struct Issue: Codable, Equatable, Hashable {
     var state: String
     var labels: [String] = []
     var body: String?
+    /// When it was opened: the hub lists the newest first, like gh.
+    var created: Date?
 
     var isOpen: Bool { state.uppercased() == "OPEN" }
+
+    /// "owner" of "owner/name" (or "host/owner/name").
+    var owner: String {
+        let parts = repo.split(separator: "/")
+        return parts.count >= 2 ? String(parts[parts.count - 2]) : repo
+    }
 
     /// "#42 Fix the login redirect": the session's title until it has a PR.
     var heading: String { "#\(number) \(title)" }

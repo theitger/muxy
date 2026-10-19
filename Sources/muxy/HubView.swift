@@ -13,11 +13,20 @@ struct HubView: View {
     @ObservedObject private var quorum = QuorumWatch.shared
     @ObservedObject private var landing = Landing.shared
     @AppStorage("hubPage") private var page = "board"
+    /// Board filters: an organization, a repository (both "" for all), and
+    /// only issues an agent can take on its own.
+    @AppStorage("hubOrg") private var org = ""
+    @AppStorage("hubRepo") private var repo = ""
+    @AppStorage("hubReadyOnly") private var readyOnly = false
 
     var body: some View {
         VStack(spacing: 0) {
             header
             Rectangle().fill(Theme.hairline).frame(height: 1)
+            if page == "board" {
+                filterBar
+                Rectangle().fill(Theme.hairline).frame(height: 1)
+            }
             if page == "worktrees" {
                 WorktreesPage(window: window)
             } else if page == "reviews" {
@@ -92,7 +101,7 @@ struct HubView: View {
     // MARK: Board
 
     private var board: some View {
-        let sessions = store.orderedWorkspaces
+        let sessions = store.orderedWorkspaces.filter(visible)
         let working = sessions.filter { column(of: $0) == .working }
         let review = sessions.filter { column(of: $0) == .review }
         let ready = sessions.filter { column(of: $0) == .ready }
@@ -101,16 +110,29 @@ struct HubView: View {
         let width = max(250, (geometry.size.width - 28 - 36) / 4)
         ScrollView(.horizontal) {
             HStack(alignment: .top, spacing: 12) {
-                Column(title: L("For you"), count: openIssues.count + hub.reviews.count) {
-                    ForEach(openIssues, id: \.self) { issue in
-                        IssueCard(issue: issue, local: hub.checkout(of: issue.repo) != nil) { agents in
-                            hub.start(issue, agents: agents, in: window)
+                Column(title: L("For you"), count: openIssues.count + hub.reviews.filter { matches($0.repo) }.count) {
+                    let groups = issueGroups
+                    ForEach(groups, id: \.repo) { group in
+                        // One repository: no heading needed.
+                        if groups.count > 1 {
+                            HStack(spacing: 6) {
+                                SectionLabel(group.repo.split(separator: "/").last.map(String.init) ?? group.repo, tone: Theme.textMuted)
+                                Text(String(group.issues.count)).font(Theme.label(size: 11)).foregroundStyle(Theme.textDim)
+                                Rectangle().fill(Theme.hairline).frame(height: 1)
+                            }
+                            .padding(.top, group.repo == groups.first?.repo ? 0 : 8)
+                            .help(group.repo)
+                        }
+                        ForEach(group.issues, id: \.self) { issue in
+                            IssueCard(issue: issue, local: hub.checkout(of: issue.repo) != nil, showsRepo: groups.count <= 1) { agents in
+                                hub.start(issue, agents: agents, in: window)
+                            }
                         }
                     }
                     if !hub.reviews.isEmpty {
                         SectionLabel(L("Reviews for you"))
                             .padding(.top, 6)
-                        ForEach(hub.reviews) { request in
+                        ForEach(hub.reviews.filter { matches($0.repo) }) { request in
                             ReviewRequestCard(request: request, local: hub.checkout(of: request.repo)) {
                                 reviewWithQuorum(request)
                             }
@@ -140,9 +162,82 @@ struct HubView: View {
     }
 
     /// Assigned issues no session works on yet.
+    /// Assigned issues no session works on yet, filtered, newest first.
     private var openIssues: [Issue] {
-        hub.issues.filter { hub.session(for: $0) == nil }
-            .sorted { ($0.labels.contains("ready-for-agent") ? 0 : 1, $0.number) < ($1.labels.contains("ready-for-agent") ? 0 : 1, $1.number) }
+        hub.issues.filter { issue in
+            hub.session(for: issue) == nil && matches(issue.repo)
+                && (!readyOnly || issue.labels.contains("ready-for-agent"))
+        }
+        .sorted { ($0.created ?? .distantPast, $0.number) > ($1.created ?? .distantPast, $1.number) }
+    }
+
+    /// The issues by repository, the repository with the newest first.
+    private var issueGroups: [(repo: String, issues: [Issue])] {
+        var order: [String] = []
+        var groups: [String: [Issue]] = [:]
+        for issue in openIssues {
+            if groups[issue.repo] == nil { order.append(issue.repo) }
+            groups[issue.repo, default: []].append(issue)
+        }
+        return order.map { ($0, groups[$0] ?? []) }
+    }
+
+    private func matches(_ slug: String) -> Bool {
+        let owner = Issue(repo: slug, number: 0, title: "", url: "", state: "").owner
+        return (org.isEmpty || owner.caseInsensitiveCompare(org) == .orderedSame)
+            && (repo.isEmpty || slug.caseInsensitiveCompare(repo) == .orderedSame)
+    }
+
+    /// A session's repository as GitHub names it, for the filters.
+    private func slug(of workspace: Workspace) -> String? {
+        workspace.context.root.flatMap { root in hub.checkouts.first { $0.value == root }?.key }
+    }
+
+    private func visible(_ workspace: Workspace) -> Bool {
+        guard !org.isEmpty || !repo.isEmpty else { return true }
+        guard let slug = slug(of: workspace) else { return false }
+        return matches(slug)
+    }
+
+    // MARK: Filters
+
+    private var filterBar: some View {
+        let all = hub.issues.filter { hub.session(for: $0) == nil }
+        let orgs = Dictionary(grouping: all, by: \.owner).mapValues(\.count)
+        let repos = Dictionary(grouping: all.filter { org.isEmpty || $0.owner.caseInsensitiveCompare(org) == .orderedSame }, by: \.repo)
+            .mapValues(\.count)
+        return ScrollView(.horizontal) {
+            HStack(spacing: 6) {
+                FilterChip(title: L("All"), count: all.count, selected: org.isEmpty && repo.isEmpty) {
+                    org = ""
+                    repo = ""
+                }
+                if orgs.count > 1 {
+                    ForEach(orgs.keys.sorted(), id: \.self) { name in
+                        FilterChip(title: name, count: orgs[name] ?? 0, selected: org == name && repo.isEmpty) {
+                            org = name
+                            repo = ""
+                        }
+                    }
+                }
+                Rectangle().fill(Theme.hairline).frame(width: 1, height: 16).padding(.horizontal, 4)
+                ForEach(repos.keys.sorted { (repos[$0] ?? 0, $1) > (repos[$1] ?? 0, $0) }, id: \.self) { slug in
+                    FilterChip(title: slug.split(separator: "/").last.map(String.init) ?? slug, count: repos[slug] ?? 0,
+                               selected: repo == slug) {
+                        repo = repo == slug ? "" : slug
+                    }
+                    .help(slug)
+                }
+                Rectangle().fill(Theme.hairline).frame(width: 1, height: 16).padding(.horizontal, 4)
+                FilterChip(title: "ready-for-agent", count: all.filter { $0.labels.contains("ready-for-agent") && matches($0.repo) }.count,
+                           selected: readyOnly) {
+                    readyOnly.toggle()
+                }
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+        }
+        .scrollIndicators(.never)
     }
 
     enum Stage { case working, review, ready, none }
@@ -241,14 +336,22 @@ private struct CardBackground: ViewModifier {
 private struct IssueCard: View {
     let issue: Issue
     let local: Bool
+    var showsRepo = true
     let start: ([AgentKind]) -> Void
     @AppStorage("newSessionAgent") private var preferred = AgentKind.claude.rawValue
 
     var body: some View {
         VStack(alignment: .leading, spacing: 7) {
             HStack(spacing: 6) {
-                SectionLabel(issue.repo.split(separator: "/").last.map(String.init) ?? issue.repo)
+                if showsRepo {
+                    SectionLabel(issue.repo.split(separator: "/").last.map(String.init) ?? issue.repo)
+                }
                 Text("#" + String(issue.number)).font(Theme.label(size: 10.5)).foregroundStyle(Theme.textDim)
+                if let created = issue.created {
+                    Text(WorktreeRow.ago(Date().timeIntervalSince(created)))
+                        .font(Theme.label(size: 10.5)).foregroundStyle(Theme.textFaint)
+                        .help(created.formatted(date: .abbreviated, time: .shortened))
+                }
                 Spacer()
                 Button {
                     if let url = URL(string: issue.url) { NSWorkspace.shared.open(url) }
@@ -745,5 +848,39 @@ private struct ReviewRunRow: View {
         Store.shared.runInNewTab(Quorum.command(kind, pr: number), in: workspace)
         if let first = workspace.sessions.first, workspace.sessions.count > 1 { Store.shared.close(first, in: workspace) }
         QuorumWatch.shared.start(always: true)
+    }
+}
+
+/// A filter on the board: name and count, filled when chosen.
+private struct FilterChip: View {
+    let title: String
+    let count: Int
+    let selected: Bool
+    let action: () -> Void
+    @State private var hovered = false
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 5) {
+                Text(title)
+                Text(String(count)).foregroundStyle(selected ? Theme.bg.opacity(0.7) : Theme.textDim)
+            }
+            .font(.system(size: 12, weight: .medium))
+            .monospacedDigit()
+            .foregroundStyle(selected ? Theme.bg : Theme.textBody)
+            .padding(.horizontal, 10)
+            .frame(height: 26)
+            .background(
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .fill(selected ? Theme.textPrimary : (hovered ? Theme.fillHover : .clear))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .strokeBorder(selected ? .clear : Theme.border, lineWidth: 1)
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { hovered = $0 }
     }
 }
