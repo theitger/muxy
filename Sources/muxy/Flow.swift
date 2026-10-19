@@ -11,7 +11,8 @@ enum NextStep: Equatable {
     case answer
     /// Work is there, no pull request yet.
     case openPR
-    /// A pull request nobody reviewed yet.
+    /// A pull request nobody reviewed yet: quorum's babysit reviews it,
+    /// fixes what it finds and waits for CI, as you run it yourself.
     case review
     /// The review found something, CI is red, or the base conflicts.
     case fix(String)
@@ -27,7 +28,7 @@ enum NextStep: Equatable {
         case let .wait(text): text
         case .answer: L("Answer the agent")
         case .openPR: L("Open a pull request")
-        case .review: L("Review with quorum")
+        case .review: L("Review and fix with quorum")
         case let .fix(why): why
         case .land: L("Land")
         case let .landing(text): text
@@ -50,7 +51,7 @@ enum NextStep: Equatable {
 
 @MainActor
 enum Flow {
-    /// Start quorum's review as soon as a session's pull request opens.
+    /// Start quorum (review and fix) as soon as a session's pull request opens.
     static let autoReviewKey = "reviewWhenPROpens"
 
     static func next(for workspace: Workspace) -> NextStep {
@@ -101,7 +102,7 @@ enum Flow {
                 enter: true, into: agent
             )
         case .review:
-            QuorumWatch.shared.start(.review, in: workspace)
+            QuorumWatch.shared.start(.babysit, in: workspace)
         case .fix:
             // quorum's babysit fixes findings, CI and (when set) conflicts;
             // without quorum the agent gets the job.
@@ -125,6 +126,6 @@ enum Flow {
     static func pullRequestOpened(in workspace: Workspace) {
         guard UserDefaults.standard.bool(forKey: autoReviewKey), Quorum.isInstalled,
               QuorumWatch.shared.status(for: workspace) == nil else { return }
-        QuorumWatch.shared.start(.review, in: workspace)
+        QuorumWatch.shared.start(.babysit, in: workspace)
     }
 }

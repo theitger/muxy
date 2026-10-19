@@ -212,7 +212,7 @@ private struct WorkflowPane: View {
             SettingRow(L("Check after every turn"), detail: L("muxy runs the repository's checks ([check] in .wtconfig) on the agent's work when a turn ends, and tells you when they fail. Checks with auto = false only run on request and when landing.")) {
                 Toggle("", isOn: $proofAfterTurn).labelsHidden().toggleStyle(.offOn)
             }
-            SettingRow(L("Review as soon as a pull request opens"), detail: L("Off: muxy suggests the review and you start it. On: quorum reviews every new pull request of a session right away.")) {
+            SettingRow(L("Review as soon as a pull request opens"), detail: L("Off: muxy suggests the review and you start it. On: quorum reviews and fixes every new pull request of a session right away.")) {
                 Toggle("", isOn: $reviewWhenPROpens).labelsHidden().toggleStyle(.offOn)
                     .disabled(!Quorum.isInstalled)
             }

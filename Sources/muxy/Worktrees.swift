@@ -116,6 +116,28 @@ enum Worktrees {
 
     /// A checkout in `<root>/.worktrees/`: one muxy (or wt) made, and may
     /// remove again.
+    /// direnv asks again for every folder, so a worktree's `.envrc` is
+    /// blocked even when it is the main checkout's byte for byte, and the
+    /// agent runs without the environment. Allowed here only then: the
+    /// same file, already allowed in the main checkout.
+    static func allowDirenv(in path: String, root: String) {
+        let envrc = (path as NSString).appendingPathComponent(".envrc")
+        let original = (root as NSString).appendingPathComponent(".envrc")
+        guard let direnv = Shell.find("direnv"),
+              let mine = FileManager.default.contents(atPath: envrc),
+              mine == FileManager.default.contents(atPath: original),
+              isAllowed(direnv: direnv, in: root), !isAllowed(direnv: direnv, in: path)
+        else { return }
+        _ = Shell.execute(direnv, ["allow", path], in: path, timeout: 15)
+    }
+
+    /// `direnv status` says "Found RC allowed 0" for an allowed .envrc
+    /// (1: not allowed, 2: denied).
+    static func isAllowed(direnv: String, in directory: String) -> Bool {
+        let status = Shell.execute(direnv, ["status"], in: directory, timeout: 15)
+        return status.status == 0 && status.output.split(separator: "\n").contains("Found RC allowed 0")
+    }
+
     static func isManaged(_ checkout: String, root: String) -> Bool {
         checkout.hasPrefix((root as NSString).appendingPathComponent(Launcher.worktreesFolder) + "/")
     }
