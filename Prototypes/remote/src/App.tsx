@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Stack } from '@/components/Stack'
 import { wantsYou } from '@/components/muxy'
+import { t } from '@/lib/i18n'
 import { useMuxy } from '@/lib/useMuxy'
 import { useVisualViewport } from '@/lib/viewport'
 import { Home } from '@/screens/Home'
@@ -53,7 +54,7 @@ export default function App() {
     if (!awaitingNew || !muxy.opened) return
     setAwaitingNew(false)
     if (muxy.opened.session) go(muxy.opened.session)
-    else setToast(muxy.opened.error ? `Konnte nicht starten: ${muxy.opened.error}` : 'Konnte die Session nicht starten')
+    else setToast(muxy.opened.error ? t("Couldn't start: %s", muxy.opened.error) : t("Couldn't start the session"))
   }, [muxy.opened])
 
   useEffect(() => {
@@ -118,7 +119,7 @@ export default function App() {
         <div className="fade-in pointer-events-none absolute inset-x-0 top-[calc(env(safe-area-inset-top,0px)+50px)] z-40 flex justify-center">
           <div className="flex items-center gap-2 rounded-full bg-t1/90 px-3.5 py-2 text-[13.5px] font-medium text-bg shadow-lg backdrop-blur">
             <span className="size-3.5 animate-spin rounded-full border-2 border-bg/40 border-t-bg" />
-            Verbinde neu
+            {t('Reconnecting')}
           </div>
         </div>
       )}

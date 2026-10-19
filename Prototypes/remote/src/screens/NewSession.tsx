@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { cn } from '@/lib/utils'
 import { BottomSheet } from '@/components/BottomSheet'
 import { Segmented, Switch } from '@/components/muxy'
+import { t } from '@/lib/i18n'
 import type { Repo } from '@/lib/protocol'
 import type { NewSession as Spec } from '@/lib/useMuxy'
 import { store, stored } from './TerminalView'
@@ -61,10 +62,10 @@ export function NewSession({
     <BottomSheet
       open={open}
       onClose={onClose}
-      title="Neue Session"
+      title={t('New Session')}
       action={
         <button type="button" disabled={!ready} onClick={start} className="text-[17px] font-semibold text-brand active:opacity-40 disabled:text-t5">
-          Starten
+          {t('Start')}
         </button>
       }
     >
@@ -82,13 +83,13 @@ export function NewSession({
 
       {agent !== 'none' && (
         <>
-          <Label>Aufgabe</Label>
+          <Label>{t('Task')}</Label>
           <div className="mx-4 rounded-[12px] bg-raised px-3.5 py-2.5">
             <textarea
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
               rows={4}
-              placeholder="Was soll passieren? Zum Beispiel: Behebe den Fehler beim Login und schreib einen Test dazu."
+              placeholder={t('What should happen? For example: Fix the login bug and write a test for it.')}
               className="block w-full resize-none bg-transparent text-[16px] leading-[1.4] text-t1 outline-none placeholder:text-t4"
             />
           </div>
@@ -102,7 +103,7 @@ export function NewSession({
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Suchen"
+            placeholder={t('Search')}
             autoCapitalize="off"
             autoCorrect="off"
             className="min-w-0 flex-1 bg-transparent text-[16px] text-t1 outline-none placeholder:text-t4"
@@ -121,15 +122,15 @@ export function NewSession({
             </div>
           </button>
         ))}
-        {shown.length === 0 && <div className="px-4 py-3 text-[15px] text-t4">Nichts gefunden</div>}
+        {shown.length === 0 && <div className="px-4 py-3 text-[15px] text-t4">{t('Nothing found')}</div>}
       </div>
 
       <div className="mx-4 mt-6 flex min-h-[50px] items-center gap-3 rounded-[12px] bg-raised px-4">
-        <span className="flex-1 text-[16px] text-t1">Eigener Worktree</span>
-        <Switch label="Eigener Worktree" on={worktree} onChange={setWorktree} />
+        <span className="flex-1 text-[16px] text-t1">{t('Own worktree')}</span>
+        <Switch label={t('Own worktree')} on={worktree} onChange={setWorktree} />
       </div>
       <p className="px-8 pt-1.5 text-[13px] leading-snug text-t4">
-        {worktree ? 'Arbeitet auf einem neuen Branch, getrennt von allem anderen.' : 'Arbeitet direkt im Repository, auf dem aktuellen Branch.'}
+        {worktree ? t('Works on a new branch, apart from everything else.') : t('Works right in the repository, on the current branch.')}
       </p>
     </BottomSheet>
   )

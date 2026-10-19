@@ -1,5 +1,6 @@
 import { ChevronRight, Plus, WifiOff } from 'lucide-react'
 import { useState } from 'react'
+import { t } from '@/lib/i18n'
 import { cn } from '@/lib/utils'
 import { Ago, Live, PRBadge, SessionTile, status, toneText, urgency, wantsYou } from '@/components/muxy'
 import { agentName, type Session } from '@/lib/protocol'
@@ -42,7 +43,7 @@ export function Home({
           <button
             type="button"
             onClick={onNew}
-            aria-label="Neue Session"
+            aria-label={t('New Session')}
             className="grid size-10 place-items-center rounded-full text-brand transition-opacity active:opacity-40"
           >
             <Plus className="size-[26px]" strokeWidth={2.2} />
@@ -61,16 +62,16 @@ export function Home({
 
         {sessions.length === 0 && (
           <div className="fade-in mt-24 flex flex-col items-center gap-3 px-10 text-center">
-            <p className="text-[17px] font-semibold text-t1">Keine offenen Sessions</p>
-            <p className="text-[15px] leading-snug text-t3">Starte eine auf dem Mac, mit einem Agent und einer Aufgabe.</p>
+            <p className="text-[17px] font-semibold text-t1">{t('No open sessions')}</p>
+            <p className="text-[15px] leading-snug text-t3">{t('Start one on the Mac, with an agent and a task.')}</p>
             <button type="button" onClick={onNew} className="mt-2 h-11 rounded-full bg-brand px-5 text-[16px] font-semibold text-white active:opacity-70">
-              Neue Session
+              {t('New Session')}
             </button>
           </div>
         )}
 
         {waiting.length > 0 && (
-          <Section title="Wartet auf dich">
+          <Section title={t('Waiting on you')}>
             <div className="flex flex-col gap-2.5 px-4">
               {waiting.map((s) => (
                 <WaitingCard key={s.id} session={s} onOpen={onOpen} onChoose={onChoose} />
@@ -80,7 +81,7 @@ export function Home({
         )}
 
         {running.length > 0 && (
-          <Section title="Läuft">
+          <Section title={t('Running')}>
             <List>
               {running.map((s) => (
                 <Row key={s.id} session={s} onOpen={onOpen} showGroup />
@@ -109,11 +110,14 @@ function Summary({ online, waiting, running }: { online: boolean; waiting: numbe
   if (!online)
     return (
       <div className="mt-0.5 flex items-center gap-1.5 text-[15px] text-tone-orange">
-        <WifiOff className="size-4" strokeWidth={2.2} /> Mac nicht erreichbar, versuche es weiter
+        <WifiOff className="size-4" strokeWidth={2.2} /> {t('Mac unreachable, still trying')}
       </div>
     )
-  const parts = [waiting && `${waiting} ${waiting === 1 ? 'wartet' : 'warten'} auf dich`, running && `${running} ${running === 1 ? 'läuft' : 'laufen'}`].filter(Boolean)
-  return <div className="mt-0.5 text-[15px] text-t3">{parts.length ? parts.join(' · ') : 'Alles ruhig'}</div>
+  const parts = [
+    waiting && (waiting === 1 ? t('1 waiting on you') : t('%d waiting on you', waiting)),
+    running && (running === 1 ? t('1 running') : t('%d running', running)),
+  ].filter(Boolean)
+  return <div className="mt-0.5 text-[15px] text-t3">{parts.length ? parts.join(' · ') : t('All quiet')}</div>
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
@@ -216,7 +220,7 @@ function WaitingCard({ session, onOpen, onChoose }: { session: Session; onOpen: 
 
       {choices.length === 0 && (
         <button type="button" onClick={() => onOpen(session.id)} className="row-press flex h-11 w-full items-center justify-center border-t border-hair text-[16px] text-brand">
-          {session.agent === 'failed' ? 'Ansehen und weitermachen' : session.agent === 'blocked' ? 'Antworten' : 'Ansehen'}
+          {session.agent === 'failed' ? t('Take a look and continue') : session.agent === 'blocked' ? t('Reply') : t('Take a look')}
         </button>
       )}
     </div>

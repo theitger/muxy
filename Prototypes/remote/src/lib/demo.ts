@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { t } from './i18n'
 import type { Muxy, NewSession } from './useMuxy'
 import type { ChatItem, Key, Screen, Session } from './protocol'
 
@@ -195,9 +196,9 @@ export function useDemo(): Muxy {
         ...l,
         {
           id,
-          group: spec.directory.split('/').at(-1) ?? 'neu',
-          title: spec.prompt.slice(0, 40) || 'Neue Session',
-          subtitle: spec.worktree ? 'neuer Worktree' : spec.directory,
+          group: spec.directory.split('/').at(-1) ?? t('new'),
+          title: spec.prompt.slice(0, 40) || t('New Session'),
+          subtitle: spec.worktree ? t('new worktree') : spec.directory,
           directory: spec.directory,
           isGit: true,
           agent: spec.agent === 'none' ? 'none' : 'working',

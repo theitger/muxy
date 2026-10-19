@@ -16,6 +16,7 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
+import { t } from '@/lib/i18n'
 import { cn } from '@/lib/utils'
 import { agentName, type Agent, type PRStatus, type Session } from '@/lib/protocol'
 
@@ -49,15 +50,15 @@ export function status(s: Session): { text: string; tone: Tone; live?: boolean }
   const who = agentName(s.agentKind)
   switch (s.agent) {
     case 'blocked':
-      return { text: `${who} wartet auf deine Antwort`, tone: 'orange' }
+      return { text: t('%s is waiting for your answer', who), tone: 'orange' }
     case 'failed':
-      return { text: `${who} ist an einem Fehler hängen geblieben`, tone: 'red' }
+      return { text: t('%s hit an error', who), tone: 'red' }
     case 'working':
-      return { text: s.activity ?? `${who} arbeitet`, tone: 'blue', live: true }
+      return { text: s.activity ?? t('%s is working', who), tone: 'blue', live: true }
     case 'idle':
-      return s.attention ? { text: `${who} ist fertig`, tone: 'green' } : { text: `${who} ist bereit`, tone: 'neutral' }
+      return s.attention ? { text: t('%s is done', who), tone: 'green' } : { text: t('%s is ready', who), tone: 'neutral' }
     default:
-      return s.attention ? { text: s.notice ?? 'Neue Ausgabe', tone: 'orange' } : { text: s.subtitle || s.directory, tone: 'neutral' }
+      return s.attention ? { text: s.notice ?? t('New output'), tone: 'orange' } : { text: s.subtitle || s.directory, tone: 'neutral' }
   }
 }
 
@@ -93,16 +94,16 @@ export function SessionTile({ agent, attention, isGit, size = 36 }: { agent: Age
 }
 
 const prLook: Record<PRStatus, [LucideIcon | null, Tone, string]> = {
-  none: [null, 'neutral', 'Keine Checks'],
-  running: [CircleDashed, 'blue', 'Checks laufen'],
-  fixing: [Wrench, 'yellow', 'Checks rot, wird gefixt'],
-  failed: [X, 'red', 'Checks fehlgeschlagen'],
-  conflicts: [GitMerge, 'red', 'Merge-Konflikte'],
-  draft: [Pencil, 'neutral', 'Entwurf'],
-  waiting: [Hourglass, 'neutral', 'Checks grün, Merge blockiert'],
-  ready: [Check, 'green', 'Bereit zum Mergen'],
-  merged: [GitMerge, 'green', 'Gemergt'],
-  closed: [X, 'neutral', 'Geschlossen, nicht gemergt'],
+  none: [null, 'neutral', t('No checks')],
+  running: [CircleDashed, 'blue', t('Checks running')],
+  fixing: [Wrench, 'yellow', t('Checks failed, being fixed')],
+  failed: [X, 'red', t('Checks failed')],
+  conflicts: [GitMerge, 'red', t('Merge conflicts')],
+  draft: [Pencil, 'neutral', t('Draft')],
+  waiting: [Hourglass, 'neutral', t('Checks passed, merge blocked')],
+  ready: [Check, 'green', t('Ready to merge')],
+  merged: [GitMerge, 'green', t('Merged')],
+  closed: [X, 'neutral', t('Closed without merging')],
 }
 
 /** Muxy's PRBadge: the PR number, tinted by how close it is to mergeable. */
@@ -123,7 +124,7 @@ export function prHelp(status: PRStatus) {
   return prLook[status][2]
 }
 
-/** "gerade", "vor 4 Min.", "vor 2 Std." — refreshed every half minute. */
+/** "just now", "4 min ago", "2h ago" — refreshed every half minute. */
 export function Ago({ since }: { since?: number }) {
   const [, tick] = useState(0)
   useEffect(() => {
@@ -132,7 +133,7 @@ export function Ago({ since }: { since?: number }) {
   }, [])
   if (!since) return null
   const s = Math.max(0, Date.now() / 1000 - since)
-  const text = s < 60 ? 'gerade' : s < 3600 ? `vor ${Math.floor(s / 60)} Min.` : s < 86400 ? `vor ${Math.floor(s / 3600)} Std.` : `vor ${Math.floor(s / 86400)} T.`
+  const text = s < 60 ? t('just now') : s < 3600 ? t('%d min ago', Math.floor(s / 60)) : s < 86400 ? t('%dh ago', Math.floor(s / 3600)) : t('%dd ago', Math.floor(s / 86400))
   return <span className="tabular-nums">{text}</span>
 }
 

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
+import { t } from '@/lib/i18n'
 
 const EASE = 'cubic-bezier(0.32, 0.72, 0, 1)'
 
@@ -12,7 +13,7 @@ export function BottomSheet({
   onClose,
   title,
   action,
-  closeLabel = 'Abbrechen',
+  closeLabel = t('Cancel'),
   children,
 }: {
   open: boolean

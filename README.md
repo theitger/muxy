@@ -170,7 +170,7 @@ every session: the sidebar with agent states and PR badges, Claude as a
 chat with permission buttons, any tab's screen with a line to type into and
 the keys a phone lacks. It works on the same Wi-Fi, or from anywhere
 through your own relay (`Relay/`, a small server Muxy connects out to).
-The phone app speaks German for now.
+The phone app speaks English, or German on a German phone.
 
 Pairing puts a secret on the phone, and every connection is end-to-end
 encrypted with it (fresh X25519 keys, ChaCha20-Poly1305). "Pair Again"
