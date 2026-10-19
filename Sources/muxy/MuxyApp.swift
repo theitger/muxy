@@ -120,6 +120,13 @@ struct MuxyApp: App {
             CommandGroup(after: .appInfo) {
                 CheckForUpdatesButton()
             }
+            // ⌘H opens the hub; hiding muxy stays in this menu, without it.
+            CommandGroup(replacing: .appVisibility) {
+                Button(L("Hide muxy")) { NSApplication.shared.hide(nil) }
+                Button(L("Hide Others")) { NSApplication.shared.hideOtherApplications(nil) }
+                    .keyboardShortcut("h", modifiers: [.command, .option])
+                Button(L("Show All")) { NSApplication.shared.unhideAllApplications(nil) }
+            }
             CommandGroup(replacing: .newItem) {
                 Button(L("New Session")) { store.newWorkspaceInFront() }
                     .keyboardShortcut("n", modifiers: .command)
@@ -154,7 +161,7 @@ struct MuxyApp: App {
                 Button(L("Inbox")) { store.toggleInbox() }
                     .keyboardShortcut("j", modifiers: [.command, .shift])
                 Button(L("Hub")) { store.activeWindow?.showHub.toggle() }
-                    .keyboardShortcut("h", modifiers: [.command, .shift])
+                    .keyboardShortcut("h", modifiers: .command)
                 Button(L("Review Changes")) { store.activeWindow?.toggleReview() }
                     .keyboardShortcut("d", modifiers: [.command, .shift])
                 Divider()

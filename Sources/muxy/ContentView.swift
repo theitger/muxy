@@ -377,7 +377,7 @@ private struct EmptyState: View {
     }
 }
 
-/// Opens the hub (⇧⌘H): issues, sessions in flight, worktrees.
+/// Opens the hub (⌘H): issues, sessions in flight, worktrees.
 private struct HubButton: View {
     @ObservedObject var window: WindowModel
     @ObservedObject private var hub = HubModel.shared
@@ -413,7 +413,7 @@ private struct HubButton: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .help(L("Hub: issues, sessions, worktrees (⇧⌘H)"))
+        .help(L("Hub: issues, sessions, worktrees (⌘H)"))
         .onHover { hovered = $0 }
     }
 }

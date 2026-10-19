@@ -22,7 +22,7 @@ final class WindowModel: ObservableObject, Identifiable {
 
     /// ⇧⌘D: what the session in front changed (see ReviewView).
     @Published private(set) var review: ReviewModel?
-    /// The hub over the stage: issues, sessions, worktrees (⇧⌘H).
+    /// The hub over the stage: issues, sessions, worktrees (⌘H).
     @Published var showHub = false {
         didSet {
             if oldValue, !showHub { focusTerminal() }

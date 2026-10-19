@@ -759,7 +759,6 @@ final class Store: ObservableObject {
             case "b": toggleDetailedWings()
             case "j": toggleInbox()
             case "d": window?.toggleReview()
-            case "h": window?.showHub.toggle()
             // Without a search open, ⇧⌘G stays the terminal's.
             case "g":
                 guard let search = window?.selectedWorkspace?.selectedSession?.search else { return false }
@@ -776,6 +775,7 @@ final class Store: ObservableObject {
             return true
         }
         switch key {
+        case "h": targetWindow().showHub.toggle()
         case "n": targetWindow().showNewSession.toggle()
         case "t": targetWindow().newTab()
         case "w": window?.closeCurrent()

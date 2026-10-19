@@ -156,7 +156,7 @@ closes the other and removes its worktree, its branch stays.
 
 ## The hub
 
-`⇧⌘H` (or **Hub** in the title bar) puts all work on one board: the
+`⌘H` (or **Hub** in the title bar) puts all work on one board: the
 issues GitHub has assigned to you across your repositories (`ready-for-agent`
 first) and pull requests waiting for your review, then every session as it
 moves through working, in review and ready to land. An issue starts with
@@ -293,7 +293,7 @@ installed, its shell integration and terminfo are bundled into Muxy.
 | `⇧⌘J` | inbox: everything waiting on you, answerable in place |
 | `⌘I` | the session's result: proof, turns, collisions, quorum, land |
 | `⇧⌘D` | changes: last turn, whole branch or any turn, with line comments |
-| `⇧⌘H` | the hub: issues, sessions in flight, worktrees |
+| `⌘H` | the hub: issues, sessions in flight, worktrees |
 | `⌘F` · `⌘G` · `⇧⌘G` | find in the scrollback |
 | `⌘K` | search sessions |
 | `⌘B` | show/hide the sidebar (drag its edge to resize) |

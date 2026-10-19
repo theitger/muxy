@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// The hub (⇧⌘H): all work in one place, from the issue assigned to you to
+/// The hub (⌘H): all work in one place, from the issue assigned to you to
 /// the merged pull request. Columns follow a task through its life; the
 /// worktrees page shows every checkout on disk and what can go.
 struct HubView: View {

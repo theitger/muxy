@@ -44,7 +44,7 @@ struct StatusBar: View {
                 Text("gh:" + login).foregroundStyle(Theme.textFaint)
             }
             Button { window.showHub.toggle() } label: {
-                Text("⇧⌘H " + L("hub")).foregroundStyle(window.showHub ? Theme.textPrimary : Theme.textDim)
+                Text("⌘H " + L("hub")).foregroundStyle(window.showHub ? Theme.textPrimary : Theme.textDim)
             }
             .buttonStyle(.plain)
         }

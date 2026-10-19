@@ -349,7 +349,7 @@ enum German {
         // Hub, proof, turns, review, landing
         "Before going back": "Vor dem Zurückgehen",
         "Hub": "Hub",
-        "Hub: issues, sessions, worktrees (⇧⌘H)": "Hub: Issues, Sessions, Worktrees (⇧⌘H)",
+        "Hub: issues, sessions, worktrees (⌘H)": "Hub: Issues, Sessions, Worktrees (⌘H)",
         "%@ isn't cloned on this Mac": "%@ ist auf diesem Mac nicht geklont",
         "Keep “%@”?": "„%@“ behalten?",
         "The other variant closes and its worktree goes. Its branch stays.": "Die andere Variante schließt, ihr Worktree wird entfernt. Ihr Branch bleibt.",
@@ -569,5 +569,8 @@ enum German {
         "Fix model": "Fix-Modell",
         "engine default": "Standard der Engine",
         "checks fail": "Checks schlagen fehl",
+        "Hide muxy": "muxy ausblenden",
+        "Hide Others": "Andere ausblenden",
+        "Show All": "Alle einblenden",
     ]
 }
