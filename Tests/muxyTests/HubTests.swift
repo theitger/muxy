@@ -407,3 +407,23 @@ final class QuorumFixesTests: XCTestCase {
         XCTAssertEqual(Landing.inspect(checkout: checkout, root: repo.root).fromOrigin, 0)
     }
 }
+
+final class QuorumLaunchTests: XCTestCase {
+    func testRunsOnItsOwnIntoALog() throws {
+        let repo = try TempRepo()
+        // Any command: it runs in the login shell, in the folder, output in the log.
+        let log = try XCTUnwrap(Quorum.launch("pwd; echo from-quorum", in: repo.root, name: "test-1"))
+        defer { try? FileManager.default.removeItem(atPath: log) }
+        XCTAssertTrue(log.hasPrefix(Quorum.logs))
+        XCTAssertFalse(log.hasPrefix(Paths.home + "/.local/state/muxy/"), "tests keep to their own state")
+        let deadline = Date().addingTimeInterval(10)
+        var text = ""
+        while Date() < deadline {
+            text = (try? String(contentsOfFile: log, encoding: .utf8)) ?? ""
+            if text.contains("from-quorum") { break }
+            Thread.sleep(forTimeInterval: 0.2)
+        }
+        XCTAssertTrue(text.contains("from-quorum"))
+        XCTAssertTrue(text.contains(repo.root))
+    }
+}

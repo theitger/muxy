@@ -229,6 +229,48 @@ enum Quorum {
         }
     }
 
+    /// Where muxy keeps the output of the quorum runs it starts.
+    static var logs: String { StateDirectory.path + "/quorum" }
+
+    /// quorum on its own, not as a program in muxy's terminal: quitting or
+    /// updating muxy would end it there, mid-run. It runs in your login
+    /// shell (PATH, gh, codex, direnv as in a terminal), its output goes to
+    /// a log, and the tab only follows the log. Returns the log's path.
+    @discardableResult
+    static func launch(_ line: String, in directory: String, name: String) -> String? {
+        try? FileManager.default.createDirectory(atPath: logs, withIntermediateDirectories: true)
+        let stamp = Int(Date().timeIntervalSince1970)
+        let log = logs + "/\(name)-\(stamp).log"
+        guard FileManager.default.createFile(atPath: log, contents: nil),
+              let output = FileHandle(forWritingAtPath: log) else { return nil }
+        // The log is the program's output itself: whatever the shell's syntax.
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: Paths.userShell)
+        process.arguments = ["-l", "-c", line]
+        process.currentDirectoryURL = URL(fileURLWithPath: directory)
+        process.standardInput = FileHandle.nullDevice
+        process.standardOutput = output
+        process.standardError = output
+        do { try process.run() } catch { return nil }
+        try? output.close()
+        return log
+    }
+
+    /// Starts quorum for a PR and shows its output in a tab of the session.
+    @MainActor
+    static func run(_ kind: QuorumStatus.Kind, pr: Int, draft: Bool = false, in workspace: Workspace) {
+        let directory = workspace.context.checkout ?? workspace.directory
+        guard let log = launch(command(kind, pr: pr, draft: draft), in: directory, name: "\(kind.rawValue)-\(pr)") else {
+            Store.shared.window(of: workspace)?.show(L("quorum didn't start."))
+            return
+        }
+        Store.shared.runInNewTab("tail -n +1 -F \(quoted(log))", in: workspace)
+    }
+
+    private static func quoted(_ text: String) -> String {
+        "'" + text.replacingOccurrences(of: "'", with: "'\\''") + "'"
+    }
+
     /// The shell line that hands a PR to quorum. `draft`: a babysit on a
     /// draft PR, which quorum refuses without `--draft` unless the config
     /// allows drafts; your click is that go-ahead.
@@ -317,7 +359,7 @@ final class QuorumWatch: ObservableObject {
     /// quorum in a new tab of the session, where you can watch it.
     func start(_ kind: QuorumStatus.Kind, in workspace: Workspace) {
         guard let pr = workspace.context.pr else { return }
-        Store.shared.runInNewTab(Quorum.command(kind, pr: pr, draft: workspace.context.isDraft), in: workspace)
+        Quorum.run(kind, pr: pr, draft: workspace.context.isDraft, in: workspace)
         start(always: true)
         DispatchQueue.main.asyncAfter(deadline: .now() + 3) { self.refresh() }
     }
