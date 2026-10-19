@@ -25,6 +25,7 @@ final class RenderTests: XCTestCase {
         )
         let views: [(String, AnyView)] = [
             ("panel", AnyView(ResultPanel(result: full, building: false, hasAgent: true))),
+            ("quorum-settings", AnyView(QuorumSettings().frame(width: 420))),
             ("panel-empty", AnyView(ResultPanel(result: nil, building: false, hasAgent: true))),
             ("panel-hub", AnyView(ResultPanel(result: full, building: false, hasAgent: true, extras: PanelExtras(
                 proof: ProofResult(tree: "t", entries: [

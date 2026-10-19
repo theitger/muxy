@@ -30,6 +30,16 @@ enum DebugDriver {
             if let index = value.flatMap(Int.init) { window.selectWorkspace(index: index) }
         case "open":
             if let value { window.newWorkspace(directory: value) }
+        case "settings":
+            store.openSettings?()
+        case "shot-other":
+            // The newest window that isn't a session window (Settings).
+            guard let value, let other = NSApplication.shared.windows.last(where: { win in
+                win.isVisible && !store.windows.contains { $0.nsWindow === win }
+            }), let view = other.contentView,
+                  let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return reply(false, "no window") }
+            view.cacheDisplay(in: view.bounds, to: rep)
+            try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: value))
         case "shot":
             guard let value, let view = window.nsWindow?.contentView,
                   let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return reply(false, "no view") }

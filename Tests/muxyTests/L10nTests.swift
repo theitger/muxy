@@ -14,3 +14,20 @@ final class L10nTests: XCTestCase {
         }
     }
 }
+
+final class L10nTableTests: XCTestCase {
+    /// A key twice in the German table traps when the table is first read:
+    /// the source is checked, since the literal can't even be built.
+    func testNoKeyTwice() throws {
+        let source = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("Sources/muxy/L10n.swift")
+        let text = try String(contentsOf: source, encoding: .utf8)
+        let regex = try NSRegularExpression(pattern: #"^\s*"((?:[^"\\]|\\.)*)":"#, options: .anchorsMatchLines)
+        var seen = Set<String>()
+        for match in regex.matches(in: text, range: NSRange(text.startIndex..., in: text)) {
+            let key = String(text[Range(match.range(at: 1), in: text)!])
+            XCTAssertTrue(seen.insert(key).inserted, "twice in German.table: \(key)")
+        }
+    }
+}

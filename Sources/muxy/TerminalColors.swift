@@ -29,6 +29,50 @@ enum TerminalColors: String, CaseIterable, Identifiable {
         }
     }
 
+    // MARK: Font
+
+    /// A font family of your choice; empty: your Ghostty config's.
+    static let fontKey = "terminalFontFamily"
+    /// Points; 0: your Ghostty config's.
+    static let sizeKey = "terminalFontSize"
+
+    static var fontFamily: String? {
+        UserDefaults.standard.string(forKey: fontKey).flatMap { $0.isEmpty ? nil : $0 }
+    }
+
+    static var fontSize: Double? {
+        let size = UserDefaults.standard.double(forKey: sizeKey)
+        return size > 0 ? size : nil
+    }
+
+    /// Colors and font together, as the terminals get them.
+    static var currentTheme: TerminalTheme {
+        let base = current.theme
+        guard fontFamily != nil || fontSize != nil else { return base }
+        func withFont(_ config: TerminalConfiguration) -> TerminalConfiguration {
+            var result = config
+            if let family = fontFamily { result = result.fontFamily(family) }
+            if let size = fontSize { result = result.fontSize(Float(size)) }
+            return result
+        }
+        return TerminalTheme(light: withFont(base.light), dark: withFont(base.dark))
+    }
+
+    /// Monospaced families installed on this Mac, for the picker.
+    static let monospacedFamilies: [String] = NSFontManager.shared.availableFontFamilies.filter { family in
+        NSFont(name: family, size: 12)?.isFixedPitch == true
+            || NSFontManager.shared.availableMembers(ofFontFamily: family)?.first.flatMap { member in
+                (member.first as? String).flatMap { NSFont(name: $0, size: 12)?.isFixedPitch }
+            } == true
+    }.sorted()
+
+    @MainActor
+    static func apply() {
+        TerminalSession.controller.setTheme(currentTheme)
+        Store.shared.objectWillChange.send()
+        Store.shared.windows.forEach { $0.objectWillChange.send() }
+    }
+
     /// The terminal's background as the chrome paints it.
     static let neutralLight = RGB(hex: 0xFFFFFF)
     static let neutralDark = RGB(hex: 0x09090B)
@@ -60,9 +104,7 @@ enum TerminalColors: String, CaseIterable, Identifiable {
     @MainActor
     static func select(_ choice: TerminalColors) {
         UserDefaults.standard.set(choice.rawValue, forKey: storageKey)
-        TerminalSession.controller.setTheme(choice.theme)
         // The strips painted in the terminal's color follow.
-        Store.shared.objectWillChange.send()
-        Store.shared.windows.forEach { $0.objectWillChange.send() }
+        apply()
     }
 }

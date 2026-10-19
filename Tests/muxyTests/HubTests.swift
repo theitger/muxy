@@ -231,3 +231,27 @@ final class ReviewFixTests: XCTestCase {
         XCTAssertEqual(outcome, .cancelled)
     }
 }
+
+final class QuorumConfigTests: XCTestCase {
+    func testWritesKeysInPlaceKeepingComments() throws {
+        let path = NSTemporaryDirectory() + "muxy-quorum-config-\(UUID())"
+        try """
+        # quorum configuration.
+        REVIEWERS=6
+        REVIEW_EFFORT="medium"\t# minimal, low, medium, high, xhigh
+        POST=1
+
+        """.write(toFile: path, atomically: true, encoding: .utf8)
+        QuorumConfig.write("REVIEW_EFFORT", "high", at: path)
+        QuorumConfig.write("REVIEWERS", "4", at: path)
+        QuorumConfig.write("FIX_ENGINE", "claude", at: path)
+        let text = try String(contentsOfFile: path, encoding: .utf8)
+        XCTAssertTrue(text.contains("REVIEW_EFFORT=\"high\"\t# minimal, low, medium, high, xhigh"))
+        XCTAssertTrue(text.contains("REVIEWERS=4\n"))
+        XCTAssertTrue(text.contains("# quorum configuration."))
+        let values = QuorumConfig.read(at: path)
+        XCTAssertEqual(values["FIX_ENGINE"], "claude")
+        XCTAssertEqual(values["POST"], "1")
+        XCTAssertEqual(values["REVIEW_EFFORT"], "high")
+    }
+}

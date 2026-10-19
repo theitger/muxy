@@ -18,13 +18,15 @@
 
 <br>
 
-## It is your Ghostty
+## Real Ghostty, a calm frame
 
 Muxy embeds [libghostty](https://ghostty.org) and loads your own
-`~/.config/ghostty/config`: theme, font, opacity, padding, all of it,
-1:1. The sidebar and tab bar take their colors from your theme, so the
-window reads as one terminal instead of a frame around one. Light and dark
-follow the system.
+`~/.config/ghostty/config`: font, opacity, padding, keys, all of it.
+Around it sits one quiet neutral palette, greys with color only where
+it means something (waiting, running, failed), and the terminal wears
+the same neutral pair by default. Settings → Terminal colors gives you
+your Ghostty theme back, and Terminal font picks any monospaced font and
+size, or keeps Ghostty's.
 
 ## A session is what used to be a window
 
@@ -123,6 +125,17 @@ minute and a half. A session that would conflict says with whom and in
 which files, long before a pull request; **Tell the agent** asks it to keep
 those changes small, or to merge the base in now.
 
+## quorum, built in
+
+[quorum](https://github.com/yungweng/quorum) is a panel of reviewers
+that finds what's wrong in a pull request, fixes it and waits for CI.
+Muxy installs it for you (Settings → Review with quorum, in a terminal
+you can watch), sets what matters there (engines, effort, reviewers,
+posting, auto-merge, its background agent) without touching the rest of
+its config, shows each session's run on its card and the result, and
+lists every run in the hub's **Reviews**: running first, with findings,
+the report, the PR and a second try.
+
 ## Land
 
 **Land** takes a session's pull request the rest of the way: everything
@@ -179,8 +192,8 @@ locks all phones out.
 ## Light and dark
 
 Muxy follows the system, or stays light or dark (Settings → Appearance).
-Terminals switch along with it, using your Ghostty config's
-`theme = light:…,dark:…` pair, and the chrome follows the terminal.
+Terminals switch along with it: the neutral pair, or your Ghostty
+config's `theme = light:…,dark:…` when you chose your theme.
 
 ## The quiet details
 
@@ -388,8 +401,10 @@ app. Set `MUXY_STATE_DIR` yourself to run an instance on the side.
 - The working directory (OSC 7) and command exit codes (OSC 133) come from
   the shell; repository, branch, PR and its checks are derived from them with
   `git` and `gh` (checks re-polled every minute).
-- Chrome colors are parsed from your Ghostty theme files at launch and
-  derived programmatically, so the UI always matches the terminal.
+- The chrome has its own neutral palette (zinc greys) and
+  [Lucide](https://lucide.dev) icons (ISC), drawn from their SVG source.
+  With your Ghostty theme chosen for the terminal, the strip above it
+  still takes the terminal's background, parsed from your theme files.
 
 ## Credits & license
 

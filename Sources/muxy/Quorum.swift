@@ -25,6 +25,12 @@ struct QuorumStatus: Equatable {
     var runDirectory: String?
     /// The review's report, when it wrote one.
     var report: String?
+    /// The pull request's title, when quorum noted it.
+    var title: String?
+
+    var repo: String { String(key.split(separator: "#").first ?? "") }
+    var number: Int? { key.split(separator: "#").last.flatMap { Int($0) } }
+    var url: URL? { number.flatMap { URL(string: "https://github.com/\(repo)/pull/\($0)") } }
 
     var isClean: Bool { blockers == 0 && critical == 0 }
 
@@ -96,11 +102,13 @@ enum Quorum {
                 kind: kind, key: "\(repo)#\(number)", running: alive,
                 phase: progress["phase"] as? String, round: progress["round"] as? Int,
                 blockers: progress["blockers"] as? Int ?? 0, critical: progress["critical"] as? Int ?? 0,
-                date: date(progress["updated_at"]) ?? modified, runDirectory: dir
+                date: date(progress["updated_at"]) ?? modified, runDirectory: dir,
+                title: progress["title"] as? String
             )
         } else if let target = json(dir + "/target.json"), let repo = target["repo"] as? String,
                   let number = target["number"] as? Int {
-            status = QuorumStatus(kind: kind, key: "\(repo)#\(number)", running: alive, date: modified, runDirectory: dir)
+            status = QuorumStatus(kind: kind, key: "\(repo)#\(number)", running: alive, date: modified, runDirectory: dir,
+                                  title: (target["pr"] as? [String: Any])?["title"] as? String)
         }
         guard var found = status else { return nil }
         if let findings = json(dir + "/output/findings.json") {
@@ -130,7 +138,8 @@ enum Quorum {
                 blockers: entry["blockers"] as? Int ?? 0, critical: entry["critical"] as? Int ?? 0,
                 suggestions: entry["suggestions"] as? Int ?? 0,
                 outcome: entry["outcome"] as? String, reason: entry["reason"] as? String,
-                date: date(entry["ended_at"]) ?? .distantPast, runDirectory: entry["run_dir"] as? String
+                date: date(entry["ended_at"]) ?? .distantPast, runDirectory: entry["run_dir"] as? String,
+                title: entry["title"] as? String
             )
         }
     }

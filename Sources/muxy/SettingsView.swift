@@ -5,8 +5,11 @@ struct SettingsView: View {
     @AppStorage(Language.storageKey) private var language = Language.english.rawValue
     @AppStorage(AppAppearance.storageKey) private var appearance = AppAppearance.system.rawValue
     @AppStorage(TerminalColors.storageKey) private var terminalColors = TerminalColors.neutral.rawValue
+    @AppStorage(TerminalColors.fontKey) private var fontFamily = ""
+    @AppStorage(TerminalColors.sizeKey) private var fontSize: Double = 0
 
     var body: some View {
+        ScrollView {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Text(L("Language"))
@@ -53,10 +56,42 @@ struct SettingsView: View {
                     }
                 ), options: TerminalColors.allCases.map { ($0, $0.name) })
             }
+            HStack {
+                Text(L("Terminal font"))
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(Theme.textBody)
+                Spacer()
+                Picker("", selection: Binding(get: { fontFamily }, set: { family in
+                    fontFamily = family
+                    TerminalColors.apply()
+                })) {
+                    Text(L("From Ghostty")).tag("")
+                    Divider()
+                    ForEach(TerminalColors.monospacedFamilies, id: \.self) { family in
+                        Text(family).tag(family)
+                    }
+                }
+                .labelsHidden()
+                .frame(width: 190)
+                Picker("", selection: Binding(get: { fontSize }, set: { size in
+                    fontSize = size
+                    TerminalColors.apply()
+                })) {
+                    Text(L("Ghostty size")).tag(0.0)
+                    Divider()
+                    ForEach([10.0, 11, 12, 13, 14, 15, 16, 18, 20], id: \.self) { size in
+                        Text("\(Int(size)) pt").tag(size)
+                    }
+                }
+                .labelsHidden()
+                .frame(width: 110)
+            }
             Divider().padding(.vertical, 6)
             AgentSettings()
             Divider().padding(.vertical, 6)
             WorkflowSettings()
+            Divider().padding(.vertical, 6)
+            QuorumSettings()
             Divider().padding(.vertical, 6)
             StayAwakeSettings()
             Divider().padding(.vertical, 6)
@@ -73,7 +108,8 @@ struct SettingsView: View {
             Button(L("Set Up muxy Again…")) { Onboarding.show() }
         }
         .padding(20)
-        .frame(width: 440)
+        }
+        .frame(width: 460, height: 680)
         .tint(Theme.textPrimary)
     }
 }

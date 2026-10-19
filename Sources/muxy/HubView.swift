@@ -20,6 +20,8 @@ struct HubView: View {
             Rectangle().fill(Theme.hairline).frame(height: 1)
             if page == "worktrees" {
                 WorktreesPage(window: window)
+            } else if page == "reviews" {
+                ReviewsPage(window: window)
             } else {
                 board
             }
@@ -34,7 +36,7 @@ struct HubView: View {
 
     private var header: some View {
         HStack(spacing: 12) {
-            Segments(selection: $page, options: [("board", L("Board")), ("worktrees", L("Worktrees"))])
+            Segments(selection: $page, options: [("board", L("Board")), ("reviews", L("Reviews")), ("worktrees", L("Worktrees"))])
             .onChange(of: page) { if page == "worktrees" { inventory.scan() } }
             Spacer()
             account
@@ -601,6 +603,126 @@ private struct WorktreeRow: View {
         if days >= 30 { return L("%dmo", days / 30) }
         if days >= 1 { return L("%dd", days) }
         let hours = Int(seconds / 3600)
-        return hours >= 1 ? L("%dh", hours) : L("now")
+        if hours >= 1 { return L("%dh", hours) }
+        let minutes = Int(seconds / 60)
+        return minutes >= 1 ? L("%dm", minutes) : L("now")
+    }
+}
+
+// MARK: Reviews
+
+/// Everything quorum did and does: running first, then the newest; each
+/// with its findings, its report and the next step.
+private struct ReviewsPage: View {
+    @ObservedObject var window: WindowModel
+    @ObservedObject private var quorum = QuorumWatch.shared
+    @ObservedObject private var hub = HubModel.shared
+
+    var body: some View {
+        let list = quorum.byKey.values.sorted { ($0.running ? 0 : 1, -$0.date.timeIntervalSince1970) < ($1.running ? 0 : 1, -$1.date.timeIntervalSince1970) }
+        if !Quorum.isInstalled {
+            VStack(spacing: 10) {
+                Text(L("quorum isn't installed.")).font(.system(size: 13, weight: .medium)).foregroundStyle(Theme.textBody)
+                Text(L("Settings → Review with quorum installs it.")).font(.system(size: 12)).foregroundStyle(Theme.textDim)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if list.isEmpty {
+            Text(L("No reviews yet.")).font(.system(size: 12.5)).foregroundStyle(Theme.textDim)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 6) {
+                    ForEach(list.prefix(80), id: \.key) { status in
+                        ReviewRunRow(status: status, local: hub.checkout(of: status.repo), window: window)
+                    }
+                }
+                .padding(14)
+            }
+        }
+    }
+}
+
+private struct ReviewRunRow: View {
+    let status: QuorumStatus
+    let local: String?
+    @ObservedObject var window: WindowModel
+    @State private var hovered = false
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Group {
+                if status.running {
+                    ProgressView().controlSize(.small)
+                } else {
+                    Icon(status.succeeded ? "checkmark.circle" : (status.isClean && status.outcome == nil ? "circle.dotted" : "xmark.circle"), size: 13)
+                        .foregroundStyle(status.succeeded ? Theme.greenTone.strong : (status.outcome == "failed" ? Theme.redTone.strong : Theme.textDim))
+                }
+            }
+            .frame(width: 20)
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    Text((status.repo.split(separator: "/").last.map(String.init) ?? status.repo) + " #" + String(status.number ?? 0))
+                        .font(.system(size: 11.5, weight: .medium)).foregroundStyle(Theme.textDim)
+                    Badge(text: status.kind == .babysit ? "babysit" : "review")
+                    if status.blockers + status.critical > 0 {
+                        Badge(text: L("%d open", status.blockers + status.critical), tone: Theme.orange)
+                    }
+                }
+                Text(status.title ?? status.summary)
+                    .font(.system(size: 12.5, weight: .medium))
+                    .foregroundStyle(Theme.textPrimary)
+                    .lineLimit(1)
+                if let reason = status.reason, !status.running, !status.succeeded {
+                    Text(reason).font(.system(size: 11)).foregroundStyle(Theme.textDim).lineLimit(1).truncationMode(.middle)
+                } else {
+                    Text(status.summary).font(.system(size: 11)).foregroundStyle(Theme.textDim).lineLimit(1)
+                }
+            }
+            Spacer(minLength: 8)
+            Text(WorktreeRow.ago(Date().timeIntervalSince(status.date)))
+                .font(.system(size: 11)).monospacedDigit().foregroundStyle(Theme.textFaint)
+            HStack(spacing: 4) {
+                if let report = status.report {
+                    SmallButton(title: L("Report")) { NSWorkspace.shared.open(URL(fileURLWithPath: report)) }
+                }
+                if let url = status.url {
+                    SmallButton(title: "PR", symbol: "arrow.up.right") { NSWorkspace.shared.open(url) }
+                }
+                if !status.running, let local, let number = status.number {
+                    Menu {
+                        Button(L("Babysit again")) { again(.babysit, number: number, root: local) }
+                        Button(L("Review again")) { again(.review, number: number, root: local) }
+                        if let dir = status.runDirectory {
+                            Divider()
+                            Button(L("Show the run's folder")) { NSWorkspace.shared.open(URL(fileURLWithPath: dir)) }
+                        }
+                    } label: {
+                        Icon("ellipsis", size: 12)
+                    }
+                    .menuStyle(.borderlessButton)
+                    .menuIndicator(.hidden)
+                    .fixedSize()
+                }
+            }
+        }
+        .padding(.horizontal, 10)
+        .frame(height: 58)
+        .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(hovered ? Theme.fillHover : .clear))
+        .onHover { hovered = $0 }
+    }
+
+    /// The PR's session when there is one, else a new one in the repository.
+    private func again(_ kind: QuorumStatus.Kind, number: Int, root: String) {
+        window.showHub = false
+        if let workspace = Store.shared.workspaces.first(where: { $0.context.pr == number && $0.context.root == root }) {
+            QuorumWatch.shared.start(kind, in: workspace)
+            Store.shared.select(workspace)
+            return
+        }
+        let workspace = Store.shared.makeWorkspace(directory: root, in: window)
+        window.select(workspace)
+        Store.shared.runInNewTab(Quorum.command(kind, pr: number), in: workspace)
+        if let first = workspace.sessions.first, workspace.sessions.count > 1 { Store.shared.close(first, in: workspace) }
+        QuorumWatch.shared.start(always: true)
     }
 }

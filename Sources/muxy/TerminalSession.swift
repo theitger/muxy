@@ -25,7 +25,7 @@ final class TerminalSession: NSObject, ObservableObject, Identifiable {
         // default) leaves your colors alone; muxy's neutral one replaces them.
         return TerminalController(
             configFilePath: existing,
-            theme: TerminalColors.current.theme
+            theme: TerminalColors.currentTheme
         )
     }()
 

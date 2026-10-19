@@ -77,6 +77,10 @@ enum Theme {
     /// The terminal's own font (Ghostty's `font-family`), for text that
     /// quotes the terminal; the system monospace when it isn't installed.
     static func mono(size: CGFloat) -> Font {
+        if let family = TerminalColors.fontFamily,
+           let font = NSFontManager.shared.font(withFamily: family, traits: [], weight: 5, size: size) {
+            return Font(font)
+        }
         if hasTerminalFont, let family = GhosttyColors.fontFamily,
            let font = NSFontManager.shared.font(withFamily: family, traits: [], weight: 5, size: size) {
             return Font(font)
