@@ -137,7 +137,8 @@ struct HubView: View {
                         }
                         ForEach(group.issues, id: \.self) { issue in
                             IssueCard(issue: issue, local: hub.checkout(of: issue.repo) != nil, showsRepo: groups.count <= 1,
-                                      queue: { queue.add(issue, agent: $0) }) { agents in
+                                      queue: { queue.add(issue, agent: $0, plan: $1) },
+                                      plan: { hub.start(issue, agents: [$0], in: window, plan: true) }) { agents in
                                 hub.start(issue, agents: agents, in: window)
                             }
                         }
@@ -372,7 +373,8 @@ private struct IssueCard: View {
     let issue: Issue
     let local: Bool
     var showsRepo = true
-    let queue: (AgentKind) -> Void
+    let queue: (AgentKind, Bool) -> Void
+    let plan: (AgentKind) -> Void
     let start: ([AgentKind]) -> Void
     @AppStorage("newSessionAgent") private var preferred = AgentKind.claude.rawValue
 
@@ -418,9 +420,15 @@ private struct IssueCard: View {
                     }
                     Divider()
                     Button(L("Claude and Codex side by side")) { start(AgentKind.allCases) }
+                    ForEach(AgentKind.allCases) { kind in
+                        Button(L("Plan first with %@", kind.name)) { plan(kind) }
+                    }
                     Divider()
                     ForEach(AgentKind.allCases) { kind in
-                        Button(L("Queue for %@", kind.name)) { queue(kind) }
+                        Button(L("Queue for %@", kind.name)) { queue(kind, false) }
+                    }
+                    ForEach(AgentKind.allCases) { kind in
+                        Button(L("Queue for %@, plan first", kind.name)) { queue(kind, true) }
                     }
                 } label: {
                     Text(L("More")).font(.system(size: 11.5, weight: .medium))
@@ -539,9 +547,15 @@ private struct QueueRow: View {
                     .lineLimit(2)
             }
             Spacer(minLength: 4)
+            if item.phase == .planReady {
+                Button(L("Approve")) { Queue.shared.approve(item) }.buttonStyle(.plain)
+                    .font(.system(size: 11, weight: .semibold)).foregroundStyle(Theme.textPrimary)
+                    .help(L("The plan is good: the agent goes ahead"))
+            }
             if item.phase != .queued {
                 Button(L("Open"), action: open).buttonStyle(.plain)
                     .font(.system(size: 11)).foregroundStyle(Theme.textDim)
+                    .help(item.phase == .planReady ? L("Read the plan") : "")
             }
             if !item.phase.isActive {
                 Button(action: remove) { Icon("xmark", size: 9).foregroundStyle(Theme.textDim) }
@@ -557,6 +571,7 @@ private struct QueueRow: View {
         case .queued: (L("waits"), Theme.textDim)
         case .running: (L("runs"), Theme.blue.strong)
         case .ready: (L("ready to land"), Theme.greenTone.strong)
+        case .planReady: (L("plan ready for your go-ahead"), Theme.blue.strong)
         case let .needsYou(why): (why, Theme.orange.strong)
         case let .failed(why): (why, Theme.redTone.strong)
         }

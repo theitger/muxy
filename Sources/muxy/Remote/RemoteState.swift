@@ -85,6 +85,7 @@ enum RemoteState {
         switch step {
         case .wait: "wait"
         case .answer: "answer"
+        case .approvePlan: "approvePlan"
         case .openPR: "openPR"
         case .review: "review"
         case .fix: "fix"

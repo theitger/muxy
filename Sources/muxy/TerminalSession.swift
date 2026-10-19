@@ -56,6 +56,10 @@ final class TerminalSession: NSObject, ObservableObject, Identifiable {
     var skipsPermissions = false
     /// The GitHub issue this tab was started on (see Issues).
     var issue: Issue?
+    /// Asked for a plan first: its next step is your go-ahead.
+    @Published var planning = false
+    /// Turns that ended since it started (Codex plans in its first).
+    var turnsEnded = 0
     /// One of several agents on the same task (see FanOut).
     var variantGroup: String?
     /// Something happened here while you were looking elsewhere — the

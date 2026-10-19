@@ -691,7 +691,8 @@ final class Store: ObservableObject {
                 session.markAttentionIfBackground(reason: L("hit an error"))
             default:
                 session.agent = .idle
-                session.markAttentionIfBackground(reason: L("is done"))
+                session.turnsEnded += 1
+                session.markAttentionIfBackground(reason: session.planning ? L("has a plan for you") : L("is done"))
                 Results.shared.turnEnded(in: session)
                 Landing.shared.turnEnded(in: workspace)
                 // A turn often ends with a push: don't wait for the poll.
@@ -819,10 +820,10 @@ final class Store: ObservableObject {
             directory: spec.directory,
             command: spec.agent.map {
                 Launcher.shellCommand(running: $0.command(
-                    .new(prompt: !prompt.isEmpty, id: conversation), skipPermissions: skipPermissions
+                    .new(prompt: !prompt.isEmpty, id: conversation), skipPermissions: skipPermissions, plan: spec.plan
                 ))
             },
-            environment: prompt.isEmpty ? [:] : ["MUXY_PROMPT": prompt],
+            environment: prompt.isEmpty ? [:] : ["MUXY_PROMPT": spec.plan && spec.agent == .codex ? prompt + "\n\n" + Flow.planNote : prompt],
             preparing: spec.branch == nil ? nil : L("Creating worktree …")
         )
         session.kind = spec.agent
@@ -830,6 +831,7 @@ final class Store: ObservableObject {
         session.skipsPermissions = spec.agent != nil && skipPermissions
         session.issue = spec.issue
         session.variantGroup = spec.variantGroup
+        session.planning = spec.plan && spec.agent != nil
         if spec.agent != nil { session.agent = .idle }
         let workspace = makeWorkspace(directory: spec.directory, in: window, session: session)
         if spec.background {

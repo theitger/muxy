@@ -14,6 +14,8 @@ struct SavedSessions: Codable, Equatable {
         var issue: Issue?
         /// Its fan-out, when it was one of several agents on a task.
         var variantGroup: String?
+        /// Still waiting for the go-ahead on its plan.
+        var planning: Bool?
     }
 
     struct Workspace: Codable, Equatable {
@@ -61,6 +63,7 @@ extension SavedSessions.Tab {
         directory = session.cwd
         issue = session.issue?.saved
         variantGroup = session.variantGroup
+        planning = session.planning ? true : nil
         if session.agent != .none, let kind = session.kind {
             agent = kind.rawValue
             conversation = session.agentSessionID
@@ -85,7 +88,8 @@ extension SavedSessions.Tab {
         let skip = skipPermissions ?? false
         let session = TerminalSession(
             directory: directory,
-            command: Launcher.shellCommand(running: kind.command(.resume(id: conversation), skipPermissions: skip))
+            command: Launcher.shellCommand(running: kind.command(.resume(id: conversation), skipPermissions: skip,
+                                                                  plan: planning == true))
         )
         session.kind = kind
         session.agent = .idle
@@ -93,6 +97,7 @@ extension SavedSessions.Tab {
         session.skipsPermissions = skip
         session.issue = issue
         session.variantGroup = variantGroup
+        session.planning = planning == true
         return session
     }
 }

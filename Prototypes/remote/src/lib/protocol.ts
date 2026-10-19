@@ -51,10 +51,10 @@ export type Session = {
   quorum?: { summary: string; running: boolean; clean: boolean }
 }
 
-export type StepKind = 'wait' | 'answer' | 'openPR' | 'review' | 'fix' | 'land' | 'reviewing' | 'landing' | 'none'
+export type StepKind = 'wait' | 'answer' | 'approvePlan' | 'openPR' | 'review' | 'fix' | 'land' | 'reviewing' | 'landing' | 'none'
 
 /** Steps a tap takes; the others only say what is going on. */
-export const actionable = (kind?: StepKind) => kind === 'openPR' || kind === 'review' || kind === 'fix' || kind === 'land'
+export const actionable = (kind?: StepKind) => kind === 'approvePlan' || kind === 'openPR' || kind === 'review' || kind === 'fix' || kind === 'land'
 
 /** An issue assigned to you that no session works on yet. */
 export type Issue = {
