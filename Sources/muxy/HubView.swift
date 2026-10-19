@@ -475,11 +475,12 @@ private struct PullCard: View {
             HStack(spacing: 6) {
                 let agent = AgentKind(rawValue: preferred) ?? .claude
                 let ready = local && pull.branch != nil
-                SmallButton(title: L("Continue with %@", agent.name), prominent: true) { open(agent) }
+                SmallButton(title: L("New %@ chat", agent.name), prominent: true) { open(agent) }
+                    .help(L("A new chat in the worktree with the PR's branch"))
                     .disabled(!ready)
                 Menu {
                     ForEach(AgentKind.allCases) { kind in
-                        Button(L("Continue with %@", kind.name)) { open(kind) }
+                        Button(L("New %@ chat", kind.name)) { open(kind) }
                     }
                     Divider()
                     Button(L("Terminal only")) { open(nil) }

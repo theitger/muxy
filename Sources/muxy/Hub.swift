@@ -51,11 +51,23 @@ final class HubModel: ObservableObject {
     func start() {
         guard timer == nil else { return }
         refresh()
-        let timer = Timer.scheduledTimer(withTimeInterval: 300, repeats: true) { [weak self] _ in
+        let timer = Timer.scheduledTimer(withTimeInterval: 120, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.refresh() }
         }
         timer.tolerance = 30
         self.timer = timer
+        // Back from GitHub (a merge, a new PR): fresh at once, not in minutes.
+        NotificationCenter.default.addObserver(
+            forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in self?.refreshIfStale() }
+        }
+    }
+
+    /// Refreshes unless the last answer is under half a minute old.
+    func refreshIfStale() {
+        guard updated.map({ Date().timeIntervalSince($0) > 30 }) ?? true else { return }
+        refresh()
     }
 
     func refresh() {
@@ -236,8 +248,9 @@ final class HubModel: ObservableObject {
                 // Pushes and PR lookups follow the branch on GitHub.
                 _ = Shell.execute(git, ["branch", "--quiet", "--set-upstream-to=origin/\(branch)", branch], in: root)
             }
+            let failed = problem
             await MainActor.run {
-                if let problem {
+                if let problem = failed {
                     window.show(problem)
                     return
                 }
