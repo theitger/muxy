@@ -20,6 +20,35 @@ final class WindowModel: ObservableObject, Identifiable {
         }
     }
 
+    /// ⇧⌘D: what the session in front changed (see ReviewView).
+    @Published private(set) var review: ReviewModel?
+    /// The hub over the stage: issues, sessions, worktrees (⇧⌘H).
+    @Published var showHub = false {
+        didSet {
+            if oldValue, !showHub { focusTerminal() }
+        }
+    }
+
+    func openReview(_ workspace: Workspace? = nil, scope: ReviewModel.Scope = .lastTurn) {
+        guard let workspace = workspace ?? selectedWorkspace else { return }
+        guard let model = ReviewModel(workspace: workspace, scope: scope) else {
+            show(L("Not a git checkout: nothing to review"))
+            return
+        }
+        if workspace.id != selectedWorkspaceID { select(workspace) }
+        showHub = false
+        withAnimation(Theme.ease) { review = model }
+    }
+
+    func closeReview() {
+        withAnimation(Theme.ease) { review = nil }
+        focusTerminal()
+    }
+
+    func toggleReview() {
+        if review != nil { closeReview() } else { openReview() }
+    }
+
     weak var nsWindow: NSWindow?
     /// A short message at the bottom of the window (e.g. "nobody waits").
     @Published private(set) var toast: String?
@@ -89,6 +118,9 @@ final class WindowModel: ObservableObject, Identifiable {
 
     func select(_ workspace: Workspace) {
         selectedWorkspaceID = workspace.id
+        showHub = false
+        // Another session in front: its own changes, not the last one's.
+        if let review, review.workspace.id != workspace.id { self.review = nil }
     }
 
     func selectWorkspace(index: Int) {

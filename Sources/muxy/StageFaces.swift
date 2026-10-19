@@ -17,6 +17,16 @@ struct WingFace {
     var result: ResultFace?
     /// The web app it runs, if any (Open app).
     var appPort: Int?
+    /// muxy's own checks: running, or how they came out.
+    var proof: ProofResult.Outcome?
+    var proving = false
+    /// Sessions (or the base) it would conflict with.
+    var collisions: [String] = []
+    /// quorum on its PR, as a short line.
+    var quorum: String?
+    var quorumRunning = false
+    /// Landing in progress.
+    var landing: String?
 
     /// The outcome line replaces the activity while nothing runs.
     var showsResult: Bool { result != nil && (agent == .idle || agent == .none) }
@@ -135,6 +145,7 @@ struct WingCardFace: View {
                     .truncationMode(.tail)
             }
             Spacer(minLength: 4)
+            FaceSignals(face: face)
             if let port = face.appPort {
                 HStack(spacing: 2) {
                     Image(systemName: "globe").font(.system(size: 9, weight: .semibold))
@@ -184,6 +195,7 @@ struct WingCardFace: View {
                 }
             }
             Spacer(minLength: 4)
+            FaceSignals(face: face)
             PRBadge(pr: face.pr, status: face.prStatus)
         }
         .padding(.horizontal, 8)
@@ -325,5 +337,44 @@ struct TitleBarButton: View {
         }
         .buttonStyle(.plain)
         .onHover { hovered = $0 }
+    }
+}
+
+/// A card's quiet icons for what muxy knows beyond the agent: its checks,
+/// collisions, quorum, landing. Each says more on hover.
+struct FaceSignals: View {
+    let face: WingFace
+
+    var body: some View {
+        HStack(spacing: 5) {
+            if face.landing != nil {
+                icon("airplane", Theme.blue.strong, face.landing ?? "")
+            }
+            if !face.collisions.isEmpty {
+                icon("arrow.triangle.merge", Theme.orange.strong, L("Collides with %@", face.collisions.joined(separator: ", ")))
+            }
+            if face.quorumRunning {
+                icon("person.3.fill", Theme.blue.strong, face.quorum ?? "")
+            } else if let quorum = face.quorum {
+                icon("person.3.fill", Theme.textDim, quorum)
+            }
+            if face.proving {
+                icon("shield", Theme.blue.strong, L("muxy runs the checks"))
+            } else if let proof = face.proof {
+                switch proof {
+                case .passed: icon("checkmark.shield.fill", Theme.greenTone.strong, L("muxy's checks pass"))
+                case .failed: icon("xmark.shield.fill", Theme.redTone.strong, L("muxy's checks fail"))
+                default: EmptyView()
+                }
+            }
+        }
+    }
+
+    private func icon(_ symbol: String, _ tone: Color, _ help: String) -> some View {
+        Image(systemName: symbol)
+            .font(.system(size: 9.5, weight: .semibold))
+            .foregroundStyle(tone)
+            .help(help)
+            .accessibilityLabel(help)
     }
 }

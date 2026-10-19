@@ -146,12 +146,48 @@ struct ResultButton: View {
     }
 }
 
+/// Everything beyond the agent's own result the panel shows, as plain
+/// values: muxy's checks, collisions, turns, quorum, landing.
+struct PanelExtras {
+    var proof: ProofResult?
+    var proofRunning: Proofs.Running?
+    var hasChecks = false
+    /// Each collision with the other side's name.
+    var collisions: [(collision: Collision, title: String)] = []
+    /// Finished turns, newest first.
+    var turns: [Checkpoint] = []
+    var quorum: QuorumStatus?
+    var quorumInstalled = false
+    var landing: Landing.Step?
+    var canLand = false
+    var restoring = false
+}
+
+/// What the panel's buttons do.
+struct PanelActions {
+    var runProof: () -> Void = {}
+    var cancelProof: () -> Void = {}
+    var sendFailures: () -> Void = {}
+    var review: (ReviewModel.Scope) -> Void = { _ in }
+    var restore: (Checkpoint) -> Void = { _ in }
+    var quorum: (QuorumStatus.Kind) -> Void = { _ in }
+    var openReport: () -> Void = {}
+    var tellAgent: (Collision, String) -> Void = { _, _ in }
+    var land: () -> Void = {}
+    var cancelLanding: () -> Void = {}
+}
+
 /// The stage's result panel: slides in over the terminal's right edge
 /// when open.
 struct ResultOverlay: View {
     @ObservedObject var window: WindowModel
     @ObservedObject var workspace: Workspace
     @ObservedObject private var results = Results.shared
+    @ObservedObject private var proofs = Proofs.shared
+    @ObservedObject private var turns = Turns.shared
+    @ObservedObject private var radar = Radar.shared
+    @ObservedObject private var quorum = QuorumWatch.shared
+    @ObservedObject private var landing = Landing.shared
 
     var body: some View {
         ZStack(alignment: .topTrailing) {
@@ -163,11 +199,17 @@ struct ResultOverlay: View {
                     hasAgent: session != nil,
                     livePR: workspace.context.pr,
                     liveChecks: workspace.context.checks,
-                    refresh: { if let session { results.refresh(session) } },
+                    extras: extras,
+                    actions: actions(session: session),
+                    refresh: {
+                        if let session { results.refresh(session) }
+                        turns.refresh(workspace.context.checkout)
+                    },
                     close: { results.closePanel(in: window) }
                 )
                 .padding(10)
                 .transition(.move(edge: .trailing).combined(with: .opacity))
+                .onAppear { turns.refresh(workspace.context.checkout) }
             }
         }
         // The PR poll moved the checks on: their names follow.
@@ -177,6 +219,65 @@ struct ResultOverlay: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
         // Closed, the terminal underneath gets every click.
         .allowsHitTesting(results.isPanelOpen(in: window))
+    }
+
+    private var extras: PanelExtras {
+        let checkout = workspace.context.checkout
+        return PanelExtras(
+            proof: proofs.result(for: checkout),
+            proofRunning: checkout.flatMap { proofs.running[$0] },
+            hasChecks: workspace.context.root.map { !ProofCheck.load(root: $0).isEmpty } ?? false,
+            collisions: radar.collisions(for: checkout).map { ($0, $0.withBase ? $0.other : radar.title(of: $0.other)) },
+            turns: turns.checkpoints(for: checkout).filter { $0.moment == .after },
+            quorum: quorum.status(for: workspace),
+            quorumInstalled: Quorum.isInstalled,
+            landing: landing.step(for: workspace),
+            canLand: landing.canLand(workspace),
+            restoring: checkout.map { turns.restoring.contains($0) } ?? false
+        )
+    }
+
+    private func actions(session: TerminalSession?) -> PanelActions {
+        let checkout = workspace.context.checkout
+        let root = workspace.context.root
+        return PanelActions(
+            runProof: {
+                if let checkout, let root { proofs.run(checkout: checkout, root: root, session: session) }
+            },
+            cancelProof: { if let checkout { proofs.cancel(checkout: checkout) } },
+            sendFailures: {
+                if let result = proofs.result(for: checkout), let agent = agentSession { Proofs.sendFailures(result, to: agent) }
+            },
+            review: { scope in window.openReview(workspace, scope: scope) },
+            restore: { checkpoint in
+                guard let checkout else { return }
+                if workspace.sessions.contains(where: { $0.agent == .working }) {
+                    window.show(L("The agent is working: wait for its turn to end"))
+                    return
+                }
+                turns.restore(checkpoint, in: checkout) { done in
+                    window.show(done ? L("Files are back to that turn") : L("Couldn't go back"))
+                }
+            },
+            quorum: { kind in quorum.start(kind, in: workspace) },
+            openReport: {
+                if let report = quorum.status(for: workspace)?.report { NSWorkspace.shared.open(URL(fileURLWithPath: report)) }
+            },
+            tellAgent: { collision, title in
+                guard let agent = agentSession else { return }
+                let files = collision.files.prefix(20).map { "- \($0)" }.joined(separator: "\n")
+                let text = collision.withBase
+                    ? "Your branch conflicts with \(collision.other) in these files:\n\(files)\n\nMerge \(collision.other) into this branch now (git fetch first), resolve the conflicts keeping both sides' intent, run the relevant tests and commit."
+                    : "Another session (\"\(title)\", branch work in \(collision.other)) changes the same lines as you in:\n\(files)\n\nKeep your changes in these files minimal and self-contained so both can merge; say which of your changes there could move elsewhere."
+                RemoteState.type(text, enter: true, into: agent)
+            },
+            land: { landing.land(workspace) },
+            cancelLanding: { landing.cancel(workspace) }
+        )
+    }
+
+    private var agentSession: TerminalSession? {
+        workspace.sessions.first { $0.kind != nil && $0.agent != .none }
     }
 }
 
@@ -188,6 +289,8 @@ struct ResultPanel: View {
     /// The session's PR and its checks as the PR poll knows them now.
     var livePR: Int?
     var liveChecks: Checks = .none
+    var extras = PanelExtras()
+    var actions = PanelActions()
     var refresh: () -> Void = {}
     var close: () -> Void = {}
 
@@ -195,12 +298,13 @@ struct ResultPanel: View {
         VStack(alignment: .leading, spacing: 0) {
             header
             Rectangle().fill(Theme.hairline).frame(height: 1)
-            // Bounded (the summary is cut short): no scrolling needed.
-            content
-                .padding(14)
-                .frame(maxWidth: .infinity, alignment: .leading)
+            // As tall as it needs; scrolls only when the stage is shorter.
+            ViewThatFits(in: .vertical) {
+                padded
+                ScrollView { padded }.scrollIndicators(.never)
+            }
         }
-        .frame(width: 320)
+        .frame(width: 340)
         .background(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .fill(Theme.surface)
@@ -211,6 +315,12 @@ struct ResultPanel: View {
                 .strokeBorder(Theme.textPrimary.opacity(0.12), lineWidth: 1)
         )
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+
+    private var padded: some View {
+        content
+            .padding(14)
+            .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var header: some View {
@@ -235,8 +345,8 @@ struct ResultPanel: View {
 
     @ViewBuilder
     private var content: some View {
-        if let result {
-            VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 16) {
+            if let result {
                 VStack(alignment: .leading, spacing: 5) {
                     label(L("What the agent did"))
                     Text(result.summary.map { PlainText.shortened($0, to: 700) } ?? L("The agent left no summary in this turn."))
@@ -245,27 +355,33 @@ struct ResultPanel: View {
                         .fixedSize(horizontal: false, vertical: true)
                         .textSelection(.enabled)
                 }
+                proofSection(claimed: result.tests)
                 VStack(alignment: .leading, spacing: 9) {
-                    testsRow(result.tests)
                     changesRow(result.changes)
                     prRows(result.pr)
+                    quorumRow
                 }
+                collisionSection
+                turnsSection
+                landSection
                 actions(result.pr)
                 Text(L("Updated %@", result.updated.formatted(date: .omitted, time: .shortened)))
                     .font(.system(size: 10.5))
                     .foregroundStyle(Theme.textFaint)
+            } else if building {
+                Text(L("Reading the agent's log …"))
+                    .font(.system(size: 12))
+                    .foregroundStyle(Theme.textDim)
+            } else {
+                Text(!hasAgent
+                    ? L("No agent runs in this session.")
+                    : L("No result yet. It appears when the agent finishes a turn."))
+                    .font(.system(size: 12))
+                    .foregroundStyle(Theme.textDim)
+                    .fixedSize(horizontal: false, vertical: true)
+                proofSection(claimed: nil)
+                collisionSection
             }
-        } else if building {
-            Text(L("Reading the agent's log …"))
-                .font(.system(size: 12))
-                .foregroundStyle(Theme.textDim)
-        } else {
-            Text(!hasAgent
-                ? L("No agent runs in this session.")
-                : L("No result yet. It appears when the agent finishes a turn."))
-                .font(.system(size: 12))
-                .foregroundStyle(Theme.textDim)
-                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
@@ -295,24 +411,206 @@ struct ResultPanel: View {
         .accessibilityElement(children: .combine)
     }
 
+    // MARK: Proof
+
+    /// muxy's own run of the checks, against what the agent says it ran.
     @ViewBuilder
-    private func testsRow(_ tests: TestRun?) -> some View {
-        if let tests {
-            row(icon: { TestsIcon(outcome: tests.outcome, size: 13) }, TestsIcon.label(tests.outcome), detail: tests.command)
-        } else {
-            row(icon: { Image(systemName: "testtube.2").foregroundStyle(Theme.textFaint) }, L("No tests ran in this turn"))
+    private func proofSection(claimed: TestRun?) -> some View {
+        if extras.hasChecks || extras.proof != nil || claimed != nil {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    label(L("Proof"))
+                    Spacer()
+                    if extras.proofRunning != nil {
+                        SmallButton(title: L("Stop"), action: actions.cancelProof)
+                    } else if extras.hasChecks {
+                        SmallButton(title: extras.proof == nil ? L("Run checks") : L("Run again"), action: actions.runProof)
+                    }
+                }
+                if let claimed {
+                    row(icon: { TestsIcon(outcome: claimed.outcome, size: 13) },
+                        L("Agent says: %@", TestsIcon.label(claimed.outcome).lowercased()), detail: claimed.command)
+                }
+                if let running = extras.proofRunning {
+                    HStack(spacing: 8) {
+                        ProgressView().controlSize(.mini).frame(width: 16)
+                        Text(running.count > 0 ? L("muxy runs %@ (%d of %d)", running.check, running.index, running.count) : running.check)
+                            .font(.system(size: 12.5))
+                            .foregroundStyle(Theme.textPrimary)
+                        Spacer(minLength: 0)
+                        Text(running.since, style: .timer)
+                            .font(.system(size: 11)).monospacedDigit().foregroundStyle(Theme.textDim)
+                    }
+                } else if let proof = extras.proof {
+                    ForEach(Array(proof.entries.enumerated()), id: \.offset) { _, entry in
+                        row(icon: { ProofIcon(outcome: entry.outcome) }, proofText(entry),
+                            detail: entry.outcome == .failed ? entry.tail.split(separator: "\n").last.map(String.init) : nil)
+                    }
+                    if let claimed, claimed.outcome == .passed, proof.verdict == .failed {
+                        Text(L("The agent's claim doesn't hold: muxy's checks fail."))
+                            .font(.system(size: 11.5, weight: .semibold))
+                            .foregroundStyle(Theme.redTone.strong)
+                    }
+                    if proof.verdict == .failed {
+                        SmallButton(title: L("Send failures to the agent"), symbol: "paperplane.fill", prominent: true, action: actions.sendFailures)
+                    }
+                } else if extras.hasChecks {
+                    Text(L("Not run on these files yet."))
+                        .font(.system(size: 11.5))
+                        .foregroundStyle(Theme.textDim)
+                }
+            }
+        }
+    }
+
+    private func proofText(_ entry: ProofResult.Entry) -> String {
+        let time = entry.seconds >= 1 ? " · " + Duration.seconds(entry.seconds).formatted(.units(allowed: [.minutes, .seconds], width: .narrow)) : ""
+        switch entry.outcome {
+        case .passed: return L("%@ passed", entry.name) + time
+        case .failed: return L("%@ failed", entry.name) + time
+        case .skipped: return L("%@: nothing it checks changed", entry.name)
+        case .cancelled: return L("%@ stopped", entry.name)
+        }
+    }
+
+    // MARK: Collisions
+
+    @ViewBuilder
+    private var collisionSection: some View {
+        if !extras.collisions.isEmpty {
+            VStack(alignment: .leading, spacing: 8) {
+                label(L("Collisions"))
+                ForEach(Array(extras.collisions.enumerated()), id: \.offset) { _, item in
+                    VStack(alignment: .leading, spacing: 4) {
+                        row(icon: {
+                            Image(systemName: "arrow.triangle.merge").foregroundStyle(Theme.orange.strong)
+                        }, item.collision.withBase
+                            ? L("Conflicts with %@", item.title)
+                            : L("Collides with “%@”", item.title),
+                        detail: item.collision.files.prefix(3).joined(separator: ", ")
+                            + (item.collision.files.count > 3 ? " +\(item.collision.files.count - 3)" : ""))
+                        SmallButton(title: item.collision.withBase ? L("Ask the agent to merge it") : L("Tell the agent"),
+                                    symbol: "paperplane") { actions.tellAgent(item.collision, item.title) }
+                            .padding(.leading, 24)
+                    }
+                }
+            }
+        }
+    }
+
+    // MARK: Turns
+
+    @ViewBuilder
+    private var turnsSection: some View {
+        if !extras.turns.isEmpty {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack {
+                    label(L("Turns"))
+                    Spacer()
+                    if extras.restoring { ProgressView().controlSize(.mini) }
+                }
+                ForEach(extras.turns.prefix(6)) { turn in
+                    HStack(spacing: 8) {
+                        Text(turn.date.formatted(date: .omitted, time: .shortened))
+                            .font(.system(size: 11)).monospacedDigit()
+                            .foregroundStyle(Theme.textDim)
+                            .frame(width: 44, alignment: .leading)
+                        Text(turn.label.isEmpty ? L("Turn") : turn.label)
+                            .font(.system(size: 12))
+                            .foregroundStyle(Theme.textBody)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                        Spacer(minLength: 4)
+                        IconButton(symbol: "plus.forwardslash.minus", help: L("What this turn changed")) {
+                            actions.review(.turn(turn))
+                        }
+                        IconButton(symbol: "arrow.uturn.backward", help: L("Put the files back to this turn")) {
+                            actions.restore(turn)
+                        }
+                    }
+                    .frame(height: 26)
+                }
+            }
+        }
+    }
+
+    // MARK: quorum & landing
+
+    @ViewBuilder
+    private var quorumRow: some View {
+        if let status = extras.quorum {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Group {
+                    if status.running {
+                        ProgressView().controlSize(.mini)
+                    } else {
+                        Image(systemName: status.isClean ? "person.3.fill" : "exclamationmark.bubble.fill")
+                            .foregroundStyle(status.isClean ? Theme.greenTone.strong : Theme.orange.strong)
+                    }
+                }
+                .frame(width: 16)
+                Text(status.summary)
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(Theme.textPrimary)
+                Spacer(minLength: 4)
+                if status.report != nil {
+                    SmallButton(title: L("Report"), action: actions.openReport)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var landSection: some View {
+        if let step = extras.landing {
+            VStack(alignment: .leading, spacing: 6) {
+                label(L("Landing"))
+                HStack(spacing: 8) {
+                    Group {
+                        switch step {
+                        case .landed: Image(systemName: "checkmark.circle.fill").foregroundStyle(Theme.purple.strong)
+                        case .failed: Image(systemName: "xmark.octagon.fill").foregroundStyle(Theme.redTone.strong)
+                        case .waitingForAgent: Image(systemName: "sparkle").foregroundStyle(Theme.blue.strong)
+                        default: ProgressView().controlSize(.mini)
+                        }
+                    }
+                    .frame(width: 16)
+                    Text(step.text)
+                        .font(.system(size: 12.5))
+                        .foregroundStyle(Theme.textPrimary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 4)
+                    if step.isActive {
+                        SmallButton(title: L("Stop"), action: actions.cancelLanding)
+                    } else if case .failed = step {
+                        SmallButton(title: L("Again"), action: actions.land)
+                    }
+                }
+            }
         }
     }
 
     @ViewBuilder
     private func changesRow(_ changes: DiffCount?) -> some View {
         if let changes {
-            row(
-                icon: { Image(systemName: "doc.on.doc").foregroundStyle(Theme.textDim) },
-                changes.files == 0 ? L("No files changed")
-                    : changes.files == 1 ? L("1 file changed") : L("%d files changed", changes.files),
-                detail: changes.files == 0 ? nil : "+\(changes.insertions) −\(changes.deletions)"
-            )
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Image(systemName: "doc.on.doc").foregroundStyle(Theme.textDim).frame(width: 16)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(changes.files == 0 ? L("No files changed")
+                        : changes.files == 1 ? L("1 file changed") : L("%d files changed", changes.files))
+                        .font(.system(size: 12.5))
+                        .foregroundStyle(Theme.textPrimary)
+                    if changes.files > 0 {
+                        Text("+\(changes.insertions) −\(changes.deletions)")
+                            .font(Theme.mono(size: 10.5))
+                            .foregroundStyle(Theme.textDim)
+                    }
+                }
+                Spacer(minLength: 4)
+                if changes.files > 0 {
+                    SmallButton(title: L("Review"), action: { actions.review(.lastTurn) })
+                }
+            }
         }
     }
 
@@ -342,18 +640,99 @@ struct ResultPanel: View {
 
     @ViewBuilder
     private func actions(_ pr: PullRequestResult?) -> some View {
-        if let pr, let url = URL(string: pr.url), let checks = URL(string: pr.checksURL) {
-            HStack(spacing: 8) {
-                PanelButton(title: L("Open PR"), symbol: "arrow.up.right") { NSWorkspace.shared.open(url) }
-                PanelButton(title: L("Open checks"), symbol: "arrow.up.right") { NSWorkspace.shared.open(checks) }
+        VStack(alignment: .leading, spacing: 8) {
+            if let pr, pr.state == .open {
+                HStack(spacing: 8) {
+                    if extras.canLand, extras.landing?.isActive != true {
+                        PanelButton(title: L("Land"), symbol: "airplane.arrival", prominent: true, action: actions.land)
+                            .help(L("Up to date, checks, push, review, merge: one step after the other"))
+                    }
+                    if extras.quorumInstalled, extras.quorum?.running != true {
+                        Menu {
+                            Button(L("Review and fix (babysit)")) { actions.quorum(.babysit) }
+                            Button(L("Review only")) { actions.quorum(.review) }
+                        } label: {
+                            Text("quorum").font(.system(size: 12, weight: .medium))
+                        }
+                        .menuStyle(.borderlessButton)
+                        .fixedSize()
+                        .padding(.horizontal, 10)
+                        .frame(height: 28)
+                        .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous).strokeBorder(Theme.hairline, lineWidth: 1))
+                    }
+                }
+            }
+            if let pr, let url = URL(string: pr.url), let checks = URL(string: pr.checksURL) {
+                HStack(spacing: 8) {
+                    PanelButton(title: L("Open PR"), symbol: "arrow.up.right") { NSWorkspace.shared.open(url) }
+                    PanelButton(title: L("Open checks"), symbol: "arrow.up.right") { NSWorkspace.shared.open(checks) }
+                }
             }
         }
     }
 }
 
-private struct PanelButton: View {
+/// Pass, fail, skip as a small icon.
+struct ProofIcon: View {
+    let outcome: ProofResult.Outcome
+
+    var body: some View {
+        Image(systemName: symbol)
+            .font(.system(size: 12, weight: .semibold))
+            .foregroundStyle(tone)
+    }
+
+    private var symbol: String {
+        switch outcome {
+        case .passed: "checkmark.shield.fill"
+        case .failed: "xmark.shield.fill"
+        case .skipped: "minus.circle"
+        case .cancelled: "stop.circle"
+        }
+    }
+
+    private var tone: Color {
+        switch outcome {
+        case .passed: Theme.greenTone.strong
+        case .failed: Theme.redTone.strong
+        default: Theme.textDim
+        }
+    }
+}
+
+/// A compact text button for panel rows.
+struct SmallButton: View {
+    let title: String
+    var symbol: String?
+    var prominent = false
+    let action: () -> Void
+    @State private var hovered = false
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 4) {
+                if let symbol { Image(systemName: symbol).font(.system(size: 9, weight: .bold)) }
+                Text(title)
+            }
+            .font(.system(size: 11.5, weight: .medium))
+            .foregroundStyle(prominent ? Theme.bg : Theme.textPrimary)
+            .padding(.horizontal, 8)
+            .frame(height: 22)
+            .background(
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(prominent ? Theme.textPrimary.opacity(hovered ? 0.85 : 1) : (hovered ? Theme.fillActive : Theme.fillHover))
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { hovered = $0 }
+    }
+}
+
+struct PanelButton: View {
     let title: String
     let symbol: String
+    var prominent = false
     let action: () -> Void
     @State private var hovered = false
 
@@ -363,13 +742,13 @@ private struct PanelButton: View {
                 Text(title)
                 Image(systemName: symbol).font(.system(size: 9.5, weight: .bold))
             }
-            .font(.system(size: 12, weight: .medium))
-            .foregroundStyle(Theme.textPrimary)
+            .font(.system(size: 12, weight: prominent ? .semibold : .medium))
+            .foregroundStyle(prominent ? Theme.bg : Theme.textPrimary)
             .padding(.horizontal, 10)
             .frame(height: 28)
             .background(
                 RoundedRectangle(cornerRadius: 7, style: .continuous)
-                    .fill(hovered ? Theme.fillActive : Theme.fillHover)
+                    .fill(prominent ? Theme.textPrimary.opacity(hovered ? 0.85 : 1) : (hovered ? Theme.fillActive : Theme.fillHover))
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 7, style: .continuous)

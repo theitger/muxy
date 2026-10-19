@@ -56,6 +56,8 @@ final class TerminalSession: NSObject, ObservableObject, Identifiable {
     var skipsPermissions = false
     /// The GitHub issue this tab was started on (see Issues).
     var issue: Issue?
+    /// One of several agents on the same task (see FanOut).
+    var variantGroup: String?
     /// Something happened here while you were looking elsewhere — the
     /// single orange signal.
     @Published var needsAttention = false {

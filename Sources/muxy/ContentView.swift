@@ -60,12 +60,15 @@ struct ContentView: View {
             } else {
                 // Wings away: the terminal fills the window, like Ghostty.
                 VStack(spacing: 0) {
-                    if let workspace = window.selectedWorkspace {
+                    if window.showHub {
+                        HubView(store: store, window: window)
+                    } else if let workspace = window.selectedWorkspace {
                         TabBarView(store: store, window: window, workspace: workspace)
                         WithPreview(workspace: workspace, cornerRadius: 0) {
                             WorkspaceContent(workspace: workspace)
                         }
                             .overlay { ResultOverlay(window: window, workspace: workspace) }
+                            .overlay { ReviewOverlay(window: window) }
                     } else {
                         EmptyState()
                     }
@@ -118,6 +121,7 @@ struct ContentView: View {
         .animation(Theme.ease, value: window.toast)
         .animation(Theme.ease, value: window.showSwitcher)
         .animation(Theme.ease, value: window.showNewSession)
+        .animation(Theme.ease, value: window.showHub)
         .animation(.easeOut(duration: 0.2), value: window.attentionWorkspaces.map(\.id))
         .background(WindowConfigurator(model: window))
         .ignoresSafeArea()
@@ -132,12 +136,16 @@ struct ContentView: View {
                 .overlay(alignment: .trailing) { SidebarHandle(store: store) }
         } stage: {
             VStack(spacing: 0) {
-                if let workspace = window.selectedWorkspace {
+                if window.showHub {
+                    HubView(store: store, window: window)
+                        .clipShape(RoundedRectangle(cornerRadius: StageMetrics.radius, style: .continuous))
+                } else if let workspace = window.selectedWorkspace {
                     TabBarView(store: store, window: window, workspace: workspace, onStage: true)
                     WithPreview(workspace: workspace, cornerRadius: StageMetrics.radius) {
                         WorkspaceContent(workspace: workspace, cornerRadius: StageMetrics.radius)
                     }
                         .overlay { ResultOverlay(window: window, workspace: workspace) }
+                        .overlay { ReviewOverlay(window: window) }
                         // What a session fades in over when it takes the stage.
                         .background(
                             UnevenRoundedRectangle(
@@ -186,6 +194,7 @@ private struct StageTopBar: View {
             Spacer(minLength: 12)
             HStack(spacing: 8) {
                 InboxPill(store: store, window: window)
+                HubButton(window: window)
                 TitleBarButton(symbol: "plus", title: L("New Session"), keys: "⌘N") {
                     window.showNewSession = true
                 }
@@ -357,5 +366,47 @@ private struct EmptyState: View {
             Kbd(keys)
         }
         .frame(height: 40)
+    }
+}
+
+/// Opens the hub (⇧⌘H): issues, sessions in flight, worktrees.
+private struct HubButton: View {
+    @ObservedObject var window: WindowModel
+    @ObservedObject private var hub = HubModel.shared
+    @State private var hovered = false
+
+    var body: some View {
+        Button { window.showHub.toggle() } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "square.grid.2x2")
+                    .font(.system(size: 10.5, weight: .semibold))
+                Text(L("Hub"))
+                    .font(.system(size: 12, weight: .medium))
+                let waiting = hub.issues.filter { hub.session(for: $0) == nil }.count
+                if waiting > 0 {
+                    Text("\(waiting)")
+                        .font(.system(size: 10.5, weight: .semibold))
+                        .monospacedDigit()
+                        .padding(.horizontal, 5)
+                        .frame(height: 16)
+                        .background(Capsule().fill(Theme.textPrimary.opacity(0.08)))
+                }
+            }
+            .foregroundStyle(window.showHub || hovered ? Theme.textPrimary : Theme.textBody)
+            .padding(.horizontal, 10)
+            .frame(height: 28)
+            .background(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(window.showHub ? Theme.fillActive : (hovered ? Theme.fillHover : .clear))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .strokeBorder(Theme.hairline, lineWidth: 0.5)
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(L("Hub: issues, sessions, worktrees (⇧⌘H)"))
+        .onHover { hovered = $0 }
     }
 }

@@ -26,6 +26,21 @@ final class RenderTests: XCTestCase {
         let views: [(String, AnyView)] = [
             ("panel", AnyView(ResultPanel(result: full, building: false, hasAgent: true))),
             ("panel-empty", AnyView(ResultPanel(result: nil, building: false, hasAgent: true))),
+            ("panel-hub", AnyView(ResultPanel(result: full, building: false, hasAgent: true, extras: PanelExtras(
+                proof: ProofResult(tree: "t", entries: [
+                    .init(name: "frontend", command: "pnpm lint", outcome: .passed, seconds: 41, tail: "", log: ""),
+                    .init(name: "backend", command: "make test", outcome: .failed, seconds: 312, tail: "--- FAIL: TestRetention (0.21s)", log: ""),
+                    .init(name: "docs", command: "x", outcome: .skipped, seconds: 0, tail: "", log: "")
+                ], finished: Date()),
+                hasChecks: true,
+                collisions: [(Collision(other: "/x/b", withBase: false, files: ["backend/test/ratchet_test.go", "a.go", "b.go", "c.go"]), "Konten löschen")],
+                turns: [Checkpoint(ref: "r1", commit: "c", date: Date(), moment: .after, label: "Added the retention job and its tests"),
+                        Checkpoint(ref: "r2", commit: "c", date: Date().addingTimeInterval(-900), moment: .after, label: "Read the issue and planned")],
+                quorum: QuorumStatus(kind: .babysit, key: "o/r#128", running: false, blockers: 1, outcome: "failed", date: Date(), report: "/x"),
+                quorumInstalled: true,
+                landing: .waitingForAgent("The agent fixes 1 failed checks"),
+                canLand: true
+            )).frame(height: 900))),
             ("card", AnyView(WingCardFace(face: face, detailed: true, onStage: true).frame(width: 240))),
             ("row", AnyView(WingCardFace(face: face, detailed: false).frame(width: 240))),
             ("issue", AnyView(VStack(alignment: .leading) {

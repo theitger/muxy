@@ -65,6 +65,11 @@ final class Workspace: ObservableObject, Identifiable {
         return Paths.abbreviate((directory as NSString).deletingLastPathComponent)
     }
 
+    /// The fan-out it is one variant of.
+    var variantGroup: String? {
+        sessions.lazy.compactMap(\.variantGroup).first
+    }
+
     var groupName: String {
         context.repo ?? "Terminal"
     }

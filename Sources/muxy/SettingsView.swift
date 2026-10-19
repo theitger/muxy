@@ -27,6 +27,8 @@ struct SettingsView: View {
             Divider().padding(.vertical, 6)
             AgentSettings()
             Divider().padding(.vertical, 6)
+            WorkflowSettings()
+            Divider().padding(.vertical, 6)
             StayAwakeSettings()
             Divider().padding(.vertical, 6)
             QuickTerminalSettings()
@@ -134,6 +136,44 @@ private struct AgentSettings: View {
             }
             Spacer()
             Toggle("", isOn: $skipPermissions)
+                .labelsHidden()
+                .toggleStyle(.switch)
+        }
+    }
+}
+
+/// Settings → what muxy does on its own between the agent's turns.
+private struct WorkflowSettings: View {
+    @AppStorage(Proofs.autoKey) private var proofAfterTurn = true
+    @AppStorage(Landing.quorumKey) private var landWithQuorum = true
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            toggle(L("Check after every turn"),
+                   L("muxy runs the repository's checks ([check] in .wtconfig) on the agent's work when a turn ends, and tells you when they fail. Checks with auto = false only run on request and when landing."),
+                   $proofAfterTurn)
+            toggle(L("Land with quorum"),
+                   Quorum.isInstalled
+                       ? L("Landing hands the pushed pull request to quorum's review loop before it merges.")
+                       : L("quorum isn't installed: landing merges once checks pass."),
+                   $landWithQuorum)
+                .disabled(!Quorum.isInstalled)
+        }
+    }
+
+    private func toggle(_ title: String, _ detail: String, _ value: Binding<Bool>) -> some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(Theme.textBody)
+                Text(detail)
+                    .font(.system(size: 11.5))
+                    .foregroundStyle(Theme.textDim)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer()
+            Toggle("", isOn: value)
                 .labelsHidden()
                 .toggleStyle(.switch)
         }
