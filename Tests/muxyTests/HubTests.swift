@@ -443,3 +443,57 @@ final class QuorumLaunchTests: XCTestCase {
         XCTAssertTrue(text.contains(repo.root))
     }
 }
+
+final class QuorumPrepareTests: XCTestCase {
+    private func setUp(_ repo: TempRepo) throws -> (checkout: String, other: String) {
+        try repo.addOrigin()
+        let checkout = try repo.addWorktree("feature", branch: "feature")
+        try repo.write("a.txt", "one\n", in: checkout)
+        try repo.commit("One", in: checkout)
+        try repo.git("push", "--quiet", "origin", "feature", in: checkout)
+        // Someone else's clone, to move origin on.
+        let other = (repo.base as NSString).appendingPathComponent("other")
+        try TempRepo.run(["clone", "--quiet", "--branch", "feature", try XCTUnwrap(repo.origin), other], in: repo.base)
+        return (checkout, other)
+    }
+
+    private func originHead(_ repo: TempRepo) throws -> String {
+        try repo.git("ls-remote", "origin", "refs/heads/feature").split(separator: "\t").first.map(String.init) ?? ""
+    }
+
+    func testUnpushedCommitsArePushedFirst() throws {
+        let repo = try TempRepo()
+        let (checkout, _) = try setUp(repo)
+        // Like the merge of the base muxy made before the session closed.
+        try repo.write("b.txt", "two\n", in: checkout)
+        try repo.commit("Two", in: checkout)
+        XCTAssertNil(Quorum.prepare(branch: "feature", root: repo.root))
+        XCTAssertEqual(try originHead(repo), try repo.head(in: checkout))
+    }
+
+    func testABranchBehindOriginIsMovedUp() throws {
+        let repo = try TempRepo()
+        let (checkout, other) = try setUp(repo)
+        try repo.write("c.txt", "theirs\n", in: other)
+        try repo.git("add", "-A", in: other)
+        try repo.git("-c", "user.name=o", "-c", "user.email=o@o", "commit", "--quiet", "-m", "Theirs", in: other)
+        try repo.git("push", "--quiet", "origin", "feature", in: other)
+        XCTAssertNil(Quorum.prepare(branch: "feature", root: repo.root))
+        XCTAssertEqual(repo.read("c.txt", in: checkout), "theirs\n")
+    }
+
+    func testBothWaysOrUncommittedIsYours() throws {
+        let repo = try TempRepo()
+        let (checkout, other) = try setUp(repo)
+        try repo.write("c.txt", "theirs\n", in: other)
+        try repo.git("add", "-A", in: other)
+        try repo.git("-c", "user.name=o", "-c", "user.email=o@o", "commit", "--quiet", "-m", "Theirs", in: other)
+        try repo.git("push", "--quiet", "origin", "feature", in: other)
+        try repo.write("d.txt", "mine\n", in: checkout)
+        XCTAssertNotNil(Quorum.prepare(branch: "feature", root: repo.root), "uncommitted")
+        try repo.commit("Mine", in: checkout)
+        let before = try originHead(repo)
+        XCTAssertNotNil(Quorum.prepare(branch: "feature", root: repo.root), "both moved")
+        XCTAssertEqual(try originHead(repo), before, "nothing was pushed over theirs")
+    }
+}

@@ -548,6 +548,8 @@ private struct PullCard: View {
     @AppStorage("newSessionAgent") private var preferred = AgentKind.claude.rawValue
     @ObservedObject private var quorum = QuorumWatch.shared
     @State private var starting = false
+    /// Why quorum couldn't start, until the next try.
+    @State private var problem: String?
 
     private var status: QuorumStatus? { quorum.byKey[pull.id] }
 
@@ -603,12 +605,19 @@ private struct PullCard: View {
                     }
                 }
             }
-            if let step = quorumStep, let root = HubModel.shared.checkout(of: pull.repo) {
-                SmallButton(title: step.title) {
-                    starting = true
-                    _ = Quorum.start(.babysit, pr: pull.number, draft: pull.draft, root: root)
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 10) { starting = false }
+            if starting {
+                HStack(spacing: 6) {
+                    ProgressView().controlSize(.mini).frame(width: 12)
+                    Text(L("Getting the branch ready for quorum"))
+                        .font(.system(size: 11)).foregroundStyle(Theme.textMuted)
                 }
+            } else if let step = quorumStep, let root = HubModel.shared.checkout(of: pull.repo), let branch = pull.branch {
+                if let problem {
+                    Text(problem)
+                        .font(.system(size: 11)).foregroundStyle(Theme.orange.strong)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                SmallButton(title: step.title) { startQuorum(branch: branch, root: root) }
             }
             HStack(spacing: 6) {
                 let agent = AgentKind(rawValue: preferred) ?? .claude
@@ -637,6 +646,28 @@ private struct PullCard: View {
             }
         }
         .modifier(CardBackground())
+    }
+
+    /// The branch made ready (babysit refuses otherwise), then quorum.
+    private func startQuorum(branch: String, root: String) {
+        starting = true
+        problem = nil
+        let number = pull.number, draft = pull.draft
+        Task.detached(priority: .userInitiated) {
+            let blocked = Quorum.prepare(branch: branch, root: root)
+            await MainActor.run {
+                if let blocked {
+                    problem = blocked
+                    starting = false
+                    return
+                }
+                if !Quorum.start(.babysit, pr: number, draft: draft, root: root) {
+                    problem = L("quorum didn't start.")
+                }
+                // Until quorum's own files say it runs.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 8) { starting = false }
+            }
+        }
     }
 }
 
