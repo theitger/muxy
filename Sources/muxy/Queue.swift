@@ -202,7 +202,8 @@ final class Queue: ObservableObject {
         case .babysit:
             item.babysits += 1
             item.acted = now
-            QuorumWatch.shared.start(.babysit, in: workspace)
+            // The same way as the hub's step: the branch made ready, then quorum.
+            Landing.shared.review(workspace)
         }
     }
 
@@ -245,6 +246,8 @@ final class Queue: ObservableObject {
             return .finish(.needsYou(L("The agent asks you something.")))
         case .land, .landing:
             return .finish(.ready)
+        case .reviewing:
+            return .wait
         case .openPR:
             guard settled else { return .wait }
             // Asked once and still no PR after a while: it's yours.

@@ -15,6 +15,8 @@ struct QuorumStatus: Equatable {
     /// review, fix, ci, … as quorum names it (running babysits).
     var phase: String?
     var round: Int?
+    /// The run's limit on review-fix rounds (MAX_ITER when it started).
+    var maxRounds: Int?
     var blockers = 0
     var critical = 0
     var suggestions = 0
@@ -52,26 +54,95 @@ struct QuorumStatus: Equatable {
     /// Converged with nothing open.
     var succeeded: Bool { converged && isClean }
 
-    /// One line for a card.
+    /// One line for a card, in quorum's own terms: what it does right now,
+    /// or how it ended and why.
     var summary: String {
         if running {
-            let what = kind == .babysit ? L("quorum babysits") : L("quorum reviews")
-            var parts = [what]
-            if let round { parts.append(L("round %d", round)) }
-            if let phase { parts.append(phase) }
-            return parts.joined(separator: " · ")
+            guard kind == .babysit else { return L("quorum reviews") }
+            var parts: [String] = []
+            if let round { parts.append(maxRounds.map { L("round %d of %d", round, $0) } ?? L("round %d", round)) }
+            if let doing = Self.doing(phase) { parts.append(doing) }
+            return parts.isEmpty ? L("quorum works") : "quorum: " + parts.joined(separator: " · ")
         }
-        let findings = blockers + critical
         switch outcome {
-        case "converged", "clean", "merged", "ok", "success":
+        case "merged":
+            return L("quorum: merged")
+        case "converged", "clean", "ok", "success":
             if open > 0 { return open == 1 ? L("quorum: 1 finding open") : L("quorum: %d findings open", open) }
             return fixed > 0 ? L("quorum: clean, %d fixed", fixed) : L("quorum: clean")
         case nil:
+            let findings = blockers + critical
             return findings == 0 ? L("quorum: no blockers") : L("quorum: %d blockers", findings)
-        case let other?:
-            return L("quorum: %@", other)
+        default:
+            return L("quorum stopped: %@", Self.why(reason))
         }
     }
+
+    /// progress.json's phase as words.
+    static func doing(_ phase: String?) -> String? {
+        switch phase {
+        case "review": L("reviews")
+        case "fix": L("fixes")
+        case "ci": L("waits for CI")
+        case "ci_fix": L("fixes CI")
+        case "description": L("writes the description")
+        case let other?: other
+        case nil: nil
+        }
+    }
+
+    /// quorum's failure reason (history.jsonl) in a few words.
+    static func why(_ reason: String?) -> String {
+        guard let reason = reason?.lowercased(), !reason.isEmpty else { return L("failed") }
+        if reason.contains("did not converge") || reason.contains("not converged") {
+            let rounds = reason.split(separator: " ").compactMap { Int($0) }.first
+            return rounds.map { L("not clean after %d rounds", $0) } ?? L("not clean after its rounds")
+        }
+        if reason.contains("test command still fails") { return L("tests still fail") }
+        if reason.contains("ci") && reason.contains("red") { return L("CI still red") }
+        if reason.contains("no progress") || reason.contains("produced no changes") { return L("a fix changed nothing") }
+        if reason.contains("merge conflicts") { return L("conflicts with the base remain") }
+        if reason.contains("context canceled") || reason.contains("cancel") { return L("cancelled") }
+        if reason.contains("usage limit") { return L("usage limit reached") }
+        if reason.contains("draft") { return L("the PR is a draft") }
+        if reason.contains("dirty") || reason.contains("origin does not have") { return L("the branch had unpushed work") }
+        if reason.contains("fix session failed") { return L("a fix session failed") }
+        return L("failed")
+    }
+}
+
+/// What quorum will do, from its config file with quorum's own defaults
+/// (docs/reference.md): muxy shows and plans by it.
+struct QuorumBehavior: Equatable {
+    /// RESOLVE_CONFLICTS: babysit brings the branch up to date with its
+    /// base and resolves conflicts itself.
+    var resolvesConflicts = true
+    /// BABYSIT_DRAFTS: drafts without `--draft`.
+    var babysitsDrafts = false
+    /// AUTO_MERGE: after a clean run quorum merges (not with POST=0).
+    var merges = false
+    /// POST: findings and the fix log go on the PR.
+    var posts = true
+    /// MAX_ITER: review-fix rounds before it gives up.
+    var maxRounds = 12
+
+    init() {}
+
+    init(_ values: [String: String]) {
+        func flag(_ key: String, _ fallback: Bool) -> Bool {
+            guard let value = values[key]?.trimmingCharacters(in: .whitespaces), !value.isEmpty else { return fallback }
+            return value != "0"
+        }
+        resolvesConflicts = flag("RESOLVE_CONFLICTS", true)
+        babysitsDrafts = flag("BABYSIT_DRAFTS", false)
+        posts = flag("POST", true)
+        merges = flag("AUTO_MERGE", false) && posts
+        maxRounds = values["MAX_ITER"].flatMap { Int($0) } ?? 12
+    }
+
+    /// Read again whenever asked: the file is small and you may have just
+    /// changed it (in muxy or with `quorum config`).
+    static var current: QuorumBehavior { QuorumBehavior(QuorumConfig.read()) }
 }
 
 enum Quorum {
@@ -114,6 +185,7 @@ enum Quorum {
             status = QuorumStatus(
                 kind: kind, key: "\(repo)#\(number)", running: alive,
                 phase: progress["phase"] as? String, round: progress["round"] as? Int,
+                maxRounds: progress["max_iter"] as? Int,
                 blockers: progress["blockers"] as? Int ?? 0, critical: progress["critical"] as? Int ?? 0,
                 date: date(progress["updated_at"]) ?? modified, runDirectory: dir,
                 title: progress["title"] as? String
@@ -157,9 +229,13 @@ enum Quorum {
         }
     }
 
-    /// The shell line that hands a PR to quorum.
-    static func command(_ kind: QuorumStatus.Kind, pr: Int) -> String {
-        "quorum \(kind.rawValue) \(pr)"
+    /// The shell line that hands a PR to quorum. `draft`: a babysit on a
+    /// draft PR, which quorum refuses without `--draft` unless the config
+    /// allows drafts; your click is that go-ahead.
+    static func command(_ kind: QuorumStatus.Kind, pr: Int, draft: Bool = false,
+                        behavior: QuorumBehavior = .current) -> String {
+        let flag = kind == .babysit && draft && !behavior.babysitsDrafts ? " --draft" : ""
+        return "quorum \(kind.rawValue)\(flag) \(pr)"
     }
 
     private static func pid(in dir: String) -> pid_t? {
@@ -241,7 +317,7 @@ final class QuorumWatch: ObservableObject {
     /// quorum in a new tab of the session, where you can watch it.
     func start(_ kind: QuorumStatus.Kind, in workspace: Workspace) {
         guard let pr = workspace.context.pr else { return }
-        Store.shared.runInNewTab(Quorum.command(kind, pr: pr), in: workspace)
+        Store.shared.runInNewTab(Quorum.command(kind, pr: pr, draft: workspace.context.isDraft), in: workspace)
         start(always: true)
         DispatchQueue.main.asyncAfter(deadline: .now() + 3) { self.refresh() }
     }

@@ -107,8 +107,8 @@ struct QuorumSettings: View {
                 row(L("Fix model")) { modelField("FIX_MODEL") }
                 row(L("Fix effort")) { picker("FIX_EFFORT", Self.efforts, fallback: "high") }
                 toggle(L("Post reviews on GitHub"), key: "POST", fallback: true)
-                toggle(L("Bring branches up to date and resolve conflicts"), key: "RESOLVE_CONFLICTS", fallback: false)
-                toggle(L("Merge after a clean babysit"), key: "AUTO_MERGE_BABYSIT", fallback: false)
+                toggle(L("Bring branches up to date and resolve conflicts"), key: "RESOLVE_CONFLICTS", fallback: true)
+                toggle(L("Merge after a clean run"), key: "AUTO_MERGE", fallback: false)
                 HStack {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(L("Review requests on its own"))

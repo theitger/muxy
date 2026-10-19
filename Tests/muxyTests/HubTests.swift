@@ -327,3 +327,83 @@ final class DirenvTests: XCTestCase {
         XCTAssertFalse(Worktrees.isAllowed(direnv: direnv, in: other), "a different file stays blocked")
     }
 }
+
+final class QuorumFlowTests: XCTestCase {
+    func testBehaviorFollowsTheConfigWithQuorumsDefaults() {
+        let defaults = QuorumBehavior([:])
+        XCTAssertTrue(defaults.resolvesConflicts, "quorum's default is 1")
+        XCTAssertFalse(defaults.babysitsDrafts)
+        XCTAssertFalse(defaults.merges)
+        XCTAssertTrue(defaults.posts)
+        XCTAssertEqual(defaults.maxRounds, 12)
+
+        // As in a real config: conflicts left alone, drafts allowed, the
+        // retired AUTO_MERGE_BABYSIT key means nothing to quorum 1.16.
+        let mine = QuorumBehavior(["RESOLVE_CONFLICTS": "0", "BABYSIT_DRAFTS": "1", "AUTO_MERGE_BABYSIT": "1", "MAX_ITER": "8"])
+        XCTAssertFalse(mine.resolvesConflicts)
+        XCTAssertTrue(mine.babysitsDrafts)
+        XCTAssertFalse(mine.merges)
+        XCTAssertEqual(mine.maxRounds, 8)
+
+        XCTAssertTrue(QuorumBehavior(["AUTO_MERGE": "1"]).merges)
+        XCTAssertFalse(QuorumBehavior(["AUTO_MERGE": "1", "POST": "0"]).merges, "quorum doesn't merge with POST=0")
+    }
+
+    func testDraftsGetTheGoAheadOnlyWhenTheConfigDoesntGiveIt() {
+        XCTAssertEqual(Quorum.command(.babysit, pr: 7, draft: true, behavior: QuorumBehavior([:])), "quorum babysit --draft 7")
+        XCTAssertEqual(Quorum.command(.babysit, pr: 7, draft: true, behavior: QuorumBehavior(["BABYSIT_DRAFTS": "1"])), "quorum babysit 7")
+        XCTAssertEqual(Quorum.command(.babysit, pr: 7, draft: false, behavior: QuorumBehavior([:])), "quorum babysit 7")
+        XCTAssertEqual(Quorum.command(.review, pr: 7, draft: true, behavior: QuorumBehavior([:])), "quorum review 7")
+    }
+
+    func testStepsMatchWhatQuorumDoes() {
+        // Nothing yet: review and fix, one loop.
+        XCTAssertEqual(Flow.quorumStep(nil, installed: true), .review)
+        XCTAssertNil(Flow.quorumStep(nil, installed: false))
+        // A review that only commented its 4 findings: babysit, not "fix 4".
+        let commented = QuorumStatus(kind: .review, key: "o/r#1", running: false, critical: 4, outcome: "ok", date: Date())
+        XCTAssertEqual(Flow.quorumStep(commented, installed: true), .review)
+        // A babysit that stopped: again, with its reason on the card.
+        var stopped = QuorumStatus(kind: .babysit, key: "o/r#1", running: false, outcome: "failed", date: Date())
+        stopped.reason = "review did not converge after 12 review rounds"
+        XCTAssertEqual(Flow.quorumStep(stopped, installed: true), .fix(L("Run quorum again")))
+        XCTAssertEqual(stopped.summary, L("quorum stopped: %@", L("not clean after %d rounds", 12)))
+        // Converged: nothing for quorum to do.
+        let clean = QuorumStatus(kind: .babysit, key: "o/r#1", running: false, blockers: 2, outcome: "converged", date: Date())
+        XCTAssertNil(Flow.quorumStep(clean, installed: true))
+        // Running: shown in the review column with its round and phase.
+        var running = QuorumStatus(kind: .babysit, key: "o/r#1", running: true, phase: "fix", round: 2, date: Date())
+        running.maxRounds = 12
+        XCTAssertEqual(running.summary, "quorum: " + L("round %d of %d", 2, 12) + " · " + L("fixes"))
+        XCTAssertEqual(Flow.quorumStep(running, installed: true)?.stage, .review)
+    }
+}
+
+final class QuorumFixesTests: XCTestCase {
+    func testSeesAndTakesInWhatQuorumPushed() throws {
+        let repo = try TempRepo()
+        try repo.addOrigin()
+        let checkout = try repo.addWorktree("feature", branch: "feature")
+        try repo.write("a.txt", "agent\n", in: checkout)
+        try repo.commit("Agent's work", in: checkout)
+        try repo.git("push", "--quiet", "-u", "origin", "feature", in: checkout)
+
+        // quorum works in a clone of its own and pushes a fix to the branch.
+        let quorum = (repo.base as NSString).appendingPathComponent("quorum")
+        try TempRepo.run(["clone", "--quiet", "--branch", "feature", try XCTUnwrap(repo.origin), quorum], in: repo.base)
+        try repo.write("a.txt", "agent, fixed\n", in: quorum)
+        try repo.git("-c", "user.name=q", "-c", "user.email=q@q", "commit", "--quiet", "-am", "quorum's fix", in: quorum)
+        try repo.git("push", "--quiet", "origin", "feature", in: quorum)
+
+        let state = Landing.inspect(checkout: checkout, root: repo.root)
+        XCTAssertFalse(state.dirty)
+        XCTAssertEqual(state.fromOrigin, 1, "the fix on origin is seen")
+
+        Landing.takeFixes(in: checkout)
+        let expectation = expectation(description: "fast-forwarded")
+        DispatchQueue.global().asyncAfter(deadline: .now() + 3) { expectation.fulfill() }
+        wait(for: [expectation], timeout: 5)
+        XCTAssertEqual(repo.read("a.txt", in: checkout), "agent, fixed\n")
+        XCTAssertEqual(Landing.inspect(checkout: checkout, root: repo.root).fromOrigin, 0)
+    }
+}

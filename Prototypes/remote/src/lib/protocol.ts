@@ -51,7 +51,7 @@ export type Session = {
   quorum?: { summary: string; running: boolean; clean: boolean }
 }
 
-export type StepKind = 'wait' | 'answer' | 'openPR' | 'review' | 'fix' | 'land' | 'landing' | 'none'
+export type StepKind = 'wait' | 'answer' | 'openPR' | 'review' | 'fix' | 'land' | 'reviewing' | 'landing' | 'none'
 
 /** Steps a tap takes; the others only say what is going on. */
 export const actionable = (kind?: StepKind) => kind === 'openPR' || kind === 'review' || kind === 'fix' || kind === 'land'
