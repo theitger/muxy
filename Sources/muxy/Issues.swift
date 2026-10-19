@@ -180,6 +180,15 @@ enum Issues {
 
     static let templateKey = "issuePromptTemplate"
 
+    /// The repository has an `implement` skill or command for Claude Code
+    /// (such as Matt Pocock's): issue sessions start with `/implement`, so
+    /// the agent works the way the team set up (TDD, checks, review).
+    nonisolated static func implementSkill(in root: String) -> Bool {
+        let claude = (root as NSString).appendingPathComponent(".claude")
+        return FileManager.default.fileExists(atPath: claude + "/skills/implement/SKILL.md")
+            || FileManager.default.fileExists(atPath: claude + "/commands/implement.md")
+    }
+
     /// The fields a template can use, for Settings to list.
     static let templateFields = ["{reference}", "{title}", "{url}", "{labels}", "{body}", "{note}", "{number}", "{repo}"]
 

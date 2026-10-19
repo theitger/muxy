@@ -205,6 +205,7 @@ private struct WorkflowPane: View {
     @AppStorage(Proofs.autoKey) private var proofAfterTurn = true
     @AppStorage(Flow.autoReviewKey) private var reviewWhenPROpens = false
     @AppStorage(Landing.quorumKey) private var landWithQuorum = true
+    @AppStorage(Queue.parallelKey) private var queueParallel = Queue.defaultParallel
 
     var body: some View {
         SettingCard {
@@ -220,6 +221,11 @@ private struct WorkflowPane: View {
                 : L("quorum isn't installed: landing merges once checks pass.")) {
                 Toggle("", isOn: $landWithQuorum).labelsHidden().toggleStyle(.offOn)
                     .disabled(!Quorum.isInstalled)
+            }
+        }
+        SettingCard(L("Queue")) {
+            SettingRow(L("At a time"), detail: L("How many queued issues run at once. Each is an agent in its own worktree without permission prompts, then checks, a pull request and quorum's fix loop, up to ready to land. More at once uses up your plans faster.")) {
+                Segments(selection: $queueParallel, options: [1, 2, 3, 4, 5].map { ($0, String($0)) })
             }
         }
     }

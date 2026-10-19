@@ -267,7 +267,12 @@ final class HubModel: ObservableObject {
     /// An issue becomes a session (or several, one per agent): its own
     /// worktree on a branch named after it, the agent asked to close it.
     /// `then` gets the new session's id (the first, with several agents).
-    func start(_ issue: Issue, agents: [AgentKind], in window: WindowModel, hideHub: Bool = true, then: ((String?) -> Void)? = nil) {
+    /// `unattended`: the queue's way, in the background, without permission
+    /// prompts, the agent told nobody answers until it is done.
+    /// From the hub it starts in the background: you stay there and can
+    /// start the next one.
+    func start(_ issue: Issue, agents: [AgentKind], in window: WindowModel, hideHub: Bool = false,
+               unattended: Bool = false, then: ((String?) -> Void)? = nil) {
         guard let root = checkout(of: issue.repo) else {
             window.show(L("%@ isn't cloned on this Mac", issue.repo))
             then?(nil)
@@ -279,7 +284,10 @@ final class HubModel: ObservableObject {
             let full: Issue = if case let .found(found) = Issues.view(issue.number, repo: issue.repo, in: root) { found } else { issue }
             await MainActor.run {
                 let before = Set(Store.shared.workspaces.map(\.id))
-                FanOut.launch(issue: full, root: root, agents: agents, in: window)
+                FanOut.launch(issue: full, root: root, agents: agents, unattended: unattended, background: !hideHub, in: window)
+                if !hideHub, !unattended {
+                    window.show(L("%@ starts on #%d", agents.map(\.name).joined(separator: " & "), issue.number))
+                }
                 then?(Store.shared.workspaces.first { !before.contains($0.id) }?.id.uuidString)
             }
         }
@@ -303,18 +311,25 @@ final class HubModel: ObservableObject {
 /// holds, you keep one.
 @MainActor
 enum FanOut {
-    static func launch(issue: Issue, root: String, agents: [AgentKind], in window: WindowModel) {
+    static func launch(issue: Issue, root: String, agents: [AgentKind], unattended: Bool = false,
+                       background: Bool = false, in window: WindowModel) {
         let base = Issues.branchName(for: issue)
         let group = agents.count > 1 ? UUID().uuidString : nil
+        var prompt = Issues.prompt(for: issue, localRepo: Issues.repo(of: root))
+        if unattended { prompt += "\n\n" + Queue.unattendedNote }
+        let implement = Issues.implementSkill(in: root)
         for agent in agents {
             var spec = SessionSpec(
                 directory: root, agent: agent,
-                prompt: Issues.prompt(for: issue, localRepo: Issues.repo(of: root)),
+                // The repository's own way to implement, where it has one.
+                prompt: agent == .claude && implement ? "/implement " + prompt : prompt,
                 worktree: true, branch: agents.count > 1 ? "\(base)-\(agent.rawValue)" : base
             )
             spec.autoName = false
             spec.issue = issue
             spec.variantGroup = group
+            spec.background = background || unattended
+            if unattended { spec.skipPermissions = true }
             Store.shared.launch(spec, in: window)
         }
     }

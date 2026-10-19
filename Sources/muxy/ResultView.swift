@@ -21,8 +21,8 @@ extension Workspace {
     }
 }
 
-/// The card's outcome line once the agent is done: test and CI icons,
-/// then what the agent says it did.
+/// The card's outcome line once the agent is done: "Tests" and "CI" in
+/// their state's color, then what the agent says it did.
 struct ResultLine: View {
     let face: ResultFace
     var size: CGFloat = 11
@@ -40,13 +40,31 @@ struct ResultLine: View {
     }
 }
 
+/// A state in its color: the word ("Tests", "CI") on a card, a dot in
+/// front of a row that already says it in words.
+struct StateMark: View {
+    let word: String
+    let tone: Color
+    var size: CGFloat
+    var dot = false
+
+    var body: some View {
+        if dot {
+            Circle().fill(tone).frame(width: 7, height: 7)
+        } else {
+            Text(word).font(.system(size: size, weight: .semibold)).foregroundStyle(tone)
+                .lineLimit(1).fixedSize()
+        }
+    }
+}
+
 struct TestsIcon: View {
     let outcome: TestRun.Outcome
     var size: CGFloat = 11
+    var dot = false
 
     var body: some View {
-        Icon("testtube.2", size: size - 1)
-            .foregroundStyle(tone)
+        StateMark(word: L("Tests"), tone: tone, size: size, dot: dot)
             .help(Self.label(outcome))
             .accessibilityLabel(Self.label(outcome))
     }
@@ -71,21 +89,12 @@ struct TestsIcon: View {
 struct ChecksIcon: View {
     let checks: Checks
     var size: CGFloat = 11
+    var dot = false
 
     var body: some View {
-        Icon(symbol, size: size - 1)
-            .foregroundStyle(tone)
+        StateMark(word: "CI", tone: tone, size: size, dot: dot)
             .help(Self.label(checks))
             .accessibilityLabel(Self.label(checks))
-    }
-
-    private var symbol: String {
-        switch checks {
-        case .passed: "checkmark.seal.fill"
-        case .failed: "xmark.seal.fill"
-        case .pending: "clock"
-        case .none: "seal"
-        }
     }
 
     private var tone: Color {
@@ -123,7 +132,6 @@ struct ResultButton: View {
     private func button(open: Bool) -> some View {
         Button { results.togglePanel(in: window) } label: {
             HStack(spacing: 5) {
-                Icon("checklist", size: 11)
                 Text(L("Result"))
                     .font(.system(size: 11.5, weight: .medium))
             }
@@ -423,7 +431,7 @@ struct ResultPanel: View {
                     }
                 }
                 if let claimed {
-                    row(icon: { TestsIcon(outcome: claimed.outcome, size: 13) },
+                    row(icon: { TestsIcon(outcome: claimed.outcome, size: 13, dot: true) },
                         L("Agent says: %@", TestsIcon.label(claimed.outcome).lowercased()), detail: claimed.command)
                 }
                 if let running = extras.proofRunning {
@@ -478,7 +486,7 @@ struct ResultPanel: View {
                 ForEach(Array(extras.collisions.enumerated()), id: \.offset) { _, item in
                     VStack(alignment: .leading, spacing: 4) {
                         row(icon: {
-                            Icon("arrow.triangle.merge").foregroundStyle(Theme.orange.strong)
+                            StateMark(word: "", tone: Theme.orange.strong, size: 12, dot: true)
                         }, item.collision.withBase
                             ? L("Conflicts with %@", item.title)
                             : L("Collides with “%@”", item.title),
@@ -539,8 +547,7 @@ struct ResultPanel: View {
                     if status.running {
                         ProgressView().controlSize(.mini)
                     } else {
-                        Icon(status.isClean ? "person.3.fill" : "exclamationmark.bubble.fill")
-                            .foregroundStyle(status.isClean ? Theme.greenTone.strong : Theme.orange.strong)
+                        StateMark(word: "", tone: status.isClean ? Theme.greenTone.strong : Theme.orange.strong, size: 12, dot: true)
                     }
                 }
                 .frame(width: 16)
@@ -563,9 +570,9 @@ struct ResultPanel: View {
                 HStack(spacing: 8) {
                     Group {
                         switch step {
-                        case .landed: Icon("checkmark.circle.fill").foregroundStyle(Theme.purple.strong)
-                        case .failed: Icon("xmark.octagon.fill").foregroundStyle(Theme.redTone.strong)
-                        case .waitingForAgent: Icon("sparkle").foregroundStyle(Theme.blue.strong)
+                        case .landed: StateMark(word: "", tone: Theme.purple.strong, size: 12, dot: true)
+                        case .failed: StateMark(word: "", tone: Theme.redTone.strong, size: 12, dot: true)
+                        case .waitingForAgent: StateMark(word: "", tone: Theme.blue.strong, size: 12, dot: true)
                         default: ProgressView().controlSize(.mini)
                         }
                     }
@@ -589,7 +596,7 @@ struct ResultPanel: View {
     private func changesRow(_ changes: DiffCount?) -> some View {
         if let changes {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Icon("doc.on.doc").foregroundStyle(Theme.textDim).frame(width: 16)
+                Color.clear.frame(width: 16, height: 1)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(changes.files == 0 ? L("No files changed")
                         : changes.files == 1 ? L("1 file changed") : L("%d files changed", changes.files))
@@ -612,16 +619,16 @@ struct ResultPanel: View {
     @ViewBuilder
     private func prRows(_ pr: PullRequestResult?) -> some View {
         if let pr {
-            row(icon: { Icon("arrow.triangle.pull").foregroundStyle(Theme.textDim) }, prText(pr))
+            row(icon: { Color.clear.frame(height: 1) }, prText(pr))
             // Checks as the PR poll knows them, names from the last build.
             let checks = livePR == pr.number ? liveChecks : pr.checks
             row(
-                icon: { ChecksIcon(checks: checks, size: 13) },
+                icon: { ChecksIcon(checks: checks, size: 13, dot: true) },
                 ChecksIcon.label(checks),
                 detail: checks == .failed && !pr.failing.isEmpty ? pr.failing.joined(separator: ", ") : nil
             )
         } else {
-            row(icon: { Icon("arrow.triangle.pull").foregroundStyle(Theme.textFaint) }, L("No pull request yet"))
+            row(icon: { Color.clear.frame(height: 1) }, L("No pull request yet"))
         }
     }
 
@@ -667,22 +674,12 @@ struct ResultPanel: View {
     }
 }
 
-/// Pass, fail, skip as a small icon.
+/// Pass, fail, skip as a dot in its color; the row says it in words.
 struct ProofIcon: View {
     let outcome: ProofResult.Outcome
 
     var body: some View {
-        Icon(symbol, size: 12)
-            .foregroundStyle(tone)
-    }
-
-    private var symbol: String {
-        switch outcome {
-        case .passed: "checkmark.shield.fill"
-        case .failed: "xmark.shield.fill"
-        case .skipped: "minus.circle"
-        case .cancelled: "stop.circle"
-        }
+        StateMark(word: "", tone: tone, size: 12, dot: true)
     }
 
     private var tone: Color {

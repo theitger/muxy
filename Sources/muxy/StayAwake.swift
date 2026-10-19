@@ -55,6 +55,11 @@ final class StayAwake: ObservableObject {
     private var timer: Timer?
     private var watcher: Process?
 
+    /// The queue runs: the Mac stays up while open, whatever the mode.
+    var forQueue = false {
+        didSet { if forQueue != oldValue { apply() } }
+    }
+
     func start() {
         isSetUp = Self.canSwitch()
         NotificationCenter.default.addObserver(
@@ -80,7 +85,7 @@ final class StayAwake: ObservableObject {
     /// Holds or releases according to the mode and the battery.
     func apply() {
         lowBattery = Self.onBatteryBelowFloor()
-        defer { caffeinate(mode == .open && !lowBattery) }
+        defer { caffeinate((mode == .open || forQueue) && !lowBattery) }
         let want = enabled && isSetUp && !lowBattery
         if want, !holding {
             holding = Self.switchSleep(disabled: true)

@@ -58,6 +58,7 @@ final class Store: ObservableObject {
         QuorumWatch.shared.start()
         Radar.shared.start()
         HubModel.shared.start()
+        Queue.shared.resume()
         // Restored sessions: what was proven on their files before.
         DispatchQueue.main.asyncAfter(deadline: .now() + 4) {
             Proofs.shared.recall(self.workspaces.compactMap(\.context.checkout))
@@ -811,6 +812,7 @@ final class Store: ObservableObject {
         let prompt = spec.prompt.trimmingCharacters(in: .whitespacesAndNewlines)
         // Claude takes the conversation id from us: resumable from the start.
         let conversation = spec.agent == .claude ? UUID().uuidString.lowercased() : nil
+        let skipPermissions = spec.skipPermissions ?? skipPermissions
         let session = TerminalSession(
             directory: spec.directory,
             command: spec.agent.map {
@@ -828,8 +830,12 @@ final class Store: ObservableObject {
         session.variantGroup = spec.variantGroup
         if spec.agent != nil { session.agent = .idle }
         let workspace = makeWorkspace(directory: spec.directory, in: window, session: session)
-        window.select(workspace)
-        window.bringToFront()
+        if spec.background {
+            BackgroundStart.start(session)
+        } else {
+            window.select(workspace)
+            window.bringToFront()
+        }
         guard let branch = spec.branch else { return }
 
         #if DEBUG

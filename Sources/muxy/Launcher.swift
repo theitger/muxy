@@ -14,6 +14,10 @@ struct SessionSpec {
     var issue: Issue?
     /// Started together with other agents on the same task (fan-out).
     var variantGroup: String?
+    /// Overrides the setting (the queue runs without permission prompts).
+    var skipPermissions: Bool?
+    /// Started without taking the stage or the window's focus.
+    var background = false
 }
 
 extension SessionSpec {

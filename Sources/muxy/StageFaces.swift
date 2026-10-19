@@ -215,18 +215,21 @@ struct WingCardFace: View {
                     .font(.system(size: 13, weight: onStage ? .semibold : .medium))
                     .foregroundStyle(onStage ? Theme.textPrimary : Theme.textBody)
                     .lineLimit(1)
-                if face.showsResult, let result = face.result {
-                    ResultLine(face: result)
-                } else {
-                    Text(face.activity)
-                        .font(.system(size: 11))
-                        .foregroundStyle(tone)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
+                // What muxy knows first, then the agent's own line.
+                HStack(spacing: 5) {
+                    FaceSignals(face: face)
+                    if face.showsResult, let result = face.result {
+                        ResultLine(face: result)
+                    } else {
+                        Text(face.activity)
+                            .font(.system(size: 11))
+                            .foregroundStyle(tone)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
                 }
             }
             Spacer(minLength: 4)
-            FaceSignals(face: face)
             PRBadge(pr: face.pr, status: face.prStatus)
         }
         .padding(.horizontal, 8)
@@ -389,38 +392,42 @@ struct TitleBarButton: View {
     }
 }
 
-/// A card's quiet icons for what muxy knows beyond the agent: its checks,
-/// collisions, quorum, landing. Each says more on hover.
+/// A card's quiet words for what muxy knows beyond the agent: landing,
+/// collisions, quorum, its checks, in their state's color. Each says more
+/// on hover.
 struct FaceSignals: View {
     let face: WingFace
 
     var body: some View {
-        HStack(spacing: 5) {
+        HStack(spacing: 6) {
             if face.landing != nil {
-                icon("airplane", Theme.blue.strong, face.landing ?? "")
+                word(L("lands"), Theme.blue.strong, face.landing ?? "")
             }
             if !face.collisions.isEmpty {
-                icon("arrow.triangle.merge", Theme.orange.strong, L("Collides with %@", face.collisions.joined(separator: ", ")))
+                word(L("collides"), Theme.orange.strong, L("Collides with %@", face.collisions.joined(separator: ", ")))
             }
             if face.quorumRunning {
-                icon("person.3.fill", Theme.blue.strong, face.quorum ?? "")
+                word("quorum", Theme.blue.strong, face.quorum ?? "")
             } else if let quorum = face.quorum {
-                icon("person.3.fill", Theme.textDim, quorum)
+                word("quorum", Theme.textDim, quorum)
             }
             if face.proving {
-                icon("shield", Theme.blue.strong, L("muxy runs the checks"))
+                word(L("checks"), Theme.blue.strong, L("muxy runs the checks"))
             } else if let proof = face.proof {
                 switch proof {
-                case .passed: icon("checkmark.shield.fill", Theme.greenTone.strong, L("muxy's checks pass"))
-                case .failed: icon("xmark.shield.fill", Theme.redTone.strong, L("muxy's checks fail"))
+                case .passed: word(L("checks"), Theme.greenTone.strong, L("muxy's checks pass"))
+                case .failed: word(L("checks"), Theme.redTone.strong, L("muxy's checks fail"))
                 default: EmptyView()
                 }
             }
         }
     }
 
-    private func icon(_ symbol: String, _ tone: Color, _ help: String) -> some View {
-        Icon(symbol, size: 9.5)
+    private func word(_ text: String, _ tone: Color, _ help: String) -> some View {
+        Text(text)
+            .font(.system(size: 11, weight: .semibold))
+            .lineLimit(1)
+            .fixedSize()
             .foregroundStyle(tone)
             .help(help)
             .accessibilityLabel(help)
