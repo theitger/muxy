@@ -183,7 +183,7 @@ struct OnboardingView: View {
                 .foregroundStyle(Theme.bg)
                 .padding(.horizontal, 14)
                 .frame(height: 32)
-                .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Theme.textPrimary))
+                .background(RoundedRectangle(cornerRadius: 5, style: .continuous).fill(Theme.textPrimary))
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -406,7 +406,7 @@ private struct HooksStep: View {
             .padding(12)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(
-                RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Theme.textPrimary.opacity(0.04))
+                RoundedRectangle(cornerRadius: 5, style: .continuous).fill(Theme.textPrimary.opacity(0.04))
             )
 
             if setup.checked {
@@ -521,11 +521,11 @@ private struct OnboardingRow<Content: View>: View {
             .padding(.horizontal, 12)
             .frame(height: 38)
             .background(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                RoundedRectangle(cornerRadius: 5, style: .continuous)
                     .fill(selected ? Theme.fillActive : (hovered ? Theme.fillHover : .clear))
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                RoundedRectangle(cornerRadius: 5, style: .continuous)
                     .strokeBorder(selected ? Theme.textPrimary.opacity(0.3) : Theme.hairline, lineWidth: 1)
             )
             .contentShape(Rectangle())

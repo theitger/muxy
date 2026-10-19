@@ -176,7 +176,7 @@ final class Landing: ObservableObject {
             if result.verdict == .failed, let session = self.agent(of: workspace) {
                 guard self.mayAsk(workspace) else { return }
                 Proofs.sendFailures(result, to: session)
-                self.steps[workspace.id] = .waitingForAgent(L("The agent fixes %d failed checks", result.failed.count))
+                self.steps[workspace.id] = .waitingForAgent(L("The agent fixes the failed checks"))
                 return
             }
             if result.verdict == .cancelled {

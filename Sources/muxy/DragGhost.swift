@@ -100,12 +100,12 @@ enum DragGhost {
             .padding(.horizontal, 8)
             .frame(height: 44)
             .background(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                RoundedRectangle(cornerRadius: 4, style: .continuous)
                     .fill(Theme.surface)
                     .shadow(color: .black.opacity(0.16), radius: 10, y: 4)
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                RoundedRectangle(cornerRadius: 4, style: .continuous)
                     .strokeBorder(Theme.hairline, lineWidth: 0.5)
             )
         }
@@ -131,7 +131,7 @@ enum DragGhost {
                             .lineLimit(1)
                     }
                     .padding(5)
-                    .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(Theme.fillActive))
+                    .background(RoundedRectangle(cornerRadius: 4, style: .continuous).fill(Theme.fillActive))
                     Spacer()
                 }
                 .padding(10)
@@ -156,7 +156,7 @@ enum DragGhost {
                 RoundedRectangle(cornerRadius: 11, style: .continuous)
                     .strokeBorder(Theme.hairline, lineWidth: 0.5)
             )
-            .shadow(color: .black.opacity(0.22), radius: 14, y: 6)
+            .shadow(color: .black.opacity(0.14), radius: 8, y: 3)
             .opacity(0.96)
         }
     }

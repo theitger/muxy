@@ -12,12 +12,7 @@ struct WingsView: View {
             LazyVStack(alignment: .leading, spacing: 14) {
                 ForEach(window.groups) { group in
                     VStack(alignment: .leading, spacing: store.detailedWings ? 9 : 2) {
-                        Text(group.name)
-                            .font(.system(size: 10.5, weight: .semibold))
-                            .tracking(0.9)
-                            .textCase(.uppercase)
-                            .foregroundStyle(Theme.textFaint)
-                            .lineLimit(1)
+                        SectionLabel(group.name)
                             .padding(.horizontal, 10)
                             .frame(height: 20, alignment: .center)
                         ForEach(group.workspaces) { workspace in

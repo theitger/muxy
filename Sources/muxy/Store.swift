@@ -58,6 +58,10 @@ final class Store: ObservableObject {
         QuorumWatch.shared.start()
         Radar.shared.start()
         HubModel.shared.start()
+        // Restored sessions: what was proven on their files before.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 4) {
+            Proofs.shared.recall(self.workspaces.compactMap(\.context.checkout))
+        }
         // PRs get opened and checks finish while you work — poll gently.
         prTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.refreshPullRequests() }
@@ -886,8 +890,10 @@ final class Store: ObservableObject {
     /// follows a few seconds later.
     private func nameBranch(of session: TerminalSession, placeholder: String, task: String, agent: AgentKind?) {
         let directory = session.cwd
+        // Variants of one task keep their agent in the name, side by side.
+        let suffix = session.variantGroup != nil ? agent.map { "-" + $0.rawValue } ?? "" : ""
         Task.detached(priority: .utility) {
-            let wanted = BranchNamer.suggest(for: task, agent: agent, in: directory)
+            let wanted = BranchNamer.suggest(for: task, agent: agent, in: directory).map { $0 + suffix }
             let renamed = wanted.flatMap { BranchNamer.rename(in: directory, from: placeholder, to: $0) }
             #if DEBUG
             if let path = ProcessInfo.processInfo.environment["MUXY_DEBUG_TIMING"],

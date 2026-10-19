@@ -98,6 +98,16 @@ enum Theme {
         }))
     }
 
+    /// Small labels, counts and states: the terminal's font, so the chrome
+    /// reads like the tool it frames.
+    static func label(size: CGFloat = 10.5, weight: NSFont.Weight = .medium) -> Font {
+        if hasTerminalFont, let family = GhosttyColors.fontFamily,
+           let font = NSFontManager.shared.font(withFamily: family, traits: [], weight: weight >= .semibold ? 9 : 5, size: size) {
+            return Font(font)
+        }
+        return .system(size: size, weight: Font.Weight(weight), design: .monospaced)
+    }
+
     /// Standard motion curve: fast start, long soft landing.
     static let ease = Animation.timingCurve(0.32, 0.72, 0, 1, duration: 0.25)
 
@@ -243,5 +253,17 @@ enum GhosttyColors {
             return RGB(hexString: String(value))
         }
         return nil
+    }
+}
+
+extension Font.Weight {
+    init(_ weight: NSFont.Weight) {
+        switch weight {
+        case ..<NSFont.Weight.regular: self = .light
+        case ..<NSFont.Weight.medium: self = .regular
+        case ..<NSFont.Weight.semibold: self = .medium
+        case ..<NSFont.Weight.bold: self = .semibold
+        default: self = .bold
+        }
     }
 }

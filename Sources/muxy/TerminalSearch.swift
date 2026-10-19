@@ -161,12 +161,12 @@ private struct FindBar: View {
         }
         .padding(3)
         .background(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
+            RoundedRectangle(cornerRadius: 4, style: .continuous)
                 .fill(Theme.surface)
                 .shadow(color: .black.opacity(0.14), radius: 12, y: 4)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
+            RoundedRectangle(cornerRadius: 4, style: .continuous)
                 .strokeBorder(Theme.hairline, lineWidth: 0.5)
         )
         .onAppear { focused = true }

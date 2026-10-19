@@ -220,7 +220,7 @@ struct IssueAccessory: View {
                     .padding(.horizontal, 10)
                     .frame(height: 30)
                     .background(
-                        RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        RoundedRectangle(cornerRadius: 5, style: .continuous)
                             .fill(Theme.textPrimary.opacity(0.05))
                     )
                     .accessibilityElement(children: .combine)
@@ -259,7 +259,7 @@ struct IssueAccessory: View {
                         .padding(.horizontal, 10)
                         .frame(height: 26)
                         .background(
-                            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            RoundedRectangle(cornerRadius: 4, style: .continuous)
                                 .fill(field.highlight == index ? Theme.fillActive : .clear)
                         )
                         .contentShape(Rectangle())
@@ -270,7 +270,7 @@ struct IssueAccessory: View {
         }
         .padding(.vertical, 6)
         .background(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
+            RoundedRectangle(cornerRadius: 5, style: .continuous)
                 .strokeBorder(Theme.hairline, lineWidth: 1)
         )
     }

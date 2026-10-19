@@ -178,12 +178,14 @@ enum FanOut {
         }
     }
 
-    static func launch(prompt: String, root: String, agents: [AgentKind], in window: WindowModel) {
+    /// `branch`: the variants' common name (each gets its agent appended);
+    /// without one they are named after the task.
+    static func launch(prompt: String, root: String, agents: [AgentKind], branch: String? = nil, in window: WindowModel) {
         let group = UUID().uuidString
-        let slug = BranchNamer.placeholder()
+        let slug = branch ?? BranchNamer.placeholder()
         for agent in agents {
             var spec = SessionSpec(directory: root, agent: agent, prompt: prompt, worktree: true, branch: "\(slug)-\(agent.rawValue)")
-            spec.autoName = true
+            spec.autoName = branch == nil
             spec.variantGroup = group
             Store.shared.launch(spec, in: window)
         }

@@ -331,7 +331,7 @@ final class CommandCenter {
                     if let issueFound {
                         FanOut.launch(issue: issueFound, root: root, agents: AgentKind.allCases, in: window)
                     } else {
-                        FanOut.launch(prompt: prompt ?? "", root: root, agents: AgentKind.allCases, in: window)
+                        FanOut.launch(prompt: prompt ?? "", root: root, agents: AgentKind.allCases, branch: branch, in: window)
                     }
                     reply(Reply(ok: true, output: store.workspaces.suffix(AgentKind.allCases.count).map(\.id.uuidString).joined(separator: "\n")))
                     return

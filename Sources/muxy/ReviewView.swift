@@ -131,15 +131,15 @@ struct ReviewView: View {
             }
         }
         .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
+            RoundedRectangle(cornerRadius: 5, style: .continuous)
                 .fill(Theme.surface)
-                .shadow(color: .black.opacity(0.25), radius: 22, y: 8)
+                .shadow(color: .black.opacity(0.14), radius: 8, y: 3)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
+            RoundedRectangle(cornerRadius: 5, style: .continuous)
                 .strokeBorder(Theme.textPrimary.opacity(0.12), lineWidth: 1)
         )
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
         .onAppear {
             turns.refresh(model.checkout)
             model.load()
@@ -190,7 +190,7 @@ struct ReviewView: View {
                     .foregroundStyle(Theme.bg)
                     .padding(.horizontal, 12)
                     .frame(height: 28)
-                    .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(Theme.textPrimary))
+                    .background(RoundedRectangle(cornerRadius: 5, style: .continuous).fill(Theme.textPrimary))
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
@@ -280,7 +280,7 @@ private struct FileRow: View {
             .padding(.horizontal, 8)
             .frame(height: 38)
             .background(
-                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                RoundedRectangle(cornerRadius: 5, style: .continuous)
                     .fill(selected ? Theme.fillActive : (hovered ? Theme.fillHover : .clear))
             )
             .contentShape(Rectangle())
@@ -339,13 +339,18 @@ private struct FileDiffView: View {
             } else if file.lines.count > Self.limit {
                 placeholder(L("%d lines: too long to show here.", file.lines.count))
             } else {
-                ScrollView([.vertical, .horizontal]) {
-                    LazyVStack(alignment: .leading, spacing: 0) {
-                        ForEach(file.lines) { line in
-                            DiffLineRow(line: line, path: file.path, model: model)
+                // Top-left, rows as wide as the pane at least: long lines scroll.
+                GeometryReader { geometry in
+                    ScrollView([.vertical, .horizontal]) {
+                        LazyVStack(alignment: .leading, spacing: 0) {
+                            ForEach(file.lines) { line in
+                                DiffLineRow(line: line, path: file.path, model: model)
+                                    .frame(minWidth: geometry.size.width, alignment: .leading)
+                            }
                         }
+                        .padding(.bottom, 20)
+                        .frame(minWidth: geometry.size.width, minHeight: geometry.size.height, alignment: .topLeading)
                     }
-                    .padding(.bottom, 20)
                 }
             }
         }
@@ -464,7 +469,7 @@ private struct CommentCard: View {
         }
         .padding(.leading, 10)
         .padding(.vertical, 4)
-        .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Theme.blue.soft))
+        .background(RoundedRectangle(cornerRadius: 5, style: .continuous).fill(Theme.blue.soft))
         .padding(.leading, 80)
         .padding(.trailing, 12)
         .padding(.vertical, 4)
@@ -487,7 +492,7 @@ private struct CommentEditor: View {
                 .onSubmit { onSave(text) }
                 .padding(8)
                 .background(
-                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    RoundedRectangle(cornerRadius: 5, style: .continuous)
                         .strokeBorder(Theme.textPrimary.opacity(0.3), lineWidth: 1)
                 )
             HStack(spacing: 8) {

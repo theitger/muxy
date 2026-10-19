@@ -180,6 +180,25 @@ final class Proofs: ObservableObject {
         }
     }
 
+    /// Results from an earlier run on the same files (kept per tree on
+    /// disk): after a restart the cards know again what was proven.
+    func recall(_ checkouts: [String]) {
+        let missing = checkouts.filter { results[$0] == nil && running[$0] == nil }
+        guard !missing.isEmpty else { return }
+        Task.detached(priority: .utility) {
+            var found: [String: ProofResult] = [:]
+            for checkout in missing {
+                if let tree = WorkState.snapshot(of: checkout)?.tree, let result = Self.cached(tree: tree) {
+                    found[checkout] = result
+                }
+            }
+            let recalled = found
+            await MainActor.run {
+                for (checkout, result) in recalled where self.results[checkout] == nil { self.results[checkout] = result }
+            }
+        }
+    }
+
     func cancel(checkout: String) {
         runner.cancel(checkout)
     }
@@ -244,7 +263,7 @@ final class Proofs: ObservableObject {
 
     nonisolated private static func cachePath(_ tree: String) -> String { directory + "/\(tree).json" }
 
-    nonisolated private static func cached(tree: String) -> ProofResult? {
+    nonisolated static func cached(tree: String) -> ProofResult? {
         guard let data = FileManager.default.contents(atPath: cachePath(tree)) else { return nil }
         return try? JSONDecoder().decode(ProofResult.self, from: data)
     }

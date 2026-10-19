@@ -45,6 +45,7 @@ struct SettingsView: View {
         }
         .padding(20)
         .frame(width: 440)
+        .tint(Theme.textPrimary)
     }
 }
 

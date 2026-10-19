@@ -34,13 +34,7 @@ struct HubView: View {
 
     private var header: some View {
         HStack(spacing: 12) {
-            Picker("", selection: $page) {
-                Text(L("Board")).tag("board")
-                Text(L("Worktrees")).tag("worktrees")
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .fixedSize()
+            Segments(selection: $page, options: [("board", L("Board")), ("worktrees", L("Worktrees"))])
             .onChange(of: page) { if page == "worktrees" { inventory.scan() } }
             Spacer()
             account
@@ -83,7 +77,10 @@ struct HubView: View {
         let working = sessions.filter { column(of: $0) == .working }
         let review = sessions.filter { column(of: $0) == .review }
         let ready = sessions.filter { column(of: $0) == .ready }
-        return ScrollView(.horizontal) {
+        return GeometryReader { geometry in
+        // Four columns share the width; narrower than that, it scrolls.
+        let width = max(250, (geometry.size.width - 28 - 36) / 4)
+        ScrollView(.horizontal) {
             HStack(alignment: .top, spacing: 12) {
                 Column(title: L("For you"), count: openIssues.count + hub.reviews.count, symbol: "tray.full") {
                     ForEach(openIssues, id: \.self) { issue in
@@ -92,9 +89,7 @@ struct HubView: View {
                         }
                     }
                     if !hub.reviews.isEmpty {
-                        Text(L("Reviews for you"))
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundStyle(Theme.textMuted)
+                        SectionLabel(L("Reviews for you"))
                             .padding(.top, 6)
                         ForEach(hub.reviews) { request in
                             ReviewRequestCard(request: request, local: hub.checkout(of: request.repo)) {
@@ -117,9 +112,12 @@ struct HubView: View {
                     ForEach(ready) { SessionCard(workspace: $0, window: window) }
                 }
             }
+            .environment(\.columnWidth, width)
             .padding(14)
+            .frame(height: geometry.size.height)
         }
         .scrollIndicators(.never)
+        }
     }
 
     /// Assigned issues no session works on yet.
@@ -160,7 +158,19 @@ struct HubView: View {
 
 // MARK: Pieces
 
+private struct ColumnWidthKey: EnvironmentKey {
+    static let defaultValue: CGFloat = 300
+}
+
+extension EnvironmentValues {
+    var columnWidth: CGFloat {
+        get { self[ColumnWidthKey.self] }
+        set { self[ColumnWidthKey.self] = newValue }
+    }
+}
+
 private struct Column<Content: View>: View {
+    @Environment(\.columnWidth) private var width
     let title: String
     let count: Int
     let symbol: String
@@ -169,9 +179,9 @@ private struct Column<Content: View>: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 6) {
-                Image(systemName: symbol).font(.system(size: 11, weight: .semibold))
-                Text(title).font(.system(size: 12.5, weight: .semibold))
-                Text(String(count)).font(.system(size: 11.5)).monospacedDigit().foregroundStyle(Theme.textDim)
+                Image(systemName: symbol).font(.system(size: 10, weight: .semibold)).foregroundStyle(Theme.textDim)
+                SectionLabel(title, tone: Theme.textMuted)
+                Text(String(count)).font(Theme.label(size: 10.5)).foregroundStyle(Theme.textDim)
                 Spacer()
             }
             .foregroundStyle(Theme.textPrimary)
@@ -182,10 +192,11 @@ private struct Column<Content: View>: View {
             }
             .scrollIndicators(.never)
         }
-        .frame(width: 300)
+        .frame(width: width)
         .frame(maxHeight: .infinity, alignment: .top)
         .padding(10)
-        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Theme.textPrimary.opacity(0.035)))
+        .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(Theme.textPrimary.opacity(0.025)))
+        .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous).strokeBorder(Theme.hairline, lineWidth: 1))
     }
 }
 
@@ -197,12 +208,15 @@ private struct CardBackground: ViewModifier {
         content
             .padding(10)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Theme.surfaceActive))
+            .background(RoundedRectangle(cornerRadius: 4, style: .continuous).fill(Theme.surfaceActive))
             .overlay(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                RoundedRectangle(cornerRadius: 4, style: .continuous)
                     .strokeBorder(highlighted ? Theme.orange.strong.opacity(0.6) : Theme.hairline, lineWidth: 1)
             )
-            .shadow(color: .black.opacity(hovered ? 0.08 : 0), radius: 6, y: 2)
+            .overlay(
+                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                    .strokeBorder(Theme.textPrimary.opacity(hovered ? 0.22 : 0), lineWidth: 1)
+            )
             .onHover { hovered = $0 }
     }
 }
@@ -216,10 +230,8 @@ private struct IssueCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 7) {
             HStack(spacing: 6) {
-                Text(issue.repo.split(separator: "/").last.map(String.init) ?? issue.repo)
-                    .font(.system(size: 10.5, weight: .semibold)).tracking(0.5).textCase(.uppercase)
-                    .foregroundStyle(Theme.textFaint)
-                Text("#" + String(issue.number)).font(.system(size: 11, weight: .medium)).foregroundStyle(Theme.textDim)
+                SectionLabel(issue.repo.split(separator: "/").last.map(String.init) ?? issue.repo)
+                Text("#" + String(issue.number)).font(Theme.label(size: 10.5)).foregroundStyle(Theme.textDim)
                 Spacer()
                 Button {
                     if let url = URL(string: issue.url) { NSWorkspace.shared.open(url) }
@@ -339,7 +351,7 @@ private struct SessionCard: View {
                     }
                 }
                 if workspace.variantGroup != nil {
-                    SmallButton(title: L("Keep this one"), symbol: "star.fill") {
+                    SmallButton(title: L("Keep"), symbol: "star.fill") {
                         FanOut.confirmKeep(workspace)
                     }
                 }
@@ -369,7 +381,8 @@ struct Signals: View {
                 } else if let proof {
                     switch proof.verdict {
                     case .passed: Badge(text: L("proven"), tone: Theme.greenTone, symbol: "checkmark.shield.fill")
-                    case .failed: Badge(text: L("%d checks fail", proof.failed.count), tone: Theme.redTone, symbol: "xmark.shield.fill")
+                    case .failed: Badge(text: proof.failed.count == 1 ? L("1 check fails") : L("%d checks fail", proof.failed.count),
+                                        tone: Theme.redTone, symbol: "xmark.shield.fill")
                     default: EmptyView()
                     }
                 }
@@ -437,9 +450,7 @@ private struct WorktreesPage: View {
                 LazyVStack(alignment: .leading, spacing: 14) {
                     ForEach(Dictionary(grouping: list, by: \.root).keys.sorted(), id: \.self) { root in
                         VStack(alignment: .leading, spacing: 4) {
-                            Text((root as NSString).lastPathComponent)
-                                .font(.system(size: 10.5, weight: .semibold)).tracking(0.9).textCase(.uppercase)
-                                .foregroundStyle(Theme.textFaint)
+                            SectionLabel((root as NSString).lastPathComponent)
                             ForEach(list.filter { $0.root == root }.sorted(by: order)) { info in
                                 WorktreeRow(info: info, hasSession: inventory.hasSession(info),
                                             removing: inventory.removing.contains(info.path),
@@ -550,7 +561,7 @@ private struct WorktreeRow: View {
         }
         .padding(.horizontal, 10)
         .frame(height: 46)
-        .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(hovered ? Theme.fillHover : .clear))
+        .background(RoundedRectangle(cornerRadius: 5, style: .continuous).fill(hovered ? Theme.fillHover : .clear))
         .onHover { hovered = $0 }
     }
 

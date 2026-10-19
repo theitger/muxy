@@ -110,10 +110,10 @@ struct ContentView: View {
                     .padding(.horizontal, 14)
                     .frame(height: 32)
                     .background(
-                        Capsule().fill(Theme.surface)
+                        RoundedRectangle(cornerRadius: 4, style: .continuous).fill(Theme.surface)
                             .shadow(color: .black.opacity(0.12), radius: 12, y: 4)
                     )
-                    .overlay(Capsule().strokeBorder(Theme.hairline, lineWidth: 0.5))
+                    .overlay(RoundedRectangle(cornerRadius: 4, style: .continuous).strokeBorder(Theme.hairline, lineWidth: 0.5))
                     .padding(.bottom, 28)
                     .transition(.opacity.combined(with: .offset(y: 6)))
             }
@@ -124,11 +124,20 @@ struct ContentView: View {
         .animation(Theme.ease, value: window.showHub)
         .animation(.easeOut(duration: 0.2), value: window.attentionWorkspaces.map(\.id))
         .background(WindowConfigurator(model: window))
+        // Controls in ink, not the system accent: color means state here.
+        .tint(Theme.textPrimary)
         .ignoresSafeArea()
     }
 
     /// Wings out: a title bar across, the wings, the session in front as a card.
     private var stage: some View {
+        VStack(spacing: 0) {
+            stageLayout
+            StatusBar(store: store, window: window)
+        }
+    }
+
+    private var stageLayout: some View {
         StageLayout(wingsWidth: store.sidebarWidth) {
             StageTopBar(store: store, window: window)
         } wings: {
@@ -340,11 +349,11 @@ private struct EmptyState: View {
             }
             .padding(.horizontal, 16)
             .background(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                RoundedRectangle(cornerRadius: 5, style: .continuous)
                     .fill(Theme.surface.opacity(0.7))
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                RoundedRectangle(cornerRadius: 5, style: .continuous)
                     .strokeBorder(Theme.hairline, lineWidth: 0.5)
             )
             .frame(width: 360)
@@ -389,18 +398,18 @@ private struct HubButton: View {
                         .monospacedDigit()
                         .padding(.horizontal, 5)
                         .frame(height: 16)
-                        .background(Capsule().fill(Theme.textPrimary.opacity(0.08)))
+                        .background(RoundedRectangle(cornerRadius: 4, style: .continuous).fill(Theme.textPrimary.opacity(0.08)))
                 }
             }
             .foregroundStyle(window.showHub || hovered ? Theme.textPrimary : Theme.textBody)
             .padding(.horizontal, 10)
             .frame(height: 28)
             .background(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                RoundedRectangle(cornerRadius: 5, style: .continuous)
                     .fill(window.showHub ? Theme.fillActive : (hovered ? Theme.fillHover : .clear))
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                RoundedRectangle(cornerRadius: 5, style: .continuous)
                     .strokeBorder(Theme.hairline, lineWidth: 0.5)
             )
             .contentShape(Rectangle())

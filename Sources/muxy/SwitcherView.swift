@@ -66,12 +66,12 @@ struct SwitcherView: View {
         }
         .frame(width: 540)
         .background(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
+            RoundedRectangle(cornerRadius: 5, style: .continuous)
                 .fill(Theme.surface)
-                .shadow(color: .black.opacity(0.12), radius: 30, y: 16)
+                .shadow(color: .black.opacity(0.14), radius: 8, y: 3)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
+            RoundedRectangle(cornerRadius: 5, style: .continuous)
                 .strokeBorder(Theme.hairline, lineWidth: 0.5)
         )
         .onAppear { focused = true }
@@ -117,7 +117,7 @@ struct SwitcherView: View {
         .padding(.horizontal, 8)
         .frame(height: 38)
         .background(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
+            RoundedRectangle(cornerRadius: 5, style: .continuous)
                 .fill(index == highlighted ? Theme.fillActive : .clear)
         )
         .contentShape(Rectangle())

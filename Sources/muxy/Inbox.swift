@@ -255,7 +255,7 @@ private struct InboxRow: View {
                 .foregroundStyle(Theme.textDim)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(8)
-                .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(Theme.textPrimary.opacity(0.05)))
+                .background(RoundedRectangle(cornerRadius: 4, style: .continuous).fill(Theme.textPrimary.opacity(0.05)))
             }
             if !choices.isEmpty {
                 VStack(alignment: .leading, spacing: 4) {
@@ -276,7 +276,7 @@ private struct InboxRow: View {
                             }
                             .padding(.horizontal, 8)
                             .frame(height: 26)
-                            .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(Theme.fillHover))
+                            .background(RoundedRectangle(cornerRadius: 4, style: .continuous).fill(Theme.fillHover))
                             .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
@@ -293,7 +293,7 @@ private struct InboxRow: View {
                     .padding(.horizontal, 8)
                     .frame(height: 26)
                     .background(
-                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        RoundedRectangle(cornerRadius: 4, style: .continuous)
                             .strokeBorder(focused ? Theme.textPrimary.opacity(0.35) : Theme.hairline, lineWidth: 1)
                     )
                 IconButton(symbol: "arrow.up.circle.fill", help: L("Send (↩)"), action: send)
