@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <a href="#install"><b>Install</b></a>&nbsp;&nbsp;·&nbsp;&nbsp;<a href="https://github.com/theitger/muxy/releases/latest">Download</a>&nbsp;&nbsp;·&nbsp;&nbsp;<a href="#on-your-phone">On your phone</a>&nbsp;&nbsp;·&nbsp;&nbsp;<a href="#keys">Keys</a>
+  <a href="#install"><b>Install</b></a>&nbsp;&nbsp;·&nbsp;&nbsp;<a href="https://github.com/theitger/muxy/releases/latest">Download</a>&nbsp;&nbsp;·&nbsp;&nbsp;<a href="#on-your-phone">On your phone</a>&nbsp;&nbsp;·&nbsp;&nbsp;<a href="#keys">Keys</a>&nbsp;&nbsp;·&nbsp;&nbsp;<a href="#command-line">Command line</a>
   <br>
   <sub>macOS 14 or later&nbsp;&nbsp;·&nbsp;&nbsp;MIT licensed</sub>
 </p>
@@ -43,10 +43,31 @@ Running processes don't notice.
   <img src=".github/readme/signals-light.png" alt="Session tiles for working, needs you, done, your turn, failed and shell; PR badges from checks running to ready to merge">
 </picture>
 
-A Claude Code hook reports *working*, *done* and *needs you* for every tab.
-The session's tile changes, the Dock shows a count, and when Muxy is in
-the background a banner appears; click it and you're in that session. `⌘J`
-jumps to the next one waiting, from any window.
+A hook in Claude Code and in Codex reports *working*, *done* and *needs
+you* for every tab. The session's card changes, the Dock shows a count, and
+when Muxy is in the background a banner appears: answer it right there
+(a reply, or one of the choices the agent's prompt offers) or click it and
+you're in that session.
+
+The inbox (`⇧⌘J`, or the pill in the title bar) lists everything waiting on
+you across all windows: blocked agents first, then failed turns, then news,
+oldest first. Each row shows the last lines, the prompt's choices as
+buttons and a reply line, so you answer without leaving what you're in.
+`⌘J` walks the same list.
+
+## See what it came to, and try it
+
+When a turn ends, the session's **result** (`⌘I`) says in plain words what
+the agent did, whether tests ran and passed, how many files changed, and
+the PR with its CI checks. No diff to read.
+
+If the session runs a web server (its own dev server, or one in a container
+on the ports its worktree got), the card shows the port and **App :3000**
+above the terminal opens it beside the terminal; `⌥`-click opens the
+browser. Several servers: a menu, web pages first.
+
+Start from an issue: type `#123` (or its link) into `⌘N`. Muxy looks it up,
+names the branch after it and asks the agent to close it from the PR.
 
 The PR badge follows the CI checks and GitHub's merge state: blue while
 checks run, yellow when they failed and something in the session is
@@ -80,7 +101,12 @@ locks all phones out.
   Muxy dying, turns it off; below 20 % battery the Mac may sleep again.
 - **Built to stay fast.** Exactly one terminal surface per window is
   attached; background sessions keep their PTY but cost no rendering. No
-  animations while idle.
+  animations while idle. One `gh` call per repository keeps every PR badge
+  current, and polling pauses when GitHub rate-limits.
+- **Quick terminal.** Optional, in Settings: a shell drops down from the top
+  of the screen on a global key (`` ⌃` ``, `⌥Space` or `` ⌥⌘` ``), from any app.
+- **Find in the scrollback.** `⌘F`, then `⌘G` / `⇧⌘G`.
+- **Updates itself.** Checks once a day and asks before installing.
 - **English or German.** English by default; switch in Settings (`⌘,`).
 
 ## Install
@@ -96,14 +122,32 @@ clears the quarantine flag after installing; otherwise Gatekeeper would
 block the first launch as "unverified developer". Installing the zip by
 hand instead needs `xattr -dr com.apple.quarantine /Applications/Muxy.app`.
 
+**Updates.** Muxy checks for a new version once a day and asks before it
+installs; *Muxy → Check for Updates…* checks right away, Settings turns the
+daily check off. Updates come from this repository's releases and are
+verified with an EdDSA signature ([Sparkle](https://sparkle-project.org)).
+Muxy 0.4.0 and earlier can't update themselves: `brew upgrade --cask muxy`
+once.
+
 <details>
 <summary><b>Build from source</b></summary>
 <br>
 
 ```sh
 git clone https://github.com/theitger/muxy && cd muxy
-./Scripts/make-app.sh   # fetches the pinned GhosttyKit binary, builds ~/Applications/Muxy.app
+./Scripts/make-app.sh   # fetches the pinned GhosttyKit and Sparkle binaries, builds ~/Applications/Muxy.app
 ```
+
+For a bare `swift build`, run `./Scripts/fetch-ghostty.sh` and
+`./Scripts/fetch-sparkle.sh` once. `MUXY_APP_DIR` builds the app elsewhere.
+
+**Releasing:** `./Scripts/setup-updates.sh` once (creates the update
+signing key in your keychain), then bump the version and build number in
+`Packaging/Info.plist` and run `./Scripts/make-release.sh`; upload both
+`dist/Muxy-<version>.zip` and `dist/appcast.xml` to the GitHub release.
+With `MUXY_SIGN_IDENTITY` (a Developer ID Application identity) and
+`MUXY_NOTARY_PROFILE` (from `xcrun notarytool store-credentials`) the app
+is signed with the hardened runtime and notarized.
 
 Requires macOS 14+, Xcode 15+ command line tools. If Ghostty.app is
 installed, its shell integration and terminfo are bundled into Muxy.
@@ -112,31 +156,133 @@ installed, its shell integration and terminfo are bundled into Muxy.
 
 ## Setup
 
-1. **Agent status:** `./Scripts/install-claude-hook.sh` adds
-   UserPromptSubmit/PreToolUse/Notification/Stop/StopFailure hooks to your
-   Claude Code settings. They are a no-op outside Muxy and leave other
-   hooks untouched; rerun it after updating Muxy.
-2. **`muxy` on your PATH** (optional):
-   `ln -s "$PWD/Scripts/muxy" ~/.local/bin/muxy`, then `muxy .` opens a
-   session in the current directory. Folders dropped on the Dock icon do the
-   same.
+1. **Agent status:** the first launch walks you through it (again any
+   time from Settings or the Help menu). Muxy copies its hook to
+   `~/.local/share/muxy/agent-hook.sh` and adds it to Claude Code's
+   `settings.json` and Codex's `hooks.json`, leaving everything else in
+   them untouched, and keeps it current after updates. The hook is a no-op
+   outside Muxy. Codex runs a new hook only once you trust it: type
+   `/hooks` in codex once. The hooks also tell Muxy each conversation's id,
+   so sessions come back after a restart. Without the app:
+   `./Scripts/install-claude-hook.sh` and `./Scripts/install-codex-hook.sh`
+   do the same.
+2. **Worktrees** (optional): a `.wtconfig` in a repository tells Muxy how
+   a new worktree becomes ready to work in: ignored files to copy, ports
+   of its own, its own Compose project, a bootstrap command, a teardown.
+   See `Sources/muxy/Worktrees.swift`. Muxy keeps one such worktree ready
+   per repository, so a new session starts at once.
+3. **`muxy` on your PATH** (optional): Settings → Command line tool links
+   it into `~/.local/bin` (or, from a checkout,
+   `ln -s "$PWD/Scripts/muxy" ~/.local/bin/muxy`). Then `muxy .` opens a
+   session in the current directory; see [Command line](#command-line) for
+   the rest. Folders dropped on the Dock icon do the same.
 
 ## Keys
 
 | Key | Action |
 | --- | --- |
-| `⌘N` | new session (in home) |
+| `⌘N` | new session: task, repository, agent, own worktree |
+| `⌥⌘N` | new shell in home |
 | `⇧⌘N` | new window |
 | `⌘T` | new tab in the current tab's directory |
 | `⌘W` | close tab → the last tab closes the session → an empty window closes |
 | `⌘1…9` · `⌃Tab` | switch tab |
 | `⌃1…9` · `⌘⌥↑/↓` | switch session |
 | `⌘J` | next session that wants you (any window) |
+| `⇧⌘J` | inbox: everything waiting on you, answerable in place |
+| `⌘I` | the session's result |
+| `⌘F` · `⌘G` · `⇧⌘G` | find in the scrollback |
 | `⌘K` | search sessions |
 | `⌘B` | show/hide the sidebar (drag its edge to resize) |
 
 Closing a window ends its sessions (confirmed if something runs); `⌘Q`
 confirms too. Muxy keeps running without windows: click the Dock icon.
+
+## Command line
+
+`muxy` lets scripts, other tools and the agents themselves start sessions
+and report into them. Muxy knows nothing about who calls it.
+
+```sh
+muxy [dir]                     # a session in dir (default: here)
+muxy new [options] [prompt]    # like ⌘N; prints the new session's id
+muxy notify [--session <id>] [--title <t>] <message>
+muxy status [--json]           # every open session
+muxy focus <id>                # that session on stage, Muxy in front
+```
+
+- **`new`**: `--repo <dir>` (default: the current folder), `--agent
+  claude|codex|none`, `--worktree` / `--no-worktree`, `--branch <name>`,
+  `--issue <ref>`; the rest is the task (`-` reads it from stdin). What you
+  leave out follows the ⌘N panel's last choices. Starts Muxy if it isn't
+  running.
+- **`notify`**: the session's card lights up with the message, a toast
+  shows it, and a banner too while Muxy is in the background. Every Muxy
+  terminal has `MUXY_SESSION`, so an agent or a script running in one just
+  calls `muxy notify "ready for review"`. Outside a session it's a plain
+  toast.
+- **ids**: a session's id from `muxy status`, or any of its tabs' ids
+  (`$MUXY_SESSION`); a unique start of either is enough.
+- **Exit status**: 0 done, 1 Muxy refused (the reason goes to stderr),
+  2 bad usage, 3 Muxy isn't running or didn't answer within
+  `MUXY_TIMEOUT` seconds (default 10).
+
+`muxy status --json` prints:
+
+```json
+{
+  "version": 1,
+  "sessions": [
+    {
+      "id": "7750688E-FB04-4CF0-9459-EDF42B5FD483",
+      "window": 1,
+      "onStage": true,
+      "title": "Fix the flaky login test",
+      "repo": "app",
+      "branch": "fix/login-flake",
+      "directory": "/Users/me/src/app/.worktrees/fix-login-flake",
+      "folder": "fix-login-flake",
+      "agent": "claude",
+      "state": "working",
+      "attention": false,
+      "notice": null,
+      "pr": {
+        "number": 12, "state": "open", "checks": "pending", "draft": false,
+        "mergeable": "unknown", "status": "running"
+      },
+      "tabs": [
+        { "id": "998D046D-7752-4D91-9E7B-A37AD8AA49C2", "agent": "claude",
+          "state": "working", "directory": "/Users/me/src/app/.worktrees/fix-login-flake",
+          "attention": false }
+      ]
+    }
+  ]
+}
+```
+
+| Key | Values |
+| --- | --- |
+| `window` | 1-based, in Muxy's window order |
+| `repo`, `branch`, `agent`, `notice`, `pr` | `null` when there is none |
+| `agent` | `claude`, `codex` |
+| `state` | `none`, `idle`, `working`, `blocked` (needs you), `failed` (API error) |
+| `attention` | something happened you haven't seen yet |
+| `notice` | the last `muxy notify` message, until you look |
+| `pr.state` | `open`, `merged`, `closed` |
+| `pr.checks` | `none`, `pending`, `failed`, `passed` |
+| `pr.mergeable` | `unknown`, `clean`, `conflicting`, `behind`, `reviewRequired`, `changesRequested`, `blocked` |
+| `pr.status` | the badge: `none`, `running`, `fixing`, `failed`, `conflicts`, `draft`, `waiting`, `ready`, `merged`, `closed` |
+
+Keys are only ever added; `version` goes up if one changes meaning.
+
+How it talks to Muxy: each request is a small JSON file renamed into
+`~/.local/state/muxy/commands`, and the answer comes back the same way in
+`replies`. Muxy only picks from these fixed actions and runs nothing a file
+says; files that aren't yours, are too big, malformed or older than 30
+seconds are dropped. A development build (`swift run`) listens in
+`~/.local/state/muxy-dev` instead and sets `MUXY_STATE_DIR` in its own
+terminals, so `muxy` there reaches it and everywhere else the installed
+app. Set `MUXY_STATE_DIR` yourself to run an instance on the side.
 
 ## Under the hood
 
@@ -158,7 +304,8 @@ MIT © Tristan Heitger. Muxy stands on
 [Ghostty](https://ghostty.org) by Mitchell Hashimoto (MIT) and
 [libghostty-spm](https://github.com/Lakr233/libghostty-spm) by
 [@Lakr233](https://github.com/Lakr233) (MIT, license included under
-`Vendor/`). Not affiliated with the Ghostty project.
+`Vendor/`), and updates itself with [Sparkle](https://sparkle-project.org)
+(MIT). Not affiliated with the Ghostty project.
 
 <br>
 

@@ -16,7 +16,7 @@ struct RemoteSettings: View {
                     Text(L("Phone"))
                         .font(.system(size: 13, weight: .medium))
                         .foregroundStyle(Theme.textBody)
-                    Text(L("Use Muxy from your phone — anywhere through a relay, or on the same Wi-Fi."))
+                    Text(L("Use Muxy from your phone: anywhere through a relay, or on the same Wi-Fi."))
                         .font(.system(size: 11.5))
                         .foregroundStyle(Theme.textDim)
                 }
@@ -31,7 +31,7 @@ struct RemoteSettings: View {
                 Text(L("Relay"))
                     .font(.system(size: 12))
                     .foregroundStyle(Theme.textMuted)
-                TextField(L("e.g. muxy.example.com — empty: Wi-Fi only"), text: $relay)
+                TextField(L("e.g. muxy.example.com (empty: Wi-Fi only)"), text: $relay)
                     .textFieldStyle(.roundedBorder)
                     .font(.system(size: 12))
                     .onSubmit { server.setRelayHost(relay); secretVersion += 1 }
@@ -44,7 +44,7 @@ struct RemoteSettings: View {
             if let state = server.relayState {
                 switch state {
                 case .connected:
-                    Text(L("Relay connected — reachable from anywhere."))
+                    Text(L("Relay connected, reachable from anywhere."))
                         .font(.system(size: 11.5)).foregroundStyle(Theme.green)
                 case .connecting:
                     Text(L("Connecting to the relay …"))

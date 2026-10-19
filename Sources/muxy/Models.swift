@@ -15,6 +15,73 @@ enum AgentState {
     case failed
 }
 
+/// Which coding agent runs in a tab.
+enum AgentKind: String, CaseIterable, Identifiable {
+    case claude
+    case codex
+
+    var id: String { rawValue }
+
+    var name: String {
+        switch self {
+        case .claude: "Claude"
+        case .codex: "Codex"
+        }
+    }
+
+    /// Recognised from the shell's title, which shell integration sets to
+    /// the running command line ("claude --resume", "codex").
+    init?(commandLine: String) {
+        let command = commandLine.lowercased().split(separator: " ").first.map(String.init) ?? ""
+        guard let kind = AgentKind(rawValue: (command as NSString).lastPathComponent) else { return nil }
+        self = kind
+    }
+
+    /// How an agent starts: a new conversation (with the prompt from
+    /// MUXY_PROMPT, under an id muxy chose when the agent takes one), or an
+    /// earlier one picked up again (the last one in that folder without id).
+    enum Start {
+        case new(prompt: Bool, id: String?)
+        case resume(id: String?)
+    }
+
+    /// The command line that starts it, run by your shell. The prompt
+    /// travels in MUXY_PROMPT: `"$MUXY_PROMPT"` reads the same in zsh, bash
+    /// and fish, so no quoting of the prompt itself can go wrong.
+    func command(_ start: Start, skipPermissions: Bool) -> String {
+        var parts = [rawValue]
+        #if DEBUG
+        // MUXY_DEBUG_AGENT=/path/to/fake: try launches without a real agent.
+        if let fake = ProcessInfo.processInfo.environment["MUXY_DEBUG_AGENT"] { parts = [fake] }
+        #endif
+        if case .resume = start, self == .codex { parts.append("resume") }
+        if skipPermissions {
+            switch self {
+            case .claude: parts.append("--dangerously-skip-permissions")
+            case .codex: parts.append("--dangerously-bypass-approvals-and-sandbox")
+            }
+        }
+        switch start {
+        case let .new(prompt, id):
+            if self == .claude, let id = id.flatMap(Self.safe) { parts += ["--session-id", id] }
+            if prompt { parts.append("\"$MUXY_PROMPT\"") }
+        case let .resume(id):
+            switch (self, id.flatMap(Self.safe)) {
+            case let (.claude, id?): parts += ["--resume", id]
+            case (.claude, nil): parts.append("--continue")
+            case let (.codex, id?): parts.append(id)
+            case (.codex, nil): parts.append("--last")
+            }
+        }
+        return parts.joined(separator: " ")
+    }
+
+    /// Ids go into a command line unquoted: only plain ones do.
+    private static func safe(_ id: String) -> String? {
+        id.range(of: "^[A-Za-z0-9._-]{1,128}$", options: .regularExpression) != nil ? id : nil
+    }
+}
+
 /// CI checks of a session's pull request, as GitHub reports them.
 enum Checks: Equatable {
     case none
@@ -57,17 +124,28 @@ enum PRStatus: Equatable {
     case waiting(Mergeability)
     /// Checks passed, not a draft, mergeable — ready.
     case ready
+    /// Merged: the work is in.
+    case merged
+    /// Closed without merging.
+    case closed
 }
 
 /// Where a session currently is, derived from its working directory.
 struct RepoContext: Equatable {
     /// Main repository name — shared by all its worktrees. nil outside git.
     var repo: String?
+    /// The main checkout's path (where worktrees branch from). nil outside git.
+    var root: String?
     /// Last path component of the working directory's checkout (or the
     /// directory itself outside git).
     var folder: String
+    /// The checkout's top folder (a worktree's own). nil outside git.
+    var checkout: String?
     var branch: String?
     var pr: Int?
+    var prState: Git.PullRequest.State = .open
+    /// The PR's head commit as GitHub has it.
+    var prHead: String?
     var checks: Checks = .none
     var isDraft = false
     var mergeability: Mergeability = .unknown

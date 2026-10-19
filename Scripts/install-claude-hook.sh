@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Adds muxy's agent hooks to Claude Code's settings. Idempotent: muxy's own
-# entries are replaced on every run (so updates reach existing installs),
-# everything else is left untouched. The hook is a no-op for claude
-# sessions running outside muxy.
+# Adds muxy's agent hooks to Claude Code's settings, as the app does from
+# Settings → Agents. Idempotent: muxy's own entries are replaced on every
+# run (so updates reach existing installs), everything else is left
+# untouched. The hook is a no-op for claude sessions running outside muxy.
 set -euo pipefail
 
 SETTINGS="$HOME/.claude/settings.json"
@@ -10,7 +10,14 @@ SETTINGS="$HOME/.claude/settings.json"
 if [ -L "$SETTINGS" ]; then
     SETTINGS="$(readlink -f "$SETTINGS")"
 fi
-HOOK="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/claude-hook.sh"
+# The same stable copy the app installs (Settings → Agents), so moving or
+# deleting this checkout never breaks the agent's settings.
+SOURCE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/agent-hook.sh"
+HOOK="$HOME/.local/share/muxy/agent-hook.sh"
+if [ "$SOURCE" != "$HOOK" ]; then
+    mkdir -p "$(dirname "$HOOK")"
+    cp "$SOURCE" "$HOOK.tmp" && chmod 755 "$HOOK.tmp" && mv "$HOOK.tmp" "$HOOK"
+fi
 
 python3 - "$SETTINGS" "$HOOK" <<'PY'
 import json, os, sys
@@ -24,6 +31,7 @@ hooks = data.setdefault("hooks", {})
 # (event, matcher, argument). Notification types not listed (auth_success,
 # agent_completed, quota_*, …) say nothing about whether Claude needs you.
 WANTED = [
+    ("SessionStart", None, "start"),
     ("UserPromptSubmit", None, "prompt"),
     ("PreToolUse", None, "tool"),
     ("Notification", "permission_prompt|elicitation_dialog|elicitation_url_dialog|agent_needs_input", "notify"),
@@ -37,12 +45,13 @@ for event in list(hooks):
     kept = []
     for entry in hooks[event]:
         entry["hooks"] = [h for h in entry.get("hooks", [])
-                          if "claude-hook.sh" not in h.get("command", "")]
+                          if "claude-hook.sh" not in h.get("command", "")
+                          and "agent-hook.sh" not in h.get("command", "")]
         if entry["hooks"]:
             kept.append(entry)
     hooks[event] = kept
 for event, matcher, arg in WANTED:
-    entry = {"hooks": [{"type": "command", "command": f"{hook} {arg}"}]}
+    entry = {"hooks": [{"type": "command", "command": f"{hook} {arg} claude"}]}
     if matcher:
         entry = {"matcher": matcher, **entry}
     hooks.setdefault(event, []).append(entry)

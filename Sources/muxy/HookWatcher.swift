@@ -1,8 +1,9 @@
 import Foundation
 
-/// Watches ~/.local/state/muxy/events for files written by the Claude Code
-/// hook (Scripts/claude-hook.sh). Each file is
-/// "<session-uuid> <agent> <event> [<transcript path>]".
+/// Watches ~/.local/state/muxy/events for files written by the agent hook
+/// (Scripts/agent-hook.sh, for Claude Code and Codex). Each file is
+/// "<muxy session> <agent> <event> <agent session id or -> [<transcript>]";
+/// older hooks wrote no agent session id.
 /// This is the deterministic "agent is working / done / needs input"
 /// channel — no bell heuristics involved.
 @MainActor
@@ -47,19 +48,38 @@ final class HookWatcher {
         }.sorted { $0.1 < $1.1 }
         for (url, date) in ordered {
             let content = (try? String(contentsOf: url, encoding: .utf8)) ?? ""
-            let parts = content.split(separator: " ", maxSplits: 3, omittingEmptySubsequences: false)
-                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            let transcript = parts.count > 3 && !parts[3].isEmpty ? parts[3] : nil
-            let handled = parts.first.flatMap { $0.isEmpty ? nil : $0 }.map {
-                store?.handleHookEvent(
-                    sessionUUID: $0, event: parts.count > 2 ? parts[2] : "stop", transcript: transcript
-                ) ?? false
-            } ?? false
+            let event = Self.parse(content)
+            let handled = event.map { store?.handleHookEvent($0) ?? false } ?? false
             // Another muxy instance may own the session — leave its events
             // to it; anything nobody picked up within a minute is litter.
             if handled || date.timeIntervalSinceNow < -60 {
                 try? FileManager.default.removeItem(at: url)
             }
         }
+    }
+
+    struct Event {
+        var session: String
+        var agent: String
+        var name: String
+        var agentSession: String?
+        var transcript: String?
+    }
+
+    static func parse(_ content: String) -> Event? {
+        var parts = content.split(separator: " ", maxSplits: 4, omittingEmptySubsequences: false)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+        guard let session = parts.first, !session.isEmpty else { return nil }
+        // Old format: the transcript path (spaces and all) came fourth.
+        if parts.count > 3, parts[3].hasPrefix("/") {
+            parts = Array(parts[0 ..< 3]) + ["-", parts[3...].joined(separator: " ")]
+        }
+        func field(_ index: Int) -> String? {
+            parts.count > index && !parts[index].isEmpty && parts[index] != "-" ? parts[index] : nil
+        }
+        return Event(
+            session: session, agent: field(1) ?? "claude", name: field(2) ?? "stop",
+            agentSession: field(3), transcript: field(4)
+        )
     }
 }

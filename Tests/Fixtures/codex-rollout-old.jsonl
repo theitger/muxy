@@ -1,0 +1,8 @@
+{"type":"session_meta","payload":{"id":"old","cli_version":"0.120.0"}}
+{"type":"event_msg","payload":{"type":"task_started","turn_id":"t1"}}
+{"type":"event_msg","payload":{"type":"user_message","message":"run the tests"}}
+{"type":"response_item","payload":{"type":"function_call","name":"exec_command","arguments":"{\"cmd\":\"python -m pytest -q\"}","call_id":"call_1"}}
+{"type":"event_msg","payload":{"type":"exec_command_end","call_id":"call_1","command":["/bin/zsh","-lc","python -m pytest -q"],"exit_code":0,"status":"completed"}}
+{"type":"response_item","payload":{"type":"function_call_output","call_id":"call_1","output":"Process exited with code 0\n3 passed"}}
+{"type":"event_msg","payload":{"type":"agent_message","message":"Running the tests now.","phase":"commentary"}}
+{"type":"event_msg","payload":{"type":"agent_message","message":"Done: all three tests pass.","phase":"final_answer"}}

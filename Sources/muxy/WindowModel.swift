@@ -13,17 +13,23 @@ final class WindowModel: ObservableObject, Identifiable {
             if oldValue, !showSwitcher { focusTerminal() }
         }
     }
+    /// ⌘N: the "what should happen?" panel.
+    @Published var showNewSession = false {
+        didSet {
+            if oldValue, !showNewSession { focusTerminal() }
+        }
+    }
 
     weak var nsWindow: NSWindow?
     /// A short message at the bottom of the window (e.g. "nobody waits").
     @Published private(set) var toast: String?
     private var toastToken = 0
 
-    func show(_ message: String) {
+    func show(_ message: String, seconds: Double = 1.6) {
         toastToken += 1
         let token = toastToken
         toast = message
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) { [weak self] in
+        DispatchQueue.main.asyncAfter(deadline: .now() + seconds) { [weak self] in
             guard let self, self.toastToken == token else { return }
             self.toast = nil
         }

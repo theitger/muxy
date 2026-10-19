@@ -40,7 +40,7 @@ enum Theme {
     static let red = dyn(light: 0xB3001B, dark: 0xE63946)
     static let dotIdle = dyn(light: 0xC4C4C0, dark: 0x3A3A3A)
     static let claude = dyn(light: 0xBE5A38, dark: 0xD97757)
-    static let codex = dyn(light: 0x0E8A6D, dark: 0x19B98B)
+    static let codex = dyn(light: 0x4A55E0, dark: 0x8E9BFF)
 
     // Status tones: a soft tint for backgrounds, a strong shade for
     // text and icons on it.
@@ -54,12 +54,49 @@ enum Theme {
     static let yellow = tone(soft: 0xFEF7DC, strong: 0x8A6100, base: 0xF2B705, darkStrong: 0xF5CF5B)
     static let orange = tone(soft: 0xFFF3E5, strong: 0x9B5609, base: 0xF78C10, darkStrong: 0xFFB45C)
     static let redTone = tone(soft: 0xFEF2F2, strong: 0xB91C1C, base: 0xDC2626, darkStrong: 0xF87171)
+    static let purple = tone(soft: 0xF4EEFD, strong: 0x6B3FB8, base: 0x8957E5, darkStrong: 0xC2A5F5)
     static let neutral = Tone(soft: textPrimary.opacity(0.06), strong: textMuted)
 
     /// Hover / selection fills — ink at low opacity works on any theme.
     static let fillHover = textPrimary.opacity(0.04)
     static let fillActive = textPrimary.opacity(0.075)
     static let hairline = textPrimary.opacity(0.09)
+
+    /// The color an agent state speaks in.
+    static func tone(for agent: AgentState) -> Tone {
+        switch agent {
+        case .blocked: orange
+        case .failed: redTone
+        case .working: blue
+        case .idle: greenTone
+        case .none: neutral
+        }
+    }
+
+    /// The terminal's own font (Ghostty's `font-family`), for text that
+    /// quotes the terminal; the system monospace when it isn't installed.
+    static func mono(size: CGFloat) -> Font {
+        if hasTerminalFont, let family = GhosttyColors.fontFamily,
+           let font = NSFontManager.shared.font(withFamily: family, traits: [], weight: 5, size: size) {
+            return Font(font)
+        }
+        return .system(size: size, design: .monospaced)
+    }
+
+    /// Your Ghostty font is installed: it has the prompt's icons (Nerd Font
+    /// glyphs and the like).
+    static let hasTerminalFont: Bool = GhosttyColors.fontFamily.map {
+        NSFontManager.shared.font(withFamily: $0, traits: [], weight: 5, size: 12) != nil
+    } ?? false
+
+    /// A screen line for the cards: without your font, icons from the
+    /// private use area would show as boxes, so they go.
+    static func displayable(_ line: String) -> String {
+        guard !hasTerminalFont else { return line }
+        return String(String.UnicodeScalarView(line.unicodeScalars.filter { scalar in
+            !(0xE000 ... 0xF8FF).contains(scalar.value) && scalar.value < 0xF0000
+        }))
+    }
 
     /// Standard motion curve: fast start, long soft landing.
     static let ease = Animation.timingCurve(0.32, 0.72, 0, 1, duration: 0.25)
@@ -178,6 +215,22 @@ enum GhosttyColors {
         }
         return pair
     }
+
+    /// The first `font-family` of the user's ghostty config.
+    static let fontFamily: String? = {
+        let path = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".config/ghostty/config").path
+        guard let content = try? String(contentsOfFile: path, encoding: .utf8) else { return nil }
+        for rawLine in content.split(separator: "\n") {
+            let line = rawLine.trimmingCharacters(in: .whitespaces)
+            guard line.hasPrefix("font-family"),
+                  let value = line.split(separator: "=", maxSplits: 1).last
+            else { continue }
+            let name = value.trimmingCharacters(in: .whitespaces).trimmingCharacters(in: CharacterSet(charactersIn: "\""))
+            return name.isEmpty ? nil : name
+        }
+        return nil
+    }()
 
     private static func background(theme name: String, in config: URL) -> RGB? {
         let file = config.appendingPathComponent("themes/\(name.trimmingCharacters(in: .whitespaces))")

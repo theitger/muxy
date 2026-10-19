@@ -1,11 +1,17 @@
 import AppKit
 import IOKit.ps
+import IOKit.pwr_mgt
 
-/// Keeps the Mac running while Muxy runs — lid closed, on battery, no
-/// external display — so agents keep working and the phone keeps reaching
-/// them. An idle-sleep assertion can't do that; only the system-wide
-/// `pmset disablesleep` can, and it needs root. A one-time setup lets
-/// Muxy run exactly `pmset -a disablesleep 1|0` without a password.
+/// Keeps the Mac running while Muxy runs, so agents keep working and the
+/// phone keeps reaching them. Two strengths:
+///
+/// - `open`: like `caffeinate -i`, an idle-sleep assertion. The Mac stays
+///   up while open (the display may go dark); closing the lid still sleeps
+///   it. No password, and the system drops the assertion with Muxy.
+/// - `lidClosed`: also with the lid closed, on battery, no external
+///   display. Only the system-wide `pmset disablesleep` can do that, and it
+///   needs root: a one-time setup lets Muxy run exactly
+///   `pmset -a disablesleep 1|0` without a password.
 ///
 /// That switch survives anything, so Muxy guards it:
 /// - quitting Muxy turns it off,
@@ -14,6 +20,14 @@ import IOKit.ps
 @MainActor
 final class StayAwake: ObservableObject {
     static let shared = StayAwake()
+
+    enum Mode: String, CaseIterable, Identifiable {
+        case off, open, lidClosed
+        var id: String { rawValue }
+    }
+
+    static let modeKey = "stayAwakeMode"
+    /// Before there were modes: on meant lid closed.
     static let enabledKey = "stayAwake"
     /// Muxy switched sleep off and hasn't switched it back yet — survives a
     /// crash, so the next launch can clean up after it (and only after it).
@@ -23,7 +37,15 @@ final class StayAwake: ObservableObject {
     static let sudoersPath = "/etc/sudoers.d/muxy-stay-awake"
     private static let pmset = "/usr/bin/pmset"
 
-    @Published private(set) var enabled = UserDefaults.standard.bool(forKey: enabledKey)
+    @Published private(set) var mode: Mode = {
+        let defaults = UserDefaults.standard
+        if let saved = defaults.string(forKey: modeKey).flatMap(Mode.init) { return saved }
+        return defaults.bool(forKey: enabledKey) ? .lidClosed : .off
+    }()
+    var enabled: Bool { mode == .lidClosed }
+    /// The idle-sleep assertion of `open` is held.
+    @Published private(set) var caffeinated = false
+    private var assertion: IOPMAssertionID = 0
     /// Sleep is switched off right now.
     @Published private(set) var holding = false
     @Published private(set) var isSetUp = false
@@ -46,16 +68,19 @@ final class StayAwake: ObservableObject {
         apply()
     }
 
-    func setEnabled(_ on: Bool) {
-        enabled = on
-        UserDefaults.standard.set(on, forKey: Self.enabledKey)
-        if on, !isSetUp { setUp() }
+    func setMode(_ new: Mode) {
+        mode = new
+        problem = nil
+        UserDefaults.standard.set(new.rawValue, forKey: Self.modeKey)
+        UserDefaults.standard.set(new == .lidClosed, forKey: Self.enabledKey)
+        if new == .lidClosed, !isSetUp { setUp() }
         apply()
     }
 
-    /// Holds or releases according to the switch and the battery.
+    /// Holds or releases according to the mode and the battery.
     func apply() {
         lowBattery = Self.onBatteryBelowFloor()
+        defer { caffeinate(mode == .open && !lowBattery) }
         let want = enabled && isSetUp && !lowBattery
         if want, !holding {
             holding = Self.switchSleep(disabled: true)
@@ -71,7 +96,25 @@ final class StayAwake: ObservableObject {
         }
     }
 
+    /// `open`: the same assertion `caffeinate -i` takes.
+    private func caffeinate(_ on: Bool) {
+        if on, assertion == 0 {
+            let created = IOPMAssertionCreateWithName(
+                kIOPMAssertionTypePreventUserIdleSystemSleep as CFString,
+                IOPMAssertionLevel(kIOPMAssertionLevelOn),
+                "Muxy keeps the Mac awake for its sessions" as CFString,
+                &assertion
+            )
+            if created != kIOReturnSuccess { assertion = 0 }
+        } else if !on, assertion != 0 {
+            IOPMAssertionRelease(assertion)
+            assertion = 0
+        }
+        caffeinated = assertion != 0
+    }
+
     func release() {
+        caffeinate(false)
         guard holding else { return }
         if Self.switchSleep(disabled: false) {
             holding = false
@@ -116,7 +159,8 @@ final class StayAwake: ObservableObject {
             // -128: the password dialog was cancelled.
             problem = (error[NSAppleScript.errorNumber] as? Int) == -128
                 ? nil : L("Couldn't set up: %@", (error[NSAppleScript.errorMessage] as? String) ?? "?")
-            enabled = false
+            mode = .off
+            UserDefaults.standard.set(Mode.off.rawValue, forKey: Self.modeKey)
             UserDefaults.standard.set(false, forKey: Self.enabledKey)
         }
         isSetUp = Self.canSwitch()

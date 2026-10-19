@@ -1,13 +1,15 @@
-import { ChevronLeft, ChevronRight, Sparkle } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Ellipsis, MessageSquare, Sparkle, SquareTerminal } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { cn } from '@/lib/utils'
-import { PRBadge, SessionTile, prHelp } from '@/components/muxy'
-import type { Session } from '@/lib/protocol'
+import { BottomSheet } from '@/components/BottomSheet'
+import { Composer } from '@/components/Composer'
+import { Switch, status, toneText } from '@/components/muxy'
+import { agentName, type Session } from '@/lib/protocol'
 import type { Muxy } from '@/lib/useMuxy'
-import { ClaudeView } from './ClaudeView'
-import { TerminalView } from './TerminalView'
+import { ChatView } from './ChatView'
+import { TerminalView, store, stored } from './TerminalView'
 
-/** One session: Muxy's tab bar on top, the tab's own view below. */
+/** One session: a navigation bar, its tabs, and the tab as chat or terminal. */
 export function SessionScreen({
   session,
   muxy,
@@ -19,10 +21,14 @@ export function SessionScreen({
   urgentElsewhere: number
   onBack: () => void
 }) {
-  const [tabId, setTabId] = useState(() => (session.tabs.find((t) => t.agent !== 'none') ?? session.tabs[0])?.id)
-  const [history, setHistory] = useState(false)
+  const [tabId, setTabId] = useState(() => (session.tabs.find((t) => t.kind === 'agent') ?? session.tabs[0])?.id)
   const tab = session.tabs.find((t) => t.id === tabId) ?? session.tabs[0]
+  const [mode, setMode] = useState<'chat' | 'terminal'>(tab?.kind === 'agent' ? 'chat' : 'terminal')
+  const [history, setHistory] = useState(false)
+  const [wrap, setWrap] = useState(() => stored('muxy.wrap', '1') === '1')
+  const [options, setOptions] = useState(false)
   const { watch } = muxy
+  const items = tab ? muxy.chats[tab.id] : undefined
 
   // Tell Muxy which tab to stream; stop when leaving.
   useEffect(() => {
@@ -32,71 +38,132 @@ export function SessionScreen({
   }, [tab?.id, history, watch])
 
   if (!tab) return null
+  const st = status(session)
+  const who = agentName(tab.agentKind)
+  const showChat = tab.kind === 'agent' && mode === 'chat'
+  const type = (text: string, enter: boolean) => muxy.type(tab.id, text, enter)
+  const key = (k: string) => muxy.key(tab.id, k)
 
   return (
     <div className="flex h-full flex-col bg-bg">
-      <header className="border-b border-hair bg-surface px-2 pt-[calc(env(safe-area-inset-top,0px)+8px)] pb-2">
-        <div className="flex items-center gap-2">
-          <button type="button" onClick={onBack} className="flex h-10 items-center gap-0.5 rounded-lg pr-2 pl-1 text-[15px] text-t2 active:bg-active">
-            <ChevronLeft className="size-5" />
-            {urgentElsewhere > 0 && (
-              <span className="grid size-5 place-items-center rounded-full bg-tone-orange-soft text-[11px] font-semibold text-tone-orange tabular-nums">
-                {urgentElsewhere}
-              </span>
+      <header className="relative z-20 border-b border-hair bg-surface/85 pt-[env(safe-area-inset-top,0px)] backdrop-blur-xl backdrop-saturate-150">
+        <div className="grid h-11 grid-cols-[auto_1fr_auto] items-center gap-1 px-1.5">
+          <button type="button" onClick={onBack} aria-label="Zurück zu den Sessions" className="flex h-11 items-center pr-2 text-brand active:opacity-40">
+            <ChevronLeft className="size-[30px]" strokeWidth={2} />
+            {urgentElsewhere > 0 ? (
+              <span className="-ml-0.5 grid h-[20px] min-w-[20px] place-items-center rounded-full bg-tone-orange px-1.5 text-[12px] font-semibold text-white tabular-nums">{urgentElsewhere}</span>
+            ) : (
+              <span className="-ml-0.5 text-[17px]">Sessions</span>
             )}
           </button>
-          <SessionTile agent={session.agent} attention={false} isGit={session.isGit} size={30} />
-          <div className="min-w-0 flex-1">
-            <div className="truncate text-[15px] font-semibold text-t1">{session.title}</div>
-            <div className="truncate text-[12px] text-t4">{session.pr ? prHelp(session.pr.status) : session.subtitle}</div>
+          <div className="min-w-0 text-center">
+            <div className="truncate text-[16px] leading-tight font-semibold text-t1">{session.title}</div>
+            <div className={cn('truncate text-[12px] leading-tight', toneText[st.tone])}>{st.text}</div>
           </div>
-          {session.pr && <PRBadge number={session.pr.number} status={session.pr.status} />}
+          <div className="flex items-center justify-end">
+            {tab.kind === 'agent' && (
+              <button
+                type="button"
+                onClick={() => setMode(mode === 'chat' ? 'terminal' : 'chat')}
+                aria-label={mode === 'chat' ? 'Terminal zeigen' : 'Chat zeigen'}
+                className="grid size-11 place-items-center text-brand active:opacity-40"
+              >
+                {mode === 'chat' ? <SquareTerminal className="size-[22px]" strokeWidth={2} /> : <MessageSquare className="size-[22px]" strokeWidth={2} />}
+              </button>
+            )}
+            {!showChat && (
+              <button type="button" onClick={() => setOptions(true)} aria-label="Ansicht" className="grid size-11 place-items-center text-brand active:opacity-40">
+                <Ellipsis className="size-[22px]" strokeWidth={2.2} />
+              </button>
+            )}
+          </div>
         </div>
 
         {session.tabs.length > 1 && (
-          <nav className="mt-2 flex gap-1 overflow-x-auto px-1" aria-label="Tabs">
+          <nav className="no-scrollbar flex gap-1.5 overflow-x-auto px-3 pb-2" aria-label="Tabs">
             {session.tabs.map((t) => (
               <button
                 key={t.id}
                 type="button"
-                onClick={() => setTabId(t.id)}
+                onClick={() => {
+                  setTabId(t.id)
+                  setMode(t.kind === 'agent' ? 'chat' : 'terminal')
+                }}
                 aria-current={t.id === tab.id}
                 className={cn(
-                  'flex h-8 shrink-0 items-center gap-1.5 rounded-lg px-3 text-[13px] font-medium',
-                  t.id === tab.id ? 'bg-active text-t1' : 'text-t3 active:bg-hover',
+                  'flex h-[30px] shrink-0 items-center gap-1.5 rounded-full px-3 text-[14px] transition-colors duration-150',
+                  t.id === tab.id ? 'bg-t1 font-medium text-bg' : 'bg-active text-t2',
                 )}
               >
-                {t.kind === 'claude' ? <Sparkle className="size-3" strokeWidth={2.6} /> : <ChevronRight className="size-3" strokeWidth={2.6} />}
+                {t.kind === 'agent' ? <Sparkle className="size-3" strokeWidth={2.6} /> : <ChevronRight className="size-3" strokeWidth={2.6} />}
                 {t.title}
-                {t.attention && <span className="size-1.5 rounded-full bg-tone-orange" />}
+                {t.attention && t.id !== tab.id && <span className="size-1.5 rounded-full bg-tone-orange" />}
               </button>
             ))}
           </nav>
         )}
       </header>
 
-      {tab.kind === 'claude' ? (
-        <ClaudeView
-          key={tab.id}
-          tab={tab}
-          items={muxy.chats[tab.id]}
-          screen={muxy.screens[tab.id]}
-          history={history}
-          onHistory={setHistory}
-          onType={(text, enter) => muxy.type(tab.id, text, enter)}
-          onKey={(k) => muxy.key(tab.id, k)}
-        />
+      {showChat ? (
+        <>
+          <ChatView key={tab.id} session={session} tab={tab} items={items} onChoose={(n) => muxy.choose(tab.id, n)} />
+          <Composer
+            busy={tab.agent === 'working'}
+            onType={type}
+            onKey={key}
+            placeholder={
+              tab.agent === 'working'
+                ? 'Nachricht für danach'
+                : tab.agent === 'blocked'
+                  ? 'Oder schreib, was stattdessen'
+                  : tab.agent === 'failed'
+                    ? '„weiter“ startet die Runde neu'
+                    : `Antwort an ${who}`
+            }
+          />
+        </>
       ) : (
         <TerminalView
           key={tab.id}
-          commands={muxy.history}
           screen={muxy.screens[tab.id]}
-          history={history}
-          onHistory={setHistory}
-          onType={(text, enter) => muxy.type(tab.id, text, enter)}
-          onKey={(k) => muxy.key(tab.id, k)}
+          wrap={wrap}
+          busy={tab.agent === 'working'}
+          commands={tab.kind === 'shell' ? muxy.history : undefined}
+          onType={type}
+          onKey={key}
         />
       )}
+
+      <BottomSheet open={options} onClose={() => setOptions(false)} title="Ansicht" closeLabel="Fertig">
+        <div className="mx-4 mt-2 overflow-hidden rounded-[12px] bg-raised">
+          <Option label="Zeilen umbrechen" hint="Lange Zeilen passen auf den Bildschirm.">
+            <Switch
+              label="Zeilen umbrechen"
+              on={wrap}
+              onChange={(on) => {
+                setWrap(on)
+                store('muxy.wrap', on ? '1' : '0')
+              }}
+            />
+          </Option>
+          <Option label="Ganzer Verlauf" hint="Lädt auch, was oben aus dem Bild gelaufen ist." border>
+            <Switch label="Ganzer Verlauf" on={history} onChange={setHistory} />
+          </Option>
+        </div>
+        <p className="px-8 pt-2 text-[13px] text-t4">Mit zwei Fingern ziehen ändert die Schriftgröße.</p>
+      </BottomSheet>
+    </div>
+  )
+}
+
+function Option({ label, hint, border, children }: { label: string; hint: string; border?: boolean; children: React.ReactNode }) {
+  return (
+    <div className={cn('flex min-h-[56px] items-center gap-3 px-4 py-2', border && 'border-t border-hair')}>
+      <div className="min-w-0 flex-1">
+        <div className="text-[16px] text-t1">{label}</div>
+        <div className="text-[13px] text-t3">{hint}</div>
+      </div>
+      {children}
     </div>
   )
 }

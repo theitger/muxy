@@ -138,6 +138,22 @@ public protocol TerminalSurfaceScrollbarDelegate: TerminalSurfaceViewDelegate {
     func terminalDidUpdateScrollbar(_ scrollbar: TerminalScrollbar)
 }
 
+/// Ghostty's scrollback search (muxy patch). The host shows the search UI
+/// and drives it with the `search:<text>`, `navigate_search:next|previous`
+/// and `end_search` binding actions; Ghostty reports matches back here.
+@MainActor
+public protocol TerminalSurfaceSearchDelegate: TerminalSurfaceViewDelegate {
+    /// A keybinding asked for the search UI (`start_search`, or
+    /// `search_selection` with the selected text as `needle`).
+    func terminalDidStartSearch(needle: String?)
+    /// The search ended (`end_search`): hide the search UI.
+    func terminalDidEndSearch()
+    /// Number of matches; nil while unknown or when no search runs.
+    func terminalDidUpdateSearchTotal(_ total: Int?)
+    /// Zero-based index of the selected match; nil when none is selected.
+    func terminalDidUpdateSearchSelected(_ index: Int?)
+}
+
 /// User long-pressed to request a selection-page presentation.
 public struct TerminalTextSelectionRequest: Sendable {
     /// Viewport text snapshot. Lines separated by `\n`.

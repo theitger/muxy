@@ -4,7 +4,13 @@ import UserNotifications
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate {
     func applicationDidFinishLaunching(_: Notification) {
-        Notifier.requestPermission(delegate: self)
+        Notifier.setUp(delegate: self)
+        // On the first launch the setup asks, with a reason, instead.
+        if !Onboarding.isDue { Notifier.requestPermission() }
+        AgentSetup.shared.maintain()
+        Onboarding.showIfDue()
+        Updater.shared.start()
+        QuickTerminal.shared.start()
     }
 
     /// Like Ghostty with `quit-after-last-window-closed = false`: closing the
@@ -14,7 +20,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     }
 
     func applicationShouldTerminate(_: NSApplication) -> NSApplication.TerminateReply {
-        Store.shared.shouldQuit() ? .terminateNow : .terminateCancel
+        // "Install and Relaunch" already said yes, and sessions come back.
+        if Updater.shared.installing, Store.shared.restoreOnLaunch {
+            Store.shared.saveSessions()
+            return .terminateNow
+        }
+        return Store.shared.shouldQuit() ? .terminateNow : .terminateCancel
     }
 
     /// Banner click → that session.
@@ -24,9 +35,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         withCompletionHandler completion: @escaping () -> Void
     ) {
         let id = response.notification.request.content.userInfo["session"] as? String
+        let action = response.actionIdentifier
+        let text = (response as? UNTextInputNotificationResponse)?.userText
         Task { @MainActor in
-            if let id { Store.shared.focus(sessionID: id) }
-            completion()
+            defer { completion() }
+            guard let id else { return }
+            // Answered from the banner: the session gets it where it is.
+            if let session = Store.shared.session(id: id) {
+                if action == Notifier.replyAction, let text {
+                    Inbox.reply(text, to: session)
+                    return
+                }
+                // Only while that question is still on screen: a digit
+                // must never answer a newer one.
+                if action.hasPrefix(Notifier.choicePrefix), let number = Int(action.dropFirst(Notifier.choicePrefix.count)),
+                   let choice = Inbox.choices(of: session).first(where: { $0.number == number }) {
+                    Inbox.choose(choice, in: session)
+                    return
+                }
+            }
+            Store.shared.focus(sessionID: id)
         }
     }
 }
@@ -42,6 +70,19 @@ struct MuxyApp: App {
         // Standard menus (Edit, Window, …) follow the app's language, not the
         // system's — must be set before AppKit first resolves localizations.
         UserDefaults.standard.set([Language.current.rawValue], forKey: "AppleLanguages")
+
+        // Started from inside an agent's shell (`swift run`, a script),
+        // muxy would hand that agent's session markers to every tab, and
+        // agents there would think they run nested. muxy's tabs are new
+        // top-level terminals.
+        for name in ProcessInfo.processInfo.environment.keys
+            where name == "CLAUDECODE" || name == "CLAUDE_PID" || name.hasPrefix("CLAUDE_CODE_") {
+            unsetenv(name)
+        }
+        // Tabs run your login shell, not whatever SHELL muxy inherited (a
+        // zsh from the terminal or agent that started it): libghostty picks
+        // SHELL first.
+        setenv("SHELL", Paths.userShell, 1)
 
         // Never restore windows across launches.
         UserDefaults.standard.register(defaults: ["NSQuitAlwaysKeepsWindows": false])
@@ -75,9 +116,14 @@ struct MuxyApp: App {
         // Shortcuts are handled by the key monitor in Store (the Ghostty
         // surface swallows menu key equivalents); the menus list them.
         .commands {
+            CommandGroup(after: .appInfo) {
+                CheckForUpdatesButton()
+            }
             CommandGroup(replacing: .newItem) {
                 Button(L("New Session")) { store.newWorkspaceInFront() }
                     .keyboardShortcut("n", modifiers: .command)
+                Button(L("New Shell")) { store.newShellInFront() }
+                    .keyboardShortcut("n", modifiers: [.command, .option])
                 Button(L("New Window")) { store.newWindow() }
                     .keyboardShortcut("n", modifiers: [.command, .shift])
                 Button(L("New Tab")) { store.newTabInFront() }
@@ -86,11 +132,20 @@ struct MuxyApp: App {
                 Button(L("Close Tab")) { store.activeWindow?.closeCurrent() }
                     .keyboardShortcut("w", modifiers: .command)
             }
+            CommandGroup(after: .pasteboard) {
+                Divider()
+                Button(L("Find in Terminal…")) {
+                    store.activeWindow?.selectedWorkspace?.selectedSession?.startSearch()
+                }
+                .keyboardShortcut("f", modifiers: .command)
+            }
             CommandMenu(L("Sessions")) {
                 Button(L("Search…")) { store.activeWindow?.showSwitcher.toggle() }
                     .keyboardShortcut("k", modifiers: .command)
                 Button(L("Next one waiting")) { store.jumpToAttention() }
                     .keyboardShortcut("j", modifiers: .command)
+                Button(L("Inbox")) { store.toggleInbox() }
+                    .keyboardShortcut("j", modifiers: [.command, .shift])
                 Divider()
                 Button(L("Previous Session")) { store.activeWindow?.selectWorkspace(offset: -1) }
                     .keyboardShortcut(.upArrow, modifiers: [.command, .option])
@@ -103,6 +158,13 @@ struct MuxyApp: App {
                     store.toggleSidebar()
                 }
                 .keyboardShortcut("b", modifiers: .command)
+                Button(store.detailedWings ? L("Simple Sessions") : L("Detailed Sessions")) {
+                    store.toggleDetailedWings()
+                }
+                .keyboardShortcut("b", modifiers: [.command, .shift])
+            }
+            CommandGroup(after: .help) {
+                Button(L("Set Up muxy Again…")) { Onboarding.show() }
             }
         }
 

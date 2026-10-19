@@ -54,7 +54,11 @@ export function readHint(text: string | undefined): Hint {
 
 /** "2. Yes, and don't ask again" → "Yes, and don't ask again". */
 function tidy(label: string) {
-  return label.replace(/^\d[.)]\s+/, '').replace(/\s{2,}/g, ' ').trim()
+  return label
+    .replace(/^\d[.)]\s+/, '')
+    .replace(/\s*\((?:esc|[a-z])\)\s*$/, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim()
 }
 
 function questionAbove(lines: string[], from: number) {

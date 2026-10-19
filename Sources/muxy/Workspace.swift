@@ -51,9 +51,11 @@ final class Workspace: ObservableObject, Identifiable {
         primary?.cwd ?? Paths.home
     }
 
-    /// Claude's conversation title when there is one, else the folder.
+    /// The issue it works on until there is a PR, else Claude's
+    /// conversation title when there is one, else the folder.
     var title: String {
-        sessions.lazy.compactMap(\.agentTitle).first ?? context.shortFolder
+        if context.pr == nil, let issue = sessions.lazy.compactMap(\.issue).first { return issue.heading }
+        return sessions.lazy.compactMap(\.agentTitle).first ?? context.shortFolder
     }
 
     /// Branch in a git checkout, the parent path anywhere else.
@@ -71,6 +73,10 @@ final class Workspace: ObservableObject, Identifiable {
         sessions.contains { $0.needsAttention }
     }
 
+    var notice: String? {
+        sessions.lazy.compactMap(\.notice).first
+    }
+
     var agent: AgentState {
         let states = sessions.map(\.agent)
         if states.contains(.blocked) { return .blocked }
@@ -86,15 +92,52 @@ final class Workspace: ObservableObject, Identifiable {
         sessions.contains { $0.isBusy }
     }
 
+    /// Something is at work on this branch: here, or in another session on
+    /// the same branch (a review loop running in its own tab, say).
+    var isBeingFixed: Bool {
+        if isBusy { return true }
+        guard let repo = context.repo, let branch = context.branch else { return false }
+        return Store.shared.workspaces.contains {
+            $0 !== self && $0.context.repo == repo && $0.context.branch == branch && $0.isBusy
+        }
+    }
+
     /// Green only when GitHub would merge it now: checks passed, not a
     /// draft, no conflicts, nothing branch protection still wants.
     var prStatus: PRStatus {
-        if context.checks == .failed { return isBusy ? .fixing : .failed }
+        switch context.prState {
+        case .merged: return .merged
+        case .closed: return .closed
+        case .open: break
+        }
+        if context.checks == .failed { return isBeingFixed ? .fixing : .failed }
         if context.mergeability == .conflicting { return .conflicts }
         if context.checks == .pending { return .running }
         if context.isDraft { return .draft }
         guard context.checks == .passed else { return .none }
         return context.mergeability == .clean ? .ready : .waiting(context.mergeability)
+    }
+
+    /// The tab a card in the wings speaks for: the one blocked on you, else
+    /// an agent at work, else any agent, else the tab you last looked at.
+    var featured: TerminalSession? {
+        sessions.first { $0.agent == .blocked }
+            ?? sessions.first { $0.agent == .working }
+            ?? sessions.first { $0.agent != .none }
+            ?? selectedSession
+    }
+
+    /// One line under a card's title: what is happening right now.
+    var activity: String {
+        switch agent {
+        case .blocked: return L("Needs you")
+        case .failed: return L("Error")
+        // What `muxy notify` said, until you look.
+        case _ where notice != nil: return notice ?? ""
+        case .working: return featured?.snapshot?.activity ?? L("Working")
+        case .idle where needsAttention: return L("Done")
+        default: return subtitle
+        }
     }
 
     var searchText: String {

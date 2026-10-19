@@ -1,4 +1,264 @@
 #!/usr/bin/env bash
-# muxy [dir] — open a new muxy session in dir (default: here).
-# Link it onto your PATH: ln -s "$PWD/Scripts/muxy" ~/.local/bin/muxy
-exec open -a Muxy "$(cd "${1:-.}" && pwd)"
+# muxy: open folders in Muxy, start sessions in it, report into them.
+# Run `muxy help` for the commands. Talks to the running app through files
+# in its state folder (see Sources/muxy/CommandCenter.swift); needs nothing
+# beyond macOS itself (bash 3.2, plutil).
+# Link it onto your PATH: Settings → Command line tool, or
+#   ln -s "$PWD/Scripts/muxy" ~/.local/bin/muxy
+
+# Which muxy: the installed app, unless MUXY_STATE_DIR says otherwise (a
+# development build sets it in its own terminals).
+STATE="${MUXY_STATE_DIR:-$HOME/.local/state/muxy}"
+TIMEOUT="${MUXY_TIMEOUT:-10}"
+case "$TIMEOUT" in '' | *[!0-9]*) TIMEOUT=10 ;; esac
+
+die() { # die <exit code> <message>
+    printf 'muxy: %s\n' "$2" >&2
+    exit "$1"
+}
+
+usage_main() {
+    cat <<'EOF'
+Usage: muxy [dir]                 open a session in dir (default: here)
+       muxy new [options] [prompt...]
+       muxy notify [--session <id>] [--title <title>] <message...>
+       muxy status [--json]
+       muxy focus <id>
+       muxy <command> --help
+
+Exit status: 0 done, 1 muxy refused (the reason is printed), 2 bad usage,
+3 muxy isn't running or didn't answer.
+Environment: MUXY_STATE_DIR picks the muxy instance (default: the installed
+app), MUXY_TIMEOUT seconds to wait for an answer (default 10).
+EOF
+}
+
+usage_new() {
+    cat <<'EOF'
+Usage: muxy new [options] [prompt...]
+
+Starts a session like the New Session panel (Cmd-N) does and prints its id.
+Options not given use the panel's last choices.
+
+  --repo <dir>          where it starts (default: the current folder)
+  --agent <name>        claude, codex or none (a plain terminal)
+  --worktree            its own worktree on a new branch (in a repository)
+  --no-worktree         right in <dir>
+  --branch <name>       the new branch (default: named after the task)
+  --issue <ref>         work on this issue: 42, #42, owner/repo#42 or a URL
+  prompt...             the task for the agent; "-" reads it from stdin
+
+Examples:
+  muxy new "fix the flaky login test"
+  muxy new --repo ~/src/app --agent codex --issue 42
+  gh issue view 42 | muxy new --no-worktree -
+EOF
+}
+
+usage_notify() {
+    cat <<'EOF'
+Usage: muxy notify [--session <id>] [--title <title>] <message...>
+
+Marks a session as needing you: its card lights up with the message, a toast
+shows it, and a banner too when Muxy is in the background. The session
+defaults to the one this terminal runs in ($MUXY_SESSION); outside any
+session the message is a plain toast and banner.
+
+  --session <id>        a session or tab id from `muxy status` (a unique
+                        start of it is enough)
+  --title <title>       the heading (default: the session's title)
+
+Example (in an agent's own terminal):
+  muxy notify "PR #12 is green and ready to merge"
+EOF
+}
+
+usage_status() {
+    cat <<'EOF'
+Usage: muxy status [--json]
+
+Lists every open session: id, window, agent and its state, repository,
+branch and pull request. A "!" after the state means it wants you.
+--json prints the stable machine-readable form (see the README).
+EOF
+}
+
+usage_focus() {
+    cat <<'EOF'
+Usage: muxy focus <id>
+
+Brings the session on stage and Muxy to the front. <id> is a session or tab
+id from `muxy status` ($MUXY_SESSION works too); a unique start is enough.
+EOF
+}
+
+# The app's pid file names a live muxy process.
+running() {
+    local pid
+    pid="$(cat "$STATE/muxy.pid" 2>/dev/null)"
+    case "$pid" in '' | *[!0-9]*) return 1 ;; esac
+    kill -0 "$pid" 2>/dev/null || return 1
+    case "$(ps -p "$pid" -o comm= 2>/dev/null)" in *muxy) return 0 ;; esac
+    return 1
+}
+
+not_running() {
+    if [ -n "${MUXY_STATE_DIR:-}" ]; then
+        die 3 "no muxy is listening at $STATE (MUXY_STATE_DIR)"
+    fi
+    die 3 "Muxy isn't running (or is too old for this command)"
+}
+
+# request <command> [<key> <value>]... : sends one request, prints the
+# answer. Values travel as JSON strings, written by plutil: no quoting of
+# ours can go wrong.
+request() {
+    running || not_running
+    mkdir -p "$STATE/tmp" "$STATE/commands" 2>/dev/null
+    local id tmp reply ticks ok
+    id="$$-$RANDOM$RANDOM"
+    tmp="$STATE/tmp/request-$id"
+    printf '<?xml version="1.0" encoding="UTF-8"?>\n<plist version="1.0"><dict/></plist>\n' >"$tmp" ||
+        die 3 "can't write to $STATE/tmp"
+    plutil -insert command -string "$1" "$tmp" || die 3 "plutil failed"
+    shift
+    while [ $# -ge 2 ]; do
+        if [ -n "$2" ]; then
+            plutil -insert "$1" -string "$2" "$tmp" || die 3 "plutil failed on --$1"
+        fi
+        shift 2
+    done
+    plutil -convert json "$tmp" || die 3 "plutil failed"
+    # Renamed in whole: muxy never reads half a request.
+    mv "$tmp" "$STATE/commands/$id.json" || die 3 "can't write to $STATE/commands"
+    reply="$STATE/replies/$id.json"
+    ticks=0
+    while [ ! -f "$reply" ]; do
+        ticks=$((ticks + 1))
+        if [ $((ticks % 20)) -eq 0 ] && ! running; then
+            rm -f "$STATE/commands/$id.json"
+            not_running
+        fi
+        if [ "$ticks" -ge $((TIMEOUT * 20)) ]; then
+            # Not acted on later, behind your back.
+            rm -f "$STATE/commands/$id.json"
+            die 3 "Muxy didn't answer within ${TIMEOUT}s"
+        fi
+        sleep 0.05
+    done
+    ok="$(plutil -extract ok raw -o - "$reply" 2>/dev/null)"
+    if [ "$ok" = true ]; then
+        REPLY_TEXT="$(plutil -extract output raw -o - "$reply" 2>/dev/null)"
+        rm -f "$reply"
+        return 0
+    fi
+    REPLY_TEXT="$(plutil -extract error raw -o - "$reply" 2>/dev/null)"
+    rm -f "$reply"
+    die 1 "${REPLY_TEXT:-Muxy refused}"
+}
+
+# A missing option value is a usage error, not the next option.
+need() {
+    if [ $# -lt 2 ] || [ -z "$2" ]; then
+        die 2 "$1 needs a value (see muxy ${COMMAND} --help)"
+    fi
+}
+
+cmd_new() {
+    local repo="$PWD" agent="" worktree="" branch="" issue="" prompt=""
+    while [ $# -gt 0 ]; do
+        case "$1" in
+        -h | --help) usage_new; exit 0 ;;
+        --repo) need "$@"; repo="$2"; shift 2 ;;
+        --agent) need "$@"; agent="$2"; shift 2 ;;
+        --worktree) worktree=on; shift ;;
+        --no-worktree) worktree=off; shift ;;
+        --branch) need "$@"; branch="$2"; shift 2 ;;
+        --issue) need "$@"; issue="$2"; shift 2 ;;
+        --) shift; break ;;
+        -) break ;;
+        -*) die 2 "unknown option $1 (see muxy new --help)" ;;
+        *) break ;;
+        esac
+    done
+    case "$agent" in '' | claude | codex | none) ;; *) die 2 "--agent takes claude, codex or none" ;; esac
+    if [ "$*" = "-" ]; then
+        prompt="$(cat)"
+    else
+        prompt="$*"
+    fi
+    [ -d "$repo" ] || die 2 "no such folder: $repo"
+    repo="$(cd "$repo" && pwd)" || die 2 "can't open $repo"
+    if ! running && [ -z "${MUXY_STATE_DIR:-}" ]; then
+        # The installed app starts on demand; it listens once it is up.
+        open -a Muxy 2>/dev/null || die 3 "Muxy isn't installed (or not where Launch Services finds it)"
+        local waited=0
+        until running; do
+            waited=$((waited + 1))
+            [ "$waited" -ge 300 ] && die 3 "Muxy didn't start listening within 15s (too old for this command?)"
+            sleep 0.05
+        done
+    fi
+    request new repo "$repo" agent "$agent" worktree "$worktree" branch "$branch" issue "$issue" prompt "$prompt"
+    printf '%s\n' "$REPLY_TEXT"
+}
+
+cmd_notify() {
+    local session="${MUXY_SESSION:-}" implicit=1 title=""
+    while [ $# -gt 0 ]; do
+        case "$1" in
+        -h | --help) usage_notify; exit 0 ;;
+        --session) need "$@"; session="$2"; implicit=""; shift 2 ;;
+        --title) need "$@"; title="$2"; shift 2 ;;
+        --) shift; break ;;
+        -*) die 2 "unknown option $1 (see muxy notify --help)" ;;
+        *) break ;;
+        esac
+    done
+    [ -n "$*" ] || die 2 "notify needs a message (see muxy notify --help)"
+    [ -n "$session" ] || implicit=""
+    request notify session "$session" implicit "$implicit" title "$title" message "$*"
+}
+
+cmd_status() {
+    local format=table
+    while [ $# -gt 0 ]; do
+        case "$1" in
+        -h | --help) usage_status; exit 0 ;;
+        --json) format=json; shift ;;
+        *) die 2 "unknown argument $1 (see muxy status --help)" ;;
+        esac
+    done
+    request status format "$format"
+    printf '%s\n' "$REPLY_TEXT"
+}
+
+cmd_focus() {
+    case "${1:-}" in
+    -h | --help) usage_focus; exit 0 ;;
+    '' | -*) die 2 "focus needs a session id (see muxy focus --help)" ;;
+    esac
+    [ $# -eq 1 ] || die 2 "focus takes one session id"
+    request focus session "$1"
+}
+
+COMMAND="${1:-}"
+case "$COMMAND" in
+new | notify | status | focus)
+    shift
+    "cmd_$COMMAND" "$@"
+    ;;
+help | -h | --help)
+    usage_main
+    ;;
+-*)
+    usage_main >&2
+    exit 2
+    ;;
+*)
+    # muxy [dir]: what it always did.
+    [ $# -le 1 ] || die 2 "muxy takes one folder (see muxy help)"
+    dir="$(cd "${1:-.}" 2>/dev/null && pwd)" || die 2 "no such folder: $1"
+    exec open -a Muxy "$dir"
+    ;;
+esac

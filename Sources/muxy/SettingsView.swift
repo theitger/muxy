@@ -25,44 +25,117 @@ struct SettingsView: View {
                 .font(.system(size: 11.5))
                 .foregroundStyle(Theme.textDim)
             Divider().padding(.vertical, 6)
+            AgentSettings()
+            Divider().padding(.vertical, 6)
             StayAwakeSettings()
             Divider().padding(.vertical, 6)
+            QuickTerminalSettings()
+            Divider().padding(.vertical, 6)
             RemoteSettings()
+            Divider().padding(.vertical, 6)
+            CommandLineSettings()
+            if Updater.shared.available {
+                Divider().padding(.vertical, 6)
+                UpdateSettings()
+            }
+            Divider().padding(.vertical, 6)
+            Button(L("Set Up muxy Again…")) { Onboarding.show() }
         }
         .padding(20)
         .frame(width: 440)
     }
 }
 
-/// Settings → keep the Mac awake, lid closed included.
-private struct StayAwakeSettings: View {
+/// Settings → keep the Mac awake: not, while open (like caffeinate), or
+/// lid closed too. The same control in the setup.
+struct StayAwakeSettings: View {
     @ObservedObject private var awake = StayAwake.shared
+    var titleColor = Theme.textBody
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
+            Text(L("Keep the Mac awake"))
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(titleColor)
+            Picker(L("Keep the Mac awake"), selection: Binding(get: { awake.mode }, set: { awake.setMode($0) })) {
+                Text(L("Off")).tag(StayAwake.Mode.off)
+                Text(L("While open")).tag(StayAwake.Mode.open)
+                Text(L("Lid closed too")).tag(StayAwake.Mode.lidClosed)
+            }
+            .labelsHidden()
+            .pickerStyle(.segmented)
+            .frame(maxWidth: 340)
+            Text(explanation)
+                .font(.system(size: 11.5))
+                .foregroundStyle(Theme.textDim)
+                .fixedSize(horizontal: false, vertical: true)
+            if let problem = awake.problem {
+                Text(problem).font(.system(size: 11.5)).foregroundStyle(Theme.red)
+            } else if awake.mode != .off, awake.lowBattery {
+                Text(L("Paused: battery below %d %%, the Mac may sleep.", StayAwake.batteryFloor))
+                    .font(.system(size: 11.5)).foregroundStyle(Theme.textDim)
+            } else if awake.holding {
+                Text(L("On: the Mac won't sleep, lid closed included. Mind the heat in a bag."))
+                    .font(.system(size: 11.5)).foregroundStyle(Theme.green)
+            } else if awake.caffeinated {
+                Text(L("On: the Mac stays awake while it is open."))
+                    .font(.system(size: 11.5)).foregroundStyle(Theme.green)
+            }
+        }
+    }
+
+    private var explanation: String {
+        switch awake.mode {
+        case .off: L("The Mac sleeps as usual, and agents pause with it.")
+        case .open: L("Like caffeinate: no sleep while Muxy runs and the Mac is open. The display may still turn off. No password needed.")
+        case .lidClosed: L("While Muxy runs, even with the lid closed. Asks for your password once.")
+        }
+    }
+}
+
+/// Settings → how "New Session" starts agents, and whether they survive
+/// a restart.
+private struct AgentSettings: View {
+    @AppStorage("skipPermissions") private var skipPermissions = true
+    @AppStorage("restoreSessions") private var restoreSessions = true
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HookSettings()
+            skip
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(L("Keep the Mac awake"))
+                    Text(L("Restore sessions"))
                         .font(.system(size: 13, weight: .medium))
                         .foregroundStyle(Theme.textBody)
-                    Text(L("While Muxy runs, even with the lid closed. Asks for your password once."))
+                    Text(L("After a quit, a crash or an update, every session comes back: agents with their conversation, shells in their folder."))
                         .font(.system(size: 11.5))
                         .foregroundStyle(Theme.textDim)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer()
-                Toggle("", isOn: Binding(get: { awake.enabled }, set: { awake.setEnabled($0) }))
+                Toggle("", isOn: $restoreSessions)
                     .labelsHidden()
                     .toggleStyle(.switch)
             }
-            if let problem = awake.problem {
-                Text(problem).font(.system(size: 11.5)).foregroundStyle(Theme.red)
-            } else if awake.enabled, awake.lowBattery {
-                Text(L("Paused: battery below %d %% — the Mac may sleep.", StayAwake.batteryFloor))
-                    .font(.system(size: 11.5)).foregroundStyle(Theme.textDim)
-            } else if awake.holding {
-                Text(L("On — the Mac won't sleep, lid closed included. Mind the heat in a bag."))
-                    .font(.system(size: 11.5)).foregroundStyle(Theme.green)
+        }
+    }
+
+    private var skip: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(L("Skip permission prompts"))
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(Theme.textBody)
+                Text(L("New sessions start Claude with --dangerously-skip-permissions and Codex with --dangerously-bypass-approvals-and-sandbox."))
+                    .font(.system(size: 11.5))
+                    .foregroundStyle(Theme.textDim)
+                    .fixedSize(horizontal: false, vertical: true)
             }
+            Spacer()
+            Toggle("", isOn: $skipPermissions)
+                .labelsHidden()
+                .toggleStyle(.switch)
         }
     }
 }

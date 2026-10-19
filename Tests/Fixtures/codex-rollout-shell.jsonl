@@ -1,0 +1,5 @@
+{"type":"session_meta","payload":{"id":"older"}}
+{"type":"event_msg","payload":{"type":"user_message","message":"test it"}}
+{"type":"response_item","payload":{"type":"function_call","name":"shell","arguments":"{\"command\":[\"bash\",\"-lc\",\"make test\"]}","call_id":"call_9"}}
+{"type":"response_item","payload":{"type":"function_call_output","call_id":"call_9","output":"{\"output\":\"FAIL\",\"metadata\":{\"exit_code\":2,\"duration_seconds\":1.2}}"}}
+{"type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"make test fails in two places."}]}}

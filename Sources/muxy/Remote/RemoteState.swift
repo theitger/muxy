@@ -9,6 +9,7 @@ enum RemoteState {
 
     static func sessions() -> [[String: Any]] {
         Store.shared.orderedWorkspaces.map { workspace in
+            let featured = workspace.featured
             var item: [String: Any] = [
                 "id": workspace.id.uuidString,
                 "group": workspace.groupName,
@@ -18,21 +19,35 @@ enum RemoteState {
                 "isGit": workspace.context.repo != nil,
                 "agent": agentName(workspace.agent),
                 "attention": workspace.needsAttention,
-                "tabs": workspace.sessions.map { session in
-                    [
-                        "id": session.id.uuidString,
-                        "kind": session.agent == .none ? "shell" : "claude",
-                        "title": session.tabTitle,
-                        "agent": agentName(session.agent),
-                        "attention": session.needsAttention,
-                    ] as [String: Any]
-                },
+                "tabs": workspace.sessions.map(tab),
             ]
+            if let kind = featured?.kind { item["agentKind"] = kind.rawValue }
+            if let activity = featured?.snapshot?.activity { item["activity"] = activity }
+            if let lines = featured?.snapshot?.lines, !lines.isEmpty { item["lines"] = lines }
+            if let notice = featured?.notice { item["notice"] = notice }
             if let pr = workspace.context.pr {
                 item["pr"] = ["number": pr, "status": prName(workspace.prStatus)]
             }
             return item
         }
+    }
+
+    private static func tab(_ session: TerminalSession) -> [String: Any] {
+        var tab: [String: Any] = [
+            "id": session.id.uuidString,
+            "kind": session.agent == .none && session.kind == nil ? "shell" : "agent",
+            "title": session.tabTitle,
+            "agent": agentName(session.agent),
+            "attention": session.needsAttention,
+        ]
+        if let kind = session.kind { tab["agentKind"] = kind.rawValue }
+        if let since = session.waitingSince { tab["since"] = since.timeIntervalSince1970 }
+        // A question on screen comes along, to be answered from the list.
+        let choices = Inbox.choices(of: session)
+        if !choices.isEmpty {
+            tab["choices"] = choices.map { ["number": $0.number, "label": $0.label, "selected": $0.selected] }
+        }
+        return tab
     }
 
     static func agentName(_ agent: AgentState) -> String {
@@ -55,6 +70,8 @@ enum RemoteState {
         case .draft: "draft"
         case .waiting: "waiting"
         case .ready: "ready"
+        case .merged: "merged"
+        case .closed: "closed"
         }
     }
 
@@ -114,6 +131,12 @@ enum RemoteState {
         "1": (18, 0, "1", 49),
         "2": (19, 0, "2", 50),
         "3": (20, 0, "3", 51),
+        "4": (21, 0, "4", 52),
+        "5": (23, 0, "5", 53),
+        "6": (22, 0, "6", 54),
+        "7": (26, 0, "7", 55),
+        "8": (28, 0, "8", 56),
+        "9": (25, 0, "9", 57),
         "y": (16, 0, "y", 121),
         "n": (45, 0, "n", 110),
         "q": (12, 0, "q", 113),

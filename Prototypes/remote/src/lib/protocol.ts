@@ -2,14 +2,23 @@
 
 export type Agent = 'none' | 'idle' | 'working' | 'blocked' | 'failed'
 
-export type PRStatus = 'none' | 'running' | 'fixing' | 'failed' | 'conflicts' | 'draft' | 'waiting' | 'ready'
+export type AgentKind = 'claude' | 'codex'
+
+export type PRStatus = 'none' | 'running' | 'fixing' | 'failed' | 'conflicts' | 'draft' | 'waiting' | 'ready' | 'merged' | 'closed'
+
+/** A question the agent shows on screen, numbered as it draws it. */
+export type Choice = { number: number; label: string; selected: boolean }
 
 export type Tab = {
   id: string
-  kind: 'claude' | 'shell'
+  kind: 'agent' | 'shell'
+  agentKind?: AgentKind
   title: string
   agent: Agent
   attention: boolean
+  /** Seconds since 1970: since when it waits on you. */
+  since?: number
+  choices?: Choice[]
 }
 
 export type Session = {
@@ -20,16 +29,24 @@ export type Session = {
   directory: string
   isGit: boolean
   agent: Agent
+  agentKind?: AgentKind
   attention: boolean
+  /** What the agent is doing right now ("Running tests"). */
+  activity?: string
+  /** The last lines of its output. */
+  lines?: string[]
+  notice?: string
   pr?: { number: number; status: PRStatus }
   tabs: Tab[]
 }
+
+export type Repo = { path: string; name: string }
 
 export type DiffLine = { sign: '+' | '-' | ' '; text: string }
 
 export type ChatItem =
   | { kind: 'user'; text: string }
-  | { kind: 'claude'; text: string }
+  | { kind: 'agent'; text: string }
   | {
       kind: 'tool'
       id: string
@@ -56,10 +73,10 @@ export type Key =
   | 'ctrl-d'
   | 'ctrl-r'
   | 'backspace'
-  | '1'
-  | '2'
-  | '3'
   | 'y'
   | 'n'
   | 'q'
   | `ctrl-${string}`
+  | `${number}`
+
+export const agentName = (kind?: AgentKind) => (kind === 'codex' ? 'Codex' : kind === 'claude' ? 'Claude' : 'Agent')

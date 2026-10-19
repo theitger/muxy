@@ -5,3 +5,4 @@ DerivedData/
 *.xcodeproj
 Vendor/libghostty-spm/GhosttyKit.xcframework/
 dist/
+Vendor/Sparkle/
