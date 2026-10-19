@@ -44,8 +44,11 @@ struct QuorumStatus: Equatable {
     /// findings (quorum's own HISTORY shows them so), none of them open.
     private var countsAreFixed: Bool { kind == .babysit && converged }
 
+    /// It stopped without a result: its counts were work in progress.
+    var interrupted: Bool { outcome == "interrupted" }
+
     /// Blockers and critical findings still open.
-    var open: Int { countsAreFixed ? 0 : blockers + critical }
+    var open: Int { countsAreFixed || interrupted ? 0 : blockers + critical }
     /// Blockers and critical findings a converged babysit fixed.
     var fixed: Int { countsAreFixed ? blockers + critical : 0 }
 
@@ -94,6 +97,7 @@ struct QuorumStatus: Equatable {
     /// quorum's failure reason (history.jsonl) in a few words.
     static func why(_ reason: String?) -> String {
         guard let reason = reason?.lowercased(), !reason.isEmpty else { return L("failed") }
+        if reason == "interrupted" { return L("interrupted") }
         if reason.contains("did not converge") || reason.contains("not converged") {
             let rounds = reason.split(separator: " ").compactMap { Int($0) }.first
             return rounds.map { L("not clean after %d rounds", $0) } ?? L("not clean after its rounds")
@@ -204,6 +208,13 @@ enum Quorum {
         }
         // Without a process and without findings it died early: history says how.
         if !found.running, json(dir + "/output/findings.json") == nil, json(dir + "/progress.json") == nil { return nil }
+        // Gone without a result (quit, crash, killed): what it had found
+        // so far means nothing, the next run starts over anyway. A run that
+        // ended properly has its entry in the history, which is newer.
+        if !found.running, found.outcome == nil, json(dir + "/output/findings.json") == nil {
+            found.outcome = "interrupted"
+            found.reason = "interrupted"
+        }
         return found
     }
 
@@ -254,6 +265,24 @@ enum Quorum {
         do { try process.run() } catch { return nil }
         try? output.close()
         return log
+    }
+
+    /// quorum for a PR without a session: from the repository's checkout,
+    /// on its own; the PR's card shows how it goes.
+    @MainActor
+    static func start(_ kind: QuorumStatus.Kind, pr: Int, draft: Bool, root: String) -> Bool {
+        guard launch(command(kind, pr: pr, draft: draft), in: root, name: "\(kind.rawValue)-\(pr)") != nil else { return false }
+        QuorumWatch.shared.start(always: true)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) { QuorumWatch.shared.refresh() }
+        return true
+    }
+
+    /// The newest log muxy has of a run for this PR.
+    static func latestLog(pr: Int) -> String? {
+        let names = (try? FileManager.default.contentsOfDirectory(atPath: logs)) ?? []
+        return names.filter { $0.hasSuffix(".log") && $0.contains("-\(pr)-") }
+            .max { $0.split(separator: "-").last ?? "" < $1.split(separator: "-").last ?? "" }
+            .map { logs + "/" + $0 }
     }
 
     /// Starts quorum for a PR and shows its output in a tab of the session.

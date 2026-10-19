@@ -103,6 +103,22 @@ final class QuorumTests: XCTestCase {
         try "999999".write(toFile: dir + "/run.pid", atomically: true, encoding: .utf8)
         XCTAssertNil(Quorum.run(in: dir, kind: .review, modified: Date()))
     }
+
+    func testABabysitThatDiedMidRunIsInterruptedNotItsFindings() throws {
+        // As after muxy ended it: round 1, five critical found, no result.
+        let dir = try folder()
+        try """
+        {"pid":1,"repo":"o/r","number":4399,"round":1,"max_iter":12,"phase":"tests","critical":5,"updated_at":"2026-10-19T21:52:02+02:00"}
+        """.write(toFile: dir + "/progress.json", atomically: true, encoding: .utf8)
+        try "999999".write(toFile: dir + "/run.pid", atomically: true, encoding: .utf8)
+        let status = try XCTUnwrap(Quorum.run(in: dir, kind: .babysit, modified: Date()))
+        XCTAssertFalse(status.running)
+        XCTAssertTrue(status.interrupted)
+        XCTAssertEqual(status.open, 0, "what it found so far doesn't count")
+        XCTAssertFalse(status.succeeded)
+        XCTAssertEqual(status.summary, L("quorum stopped: %@", L("interrupted")))
+        XCTAssertEqual(Flow.quorumStep(status, installed: true), .fix(L("Run quorum again")))
+    }
 }
 
 final class InventoryTests: XCTestCase {

@@ -546,6 +546,18 @@ private struct PullCard: View {
     let local: Bool
     let open: (AgentKind?) -> Void
     @AppStorage("newSessionAgent") private var preferred = AgentKind.claude.rawValue
+    @ObservedObject private var quorum = QuorumWatch.shared
+    @State private var starting = false
+
+    private var status: QuorumStatus? { quorum.byKey[pull.id] }
+
+    /// What quorum can do for it, as for a session: review and fix, or
+    /// again after a run that stopped.
+    private var quorumStep: NextStep? {
+        guard local, !starting, let step = Flow.quorumStep(status, installed: Quorum.isInstalled) else { return nil }
+        if case .reviewing = step { return nil }
+        return step
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 7) {
@@ -574,6 +586,29 @@ private struct PullCard: View {
             if let branch = pull.branch {
                 Text(branch).font(Theme.label(size: 10.5)).foregroundStyle(Theme.textDim)
                     .lineLimit(1).truncationMode(.middle)
+            }
+            if let status {
+                HStack(spacing: 6) {
+                    if status.running { ProgressView().controlSize(.mini).frame(width: 12) }
+                    Text(status.summary)
+                        .font(.system(size: 11))
+                        .foregroundStyle(status.running ? Theme.blue.strong
+                            : status.succeeded ? Theme.greenTone.strong : status.interrupted ? Theme.textDim : Theme.orange.strong)
+                        .lineLimit(1)
+                    Spacer(minLength: 4)
+                    if let log = Quorum.latestLog(pr: pull.number) {
+                        Button(L("Log")) { NSWorkspace.shared.open(URL(fileURLWithPath: log)) }
+                            .buttonStyle(.plain)
+                            .font(.system(size: 11)).foregroundStyle(Theme.textDim)
+                    }
+                }
+            }
+            if let step = quorumStep, let root = HubModel.shared.checkout(of: pull.repo) {
+                SmallButton(title: step.title) {
+                    starting = true
+                    _ = Quorum.start(.babysit, pr: pull.number, draft: pull.draft, root: root)
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 10) { starting = false }
+                }
             }
             HStack(spacing: 6) {
                 let agent = AgentKind(rawValue: preferred) ?? .claude
