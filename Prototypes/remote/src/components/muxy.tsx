@@ -18,7 +18,8 @@ import {
 import { useEffect, useState } from 'react'
 import { t } from '@/lib/i18n'
 import { cn } from '@/lib/utils'
-import { agentName, type Agent, type PRStatus, type Session } from '@/lib/protocol'
+import { agentName, type Agent, type AgentKind, type PRStatus, type Session } from '@/lib/protocol'
+import { AgentLogo } from './flow'
 
 export type Tone = 'blue' | 'green' | 'yellow' | 'orange' | 'red' | 'neutral'
 
@@ -63,7 +64,15 @@ export function status(s: Session): { text: string; tone: Tone; live?: boolean }
 }
 
 /** Muxy's SessionTile: what a session is and whether it wants you. */
-export function SessionTile({ agent, attention, isGit, size = 36 }: { agent: Agent; attention: boolean; isGit: boolean; size?: number }) {
+export function SessionTile({ agent, attention, isGit, kind, size = 36 }: { agent: Agent; attention: boolean; isGit: boolean; kind?: AgentKind; size?: number }) {
+  // Working or ready, the agent itself shows; states that want something keep their sign.
+  if (kind && (agent === 'working' || (agent === 'idle' && !attention))) {
+    return (
+      <div className={cn('grid shrink-0 place-items-center', agent === 'working' ? 'bg-tone-blue-soft' : 'bg-tone-neutral-soft')} style={{ width: size, height: size, borderRadius: size * 0.28 }}>
+        <AgentLogo kind={kind} size={size * 0.5} className={cn(agent === 'working' && 'pulse-soft', agent === 'idle' && 'opacity-60')} />
+      </div>
+    )
+  }
   const [Icon, tone]: [LucideIcon, Tone] =
     agent === 'blocked'
       ? [Hand, 'orange']

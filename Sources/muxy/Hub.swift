@@ -142,17 +142,21 @@ final class HubModel: ObservableObject {
 
     /// An issue becomes a session (or several, one per agent): its own
     /// worktree on a branch named after it, the agent asked to close it.
-    func start(_ issue: Issue, agents: [AgentKind], in window: WindowModel) {
+    /// `then` gets the new session's id (the first, with several agents).
+    func start(_ issue: Issue, agents: [AgentKind], in window: WindowModel, hideHub: Bool = true, then: ((String?) -> Void)? = nil) {
         guard let root = checkout(of: issue.repo) else {
             window.show(L("%@ isn't cloned on this Mac", issue.repo))
+            then?(nil)
             return
         }
-        window.showHub = false
+        if hideHub { window.showHub = false }
         Task.detached(priority: .userInitiated) {
             // The body travels into the prompt; the search left it out.
             let full: Issue = if case let .found(found) = Issues.view(issue.number, repo: issue.repo, in: root) { found } else { issue }
             await MainActor.run {
+                let before = Set(Store.shared.workspaces.map(\.id))
                 FanOut.launch(issue: full, root: root, agents: agents, in: window)
+                then?(Store.shared.workspaces.first { !before.contains($0.id) }?.id.uuidString)
             }
         }
     }

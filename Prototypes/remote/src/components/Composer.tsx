@@ -191,7 +191,7 @@ export function Composer({
             label={draft ? t('Send') : 'Return'}
             onPress={submit}
             disabled={!terminal && !draft.trim()}
-            className={cn('size-[38px] shrink-0 rounded-full transition-colors duration-150', draft.trim() ? 'bg-brand text-white' : 'bg-active text-t3')}
+            className={cn('size-[38px] shrink-0 rounded-full transition-colors duration-150', draft.trim() ? 'bg-brand text-bg' : 'bg-active text-t3')}
           >
             <ArrowUp className="size-[20px]" strokeWidth={2.6} />
           </Tap>
@@ -206,7 +206,7 @@ function KeyChip({ children, onPress, active, label }: { children: React.ReactNo
     <Tap
       onPress={onPress}
       label={label}
-      className={cn('h-[34px] min-w-[44px] shrink-0 rounded-[8px] px-2.5 font-mono text-[14px] shadow-[0_1px_0_rgb(0_0_0/0.18)]', active ? 'bg-brand text-white' : 'bg-keycap text-t1')}
+      className={cn('h-[34px] min-w-[44px] shrink-0 rounded-[8px] px-2.5 font-mono text-[14px] shadow-[0_1px_0_rgb(0_0_0/0.18)]', active ? 'bg-brand text-bg' : 'bg-keycap text-t1')}
     >
       {children}
     </Tap>

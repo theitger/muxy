@@ -1,4 +1,6 @@
-import { ChevronLeft, ChevronRight, Ellipsis, MessageSquare, Sparkle, SquareTerminal } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Ellipsis, MessageSquare, SquareTerminal } from 'lucide-react'
+import { AgentLogo, Facts, StepButton } from '@/components/flow'
+import { actionable } from '@/lib/protocol'
 import { useEffect, useState } from 'react'
 import { cn } from '@/lib/utils'
 import { BottomSheet } from '@/components/BottomSheet'
@@ -96,12 +98,22 @@ export function SessionScreen({
                   t.id === tab.id ? 'bg-t1 font-medium text-bg' : 'bg-active text-t2',
                 )}
               >
-                {t.kind === 'agent' ? <Sparkle className="size-3" strokeWidth={2.6} /> : <ChevronRight className="size-3" strokeWidth={2.6} />}
+                {t.kind === 'agent' && t.agentKind ? <AgentLogo kind={t.agentKind} size={13} /> : <ChevronRight className="size-3" strokeWidth={2.6} />}
                 {t.title}
                 {t.attention && t.id !== tab.id && <span className="size-1.5 rounded-full bg-tone-orange" />}
               </button>
             ))}
           </nav>
+        )}
+
+        {(actionable(session.next?.kind) || session.proof || session.collisions?.length || session.quorum) && (
+          <div className="flex items-center gap-3 border-t border-hair px-4 py-2">
+            <div className="min-w-0 flex-1">
+              {actionable(session.next?.kind) && <div className="text-[13px] font-medium text-t2">{t('Next step')}</div>}
+              <Facts session={session} />
+            </div>
+            <StepButton session={session} onStep={(s) => s.next && muxy.step(s.id, s.next.kind)} size="sm" />
+          </div>
         )}
       </header>
 

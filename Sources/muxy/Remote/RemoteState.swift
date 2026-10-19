@@ -28,6 +28,27 @@ enum RemoteState {
             if let pr = workspace.context.pr {
                 item["pr"] = ["number": pr, "status": prName(workspace.prStatus)]
             }
+            if let branch = workspace.context.branch { item["branch"] = branch }
+            if let agentTab = workspace.agentTab { item["agentTab"] = agentTab.id.uuidString }
+            let next = Flow.next(for: workspace)
+            item["next"] = ["kind": stepName(next), "title": next.title]
+            item["stage"] = switch next.stage {
+            case .working: "working"
+            case .review: "review"
+            case .ready: "ready"
+            case .none: "none"
+            }
+            let checkout = workspace.context.checkout
+            if Proofs.shared.isRunning(checkout) {
+                item["proof"] = "running"
+            } else if let verdict = Proofs.shared.result(for: checkout)?.verdict, verdict == .passed || verdict == .failed {
+                item["proof"] = verdict.rawValue
+            }
+            let collisions = Radar.shared.collisions(for: checkout).map { $0.withBase ? $0.other : Radar.shared.title(of: $0.other) }
+            if !collisions.isEmpty { item["collisions"] = collisions }
+            if let review = QuorumWatch.shared.status(for: workspace) {
+                item["quorum"] = ["summary": review.summary, "running": review.running, "clean": review.succeeded]
+            }
             return item
         }
     }
@@ -58,6 +79,45 @@ enum RemoteState {
         case .blocked: "blocked"
         case .failed: "failed"
         }
+    }
+
+    static func stepName(_ step: NextStep) -> String {
+        switch step {
+        case .wait: "wait"
+        case .answer: "answer"
+        case .openPR: "openPR"
+        case .review: "review"
+        case .fix: "fix"
+        case .land: "land"
+        case .landing: "landing"
+        case .none: "none"
+        }
+    }
+
+    /// Issues assigned to you that no session works on yet, newest first,
+    /// and whether this Mac has them cloned.
+    static func issues() -> [[String: Any]] {
+        let hub = HubModel.shared
+        return hub.issues
+            .filter { hub.session(for: $0) == nil }
+            .sorted { ($0.created ?? .distantPast, $0.number) > ($1.created ?? .distantPast, $1.number) }
+            .map { issue in
+                var item: [String: Any] = [
+                    "repo": issue.repo, "number": issue.number, "title": issue.title, "url": issue.url,
+                    "labels": issue.labels, "local": hub.checkout(of: issue.repo) != nil,
+                ]
+                if let created = issue.created { item["created"] = created.timeIntervalSince1970 }
+                return item
+            }
+    }
+
+    static func account() -> [String: Any]? {
+        let account = HubModel.shared.account
+        guard let login = account.login else { return nil }
+        var item: [String: Any] = ["login": login]
+        if let name = account.name { item["name"] = name }
+        if let avatar = account.avatar { item["avatar"] = avatar.absoluteString }
+        return item
     }
 
     static func prName(_ status: PRStatus) -> String {

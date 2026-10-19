@@ -130,4 +130,31 @@ export const de: Record<string, string> = {
   // Demo
   new: 'neu',
   'new worktree': 'neuer Worktree',
+
+  // Hub on the phone: next steps, issues
+  'Sessions': 'Sessions',
+  'For you': 'Für dich',
+  'Next steps': 'Nächste Schritte',
+  'Swipe left or tap the button: muxy does the step on the Mac.': 'Nach links wischen oder tippen: muxy erledigt den Schritt auf dem Mac.',
+  '%dmo': '%d Mon.',
+  '%dd': '%d T',
+  '%dh': '%d Std.',
+  '1 issue assigned to you': '1 Issue dir zugewiesen',
+  '%d issues assigned to you': '%d Issues dir zugewiesen',
+  'All': 'Alle',
+  'Nothing matches this filter.': 'Nichts passt zu diesem Filter.',
+  'Nothing assigned to you.': 'Dir ist nichts zugewiesen.',
+  'not cloned on the Mac': 'nicht auf dem Mac geklont',
+  'The Mac starts it in its own worktree, on a branch named after the issue, and asks the agent to close it from the pull request.': 'Der Mac startet es in einem eigenen Worktree, auf einem Branch nach dem Issue, und bittet den Agenten, es per Pull Request zu schließen.',
+  'Start %s': '%s starten',
+  'Both, side by side': 'Beide nebeneinander',
+  'This repository isn’t cloned on the Mac, so no session can start there.': 'Dieses Repository ist auf dem Mac nicht geklont, dort kann keine Session starten.',
+  'Open on GitHub': 'Auf GitHub öffnen',
+  'Next step': 'Nächster Schritt',
+  'checking': 'prüft',
+  'checks fail': 'Checks schlagen fehl',
+  'proven': 'belegt',
+  'collides: %s': 'kollidiert: %s',
+  'Working': 'Arbeitet',
 }
+

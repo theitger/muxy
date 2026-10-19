@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { CircleDot, SquareTerminal } from 'lucide-react'
 import { Stack } from '@/components/Stack'
+import { cn } from '@/lib/utils'
+import { Issues } from '@/screens/Issues'
 import { wantsYou } from '@/components/muxy'
 import { t } from '@/lib/i18n'
 import { useMuxy } from '@/lib/useMuxy'
@@ -18,6 +21,7 @@ export default function App() {
   const [creating, setCreating] = useState(false)
   const [awaitingNew, setAwaitingNew] = useState(false)
   const [toast, setToast] = useState<string | null>(null)
+  const [tab, setTab] = useState<'sessions' | 'issues'>('sessions')
   const ownPop = useRef<'animate' | 'still' | null>(null)
 
   useEffect(() => {
@@ -86,16 +90,33 @@ export default function App() {
     <div className="app-frame mx-auto max-w-[560px] overflow-hidden">
       <Stack
         base={
-          <Home
-            sessions={muxy.sessions}
-            online={muxy.state === 'open'}
-            onOpen={go}
-            onChoose={muxy.choose}
-            onNew={() => {
-              muxy.loadRepos()
-              setCreating(true)
-            }}
-          />
+          <div className="relative h-full">
+            {tab === 'sessions' ? (
+              <Home
+                sessions={muxy.sessions}
+                online={muxy.state === 'open'}
+                onOpen={go}
+                onChoose={muxy.choose}
+                onStep={(s) => s.next && muxy.step(s.id, s.next.kind)}
+                onNew={() => {
+                  muxy.loadRepos()
+                  setCreating(true)
+                }}
+              />
+            ) : (
+              <Issues
+                issues={muxy.issues}
+                account={muxy.account}
+                online={muxy.state === 'open'}
+                onStart={(issue, agents) => {
+                  setAwaitingNew(true)
+                  muxy.startIssue(issue, agents)
+                  setTab('sessions')
+                }}
+              />
+            )}
+            <TabBar tab={tab} onTab={setTab} waiting={urgent.length} />
+          </div>
         }
         pageKey={session ? session.id : null}
         page={session ? <SessionScreen key={session.id} session={session} muxy={muxy} urgentElsewhere={urgent.filter((u) => u.id !== session.id).length} onBack={back} /> : null}
@@ -130,5 +151,31 @@ export default function App() {
         </div>
       )}
     </div>
+  )
+}
+
+/** iOS's tab bar: the two places the phone has, with what waits in each. */
+function TabBar({ tab, onTab, waiting }: { tab: 'sessions' | 'issues'; onTab: (tab: 'sessions' | 'issues') => void; waiting: number }) {
+  const item = (id: 'sessions' | 'issues', label: string, Icon: typeof SquareTerminal, badge: number) => (
+    <button
+      type="button"
+      onClick={() => onTab(id)}
+      aria-current={tab === id}
+      className={cn('relative flex flex-1 flex-col items-center gap-0.5 pt-1.5 text-[10.5px] font-medium transition-colors', tab === id ? 'text-t1' : 'text-t4')}
+    >
+      <Icon className="size-[24px]" strokeWidth={tab === id ? 2.2 : 1.8} />
+      {label}
+      {badge > 0 && (
+        <span className="absolute top-0.5 left-[calc(50%+6px)] grid h-[17px] min-w-[17px] place-items-center rounded-full bg-tone-orange px-1 text-[11px] font-semibold text-white tabular-nums">
+          {badge}
+        </span>
+      )}
+    </button>
+  )
+  return (
+    <nav className="absolute inset-x-0 bottom-0 z-30 flex border-t border-hair bg-bg/85 pb-[env(safe-area-inset-bottom,0px)] backdrop-blur-xl backdrop-saturate-150">
+      {item('sessions', t('Sessions'), SquareTerminal, waiting)}
+      {item('issues', t('For you'), CircleDot, 0)}
+    </nav>
   )
 }

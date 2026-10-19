@@ -3,7 +3,8 @@ import { useState } from 'react'
 import { t } from '@/lib/i18n'
 import { cn } from '@/lib/utils'
 import { Ago, Live, PRBadge, SessionTile, status, toneText, urgency, wantsYou } from '@/components/muxy'
-import { agentName, type Session } from '@/lib/protocol'
+import { Facts, StepButton, SwipeRow } from '@/components/flow'
+import { actionable, agentName, type Session } from '@/lib/protocol'
 
 /**
  * Muxy's sidebar as the phone's home: what waits on you on top, answerable
@@ -15,17 +16,21 @@ export function Home({
   onOpen,
   onNew,
   onChoose,
+  onStep,
 }: {
   sessions: Session[]
   online: boolean
   onOpen: (id: string) => void
   onNew: () => void
   onChoose: (tab: string, number: number) => void
+  onStep: (session: Session) => void
 }) {
   const [scrolled, setScrolled] = useState(false)
   const waiting = sessions.filter(wantsYou).sort((a, b) => urgency(a) - urgency(b))
-  const running = sessions.filter((s) => !wantsYou(s) && s.agent === 'working')
-  const rest = sessions.filter((s) => !wantsYou(s) && s.agent !== 'working')
+  // A step to take (a PR, a review, a fix, landing): its own list, ready to tap.
+  const nextUp = sessions.filter((s) => !wantsYou(s) && actionable(s.next?.kind))
+  const running = sessions.filter((s) => !wantsYou(s) && !nextUp.includes(s) && s.agent === 'working')
+  const rest = sessions.filter((s) => !wantsYou(s) && !nextUp.includes(s) && s.agent !== 'working')
   const groups = [...new Set(rest.map((s) => s.group))]
 
   return (
@@ -53,7 +58,7 @@ export function Home({
 
       <div
         onScroll={(e) => setScrolled(e.currentTarget.scrollTop > 36)}
-        className="no-scrollbar flex-1 overflow-y-auto overscroll-y-contain pt-[calc(env(safe-area-inset-top,0px)+44px)] pb-[calc(env(safe-area-inset-bottom,0px)+24px)]"
+        className="no-scrollbar flex-1 overflow-y-auto overscroll-y-contain pt-[calc(env(safe-area-inset-top,0px)+44px)] pb-[calc(env(safe-area-inset-bottom,0px)+96px)]"
       >
         <div className="px-4 pt-1 pb-2">
           <h1 className="text-[34px] leading-[41px] font-bold tracking-[0.01em] text-t1">Sessions</h1>
@@ -64,7 +69,7 @@ export function Home({
           <div className="fade-in mt-24 flex flex-col items-center gap-3 px-10 text-center">
             <p className="text-[17px] font-semibold text-t1">{t('No open sessions')}</p>
             <p className="text-[15px] leading-snug text-t3">{t('Start one on the Mac, with an agent and a task.')}</p>
-            <button type="button" onClick={onNew} className="mt-2 h-11 rounded-full bg-brand px-5 text-[16px] font-semibold text-white active:opacity-70">
+            <button type="button" onClick={onNew} className="mt-2 h-11 rounded-full bg-brand px-5 text-[16px] font-semibold text-bg active:opacity-70">
               {t('New Session')}
             </button>
           </div>
@@ -77,6 +82,19 @@ export function Home({
                 <WaitingCard key={s.id} session={s} onOpen={onOpen} onChoose={onChoose} />
               ))}
             </div>
+          </Section>
+        )}
+
+        {nextUp.length > 0 && (
+          <Section title={t('Next steps')}>
+            <List>
+              {nextUp.map((s) => (
+                <SwipeRow key={s.id} action={s.next?.title} onAction={() => onStep(s)}>
+                  <Row session={s} onOpen={onOpen} onStep={onStep} showGroup />
+                </SwipeRow>
+              ))}
+            </List>
+            <p className="px-8 pt-1.5 text-[12.5px] text-t4">{t('Swipe left or tap the button: muxy does the step on the Mac.')}</p>
           </Section>
         )}
 
@@ -134,12 +152,12 @@ function List({ children }: { children: React.ReactNode }) {
   return <div className="mx-4 overflow-hidden rounded-[12px] bg-raised [&>*+*>div:last-child]:border-t [&>*+*>div:last-child]:border-hair">{children}</div>
 }
 
-function Row({ session, onOpen, showGroup }: { session: Session; onOpen: (id: string) => void; showGroup?: boolean }) {
+function Row({ session, onOpen, onStep, showGroup }: { session: Session; onOpen: (id: string) => void; onStep?: (s: Session) => void; showGroup?: boolean }) {
   const st = status(session)
   return (
-    <button type="button" onClick={() => onOpen(session.id)} className="row-press arrive flex w-full items-stretch pl-3.5 text-left">
+    <div role="button" tabIndex={0} onClick={() => onOpen(session.id)} className="row-press arrive flex w-full cursor-pointer items-stretch pl-3.5 text-left">
       <div className="flex items-center py-2.5 pr-3">
-        <SessionTile agent={session.agent} attention={session.attention} isGit={session.isGit} size={34} />
+        <SessionTile agent={session.agent} attention={session.attention} isGit={session.isGit} kind={session.agentKind} size={34} />
       </div>
       <div className="flex min-h-[60px] min-w-0 flex-1 items-center gap-2 pr-3">
         <div className="min-w-0 flex-1 py-2">
@@ -148,11 +166,17 @@ function Row({ session, onOpen, showGroup }: { session: Session; onOpen: (id: st
             {showGroup && <span className="text-t3">{session.group} · </span>}
             {st.live ? <Live>{st.text}</Live> : st.text}
           </div>
+          <Facts session={session} className="mt-0.5" />
+          {onStep && (
+            <div className="mt-2">
+              <StepButton session={session} onStep={onStep} size="sm" />
+            </div>
+          )}
         </div>
         {session.pr && <PRBadge number={session.pr.number} status={session.pr.status} />}
         <ChevronRight className="size-[18px] shrink-0 text-t5" strokeWidth={2.4} />
       </div>
-    </button>
+    </div>
   )
 }
 
@@ -167,7 +191,7 @@ function WaitingCard({ session, onOpen, onChoose }: { session: Session; onOpen: 
   return (
     <div className="arrive overflow-hidden rounded-[14px] bg-raised">
       <button type="button" onClick={() => onOpen(session.id)} className="row-press flex w-full gap-3 px-3.5 pt-3 pb-2.5 text-left">
-        <SessionTile agent={session.agent} attention={session.attention} isGit={session.isGit} size={34} />
+        <SessionTile agent={session.agent} attention={session.attention} isGit={session.isGit} kind={session.agentKind} size={34} />
         <div className="min-w-0 flex-1">
           <div className="flex items-baseline gap-2">
             <span className="min-w-0 flex-1 truncate text-[16px] font-semibold text-t1">{session.title}</span>

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Channel, type ChannelState } from './channel'
 import { fromBase64URL } from './crypto'
 import { useDemo, isDemo } from './demo'
-import type { ChatItem, Key, Repo, Screen, Session } from './protocol'
+import type { Account, ChatItem, Issue, Key, Repo, Screen, Session, StepKind } from './protocol'
 
 const SECRET_KEY = 'muxy.secret'
 const ROOM_KEY = 'muxy.room'
@@ -94,6 +94,8 @@ function useChannel() {
   const [screens, setScreens] = useState<Record<string, Screen>>({})
   const [chats, setChats] = useState<Record<string, ChatItem[]>>({})
   const [repos, setRepos] = useState<Repo[]>([])
+  const [issues, setIssues] = useState<Issue[]>([])
+  const [account, setAccount] = useState<Account | null>(null)
   const [opened, setOpened] = useState<{ session: string | null; error?: string; at: number } | null>(null)
   const channel = useRef<Channel | null>(null)
   const watching = useRef<{ tab: string; history: boolean } | null>(null)
@@ -110,6 +112,8 @@ function useChannel() {
             setSessions((m.sessions as Session[]).map(compatible))
             setRecent(m.recent as string[])
             if (Array.isArray(m.history)) setShellHistory(m.history as string[])
+            if (Array.isArray(m.issues)) setIssues(m.issues as Issue[])
+            setAccount((m.account as Account) ?? null)
             break
           case 'screen':
             setScreens((s) => ({ ...s, [m.tab as string]: m as unknown as Screen }))
@@ -176,6 +180,16 @@ function useChannel() {
     channel.current?.send({ t: 'new', ...spec })
   }, [])
 
+  /** Takes the session's suggested next step, if it still is that one. */
+  const step = useCallback((session: string, kind: StepKind) => {
+    channel.current?.send({ t: 'step', session, kind })
+  }, [])
+
+  /** An assigned issue becomes a session on the Mac (answered with "opened"). */
+  const startIssue = useCallback((issue: Issue, agents: ('claude' | 'codex')[]) => {
+    channel.current?.send({ t: 'issue', repo: issue.repo, number: issue.number, agents })
+  }, [])
+
   return {
     paired: !!pairing,
     state,
@@ -192,6 +206,10 @@ function useChannel() {
     choose,
     loadRepos,
     start,
+    issues,
+    account,
+    step,
+    startIssue,
   }
 }
 
