@@ -109,7 +109,9 @@ struct QuorumStatus: Equatable {
         if reason.contains("context canceled") || reason.contains("cancel") { return L("cancelled") }
         if reason.contains("usage limit") { return L("usage limit reached") }
         if reason.contains("draft") { return L("the PR is a draft") }
-        if reason.contains("dirty") || reason.contains("origin does not have") { return L("the branch had unpushed work") }
+        if reason.contains("dirty") || reason.contains("origin does not have") || reason.contains("differs from origin") {
+            return L("the branch had unpushed work")
+        }
         if reason.contains("fix session failed") { return L("a fix session failed") }
         return L("failed")
     }
@@ -265,6 +267,44 @@ enum Quorum {
         do { try process.run() } catch { return nil }
         try? output.close()
         return log
+    }
+
+    /// What babysit needs before it starts (it refuses otherwise): the
+    /// PR's branch committed and the same here as on origin. Unpushed
+    /// commits are pushed, a branch behind origin is moved up; uncommitted
+    /// changes or a branch that went both ways are yours. nil: ready, or
+    /// the reason it isn't. Blocking.
+    nonisolated static func prepare(branch: String, root: String) -> String? {
+        let git = "/usr/bin/git"
+        let checkout = HubModel.worktree(of: branch, root: root)
+        if let checkout, !(Shell.run(git, ["status", "--porcelain"], in: checkout) ?? "").isEmpty {
+            return L("%@ has uncommitted changes: commit or discard them first.", Paths.abbreviate(checkout))
+        }
+        guard Shell.execute(git, ["fetch", "--quiet", "origin", "refs/heads/\(branch)"], in: root, timeout: 60).status == 0,
+              let remote = Shell.run(git, ["rev-parse", "FETCH_HEAD"], in: root)
+        else { return L("Couldn't fetch %@ from GitHub.", branch) }
+        guard Shell.execute(git, ["rev-parse", "--verify", "--quiet", "refs/heads/\(branch)"], in: root).status == 0 else {
+            return nil // only on origin: babysit works from there
+        }
+        let ahead = Shell.run(git, ["rev-list", "--count", "\(remote)..refs/heads/\(branch)"], in: root).flatMap(Int.init) ?? 0
+        let behind = Shell.run(git, ["rev-list", "--count", "refs/heads/\(branch)..\(remote)"], in: root).flatMap(Int.init) ?? 0
+        switch (ahead > 0, behind > 0) {
+        case (false, false):
+            return nil
+        case (true, false):
+            let pushed = Shell.execute(git, ["push", "--quiet", "origin", "refs/heads/\(branch):refs/heads/\(branch)"], in: root, timeout: 300)
+            return pushed.status == 0 ? nil : L("Push failed: %@", pushed.error.split(separator: "\n").last.map(String.init) ?? "")
+        case (false, true):
+            // Up to origin: in its checkout when it has one, else the ref.
+            let moved = if let checkout {
+                Shell.execute(git, ["merge", "--ff-only", "--quiet", remote], in: checkout, timeout: 120).status == 0
+            } else {
+                Shell.execute(git, ["update-ref", "refs/heads/\(branch)", remote], in: root).status == 0
+            }
+            return moved ? nil : L("Couldn't bring %@ up to date with GitHub.", branch)
+        case (true, true):
+            return L("%@ has commits here and on GitHub that the other doesn't: open a session to bring them together.", branch)
+        }
     }
 
     /// quorum for a PR without a session: from the repository's checkout,
