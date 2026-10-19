@@ -475,6 +475,25 @@ final class Store: ObservableObject {
         workspaces.contains { $0 !== workspace && $0.context.checkout == workspace.context.checkout }
     }
 
+    /// One tab's program for another, in the same place, without asking:
+    /// a planning agent that goes on with its permissions skipped.
+    func replace(_ old: TerminalSession, with new: TerminalSession, in workspace: Workspace) {
+        guard let index = workspace.sessions.firstIndex(where: { $0 === old }) else { return }
+        new.onAttentionChange = { [weak self] in self?.updateBadge() }
+        new.onContextChange = { [weak self] in self?.objectWillChange.send() }
+        let selected = workspace.selectedSessionID == old.id
+        old.terminate()
+        // The old program's last writes (a conversation file) come first.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+            guard let index = workspace.sessions.firstIndex(where: { $0 === old }) else { return }
+            workspace.sessions[index] = new
+            if selected { workspace.selectedSessionID = new.id }
+            if self.window(of: workspace)?.selectedWorkspaceID != workspace.id { BackgroundStart.start(new) }
+            self.sessionsChanged()
+        }
+        _ = index
+    }
+
     func close(_ session: TerminalSession, in workspace: Workspace) {
         if workspace.sessions.count <= 1 {
             requestCloseWorkspace(workspace)

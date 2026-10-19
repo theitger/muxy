@@ -120,6 +120,26 @@ enum Flow {
     /// The go-ahead: Claude's own "yes" (the first, which goes on without
     /// asking when permissions are skipped), Codex told to go.
     static func approvePlan(in session: TerminalSession) -> Bool {
+        // Started without skipped permissions so the plan would wait: the
+        // same conversation goes on with them, told to go.
+        if session.kind == .claude, session.skipsPermissions, let id = session.agentSessionID,
+           let workspace = Store.shared.workspaces.first(where: { $0.sessions.contains { $0 === session } }) {
+            let go = TerminalSession(
+                directory: session.cwd,
+                command: Launcher.shellCommand(running: AgentKind.claude.command(
+                    .resume(id: id), skipPermissions: true, resumePrompt: true
+                )),
+                environment: ["MUXY_PROMPT": "The plan is approved: implement it."]
+            )
+            go.kind = .claude
+            go.agentSessionID = id
+            go.skipsPermissions = true
+            go.issue = session.issue
+            go.variantGroup = session.variantGroup
+            go.agent = .working
+            Store.shared.replace(session, with: go, in: workspace)
+            return true
+        }
         switch session.kind {
         case .claude:
             let choices = Inbox.choices(of: session)

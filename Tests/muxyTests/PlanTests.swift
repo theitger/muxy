@@ -2,9 +2,13 @@ import XCTest
 @testable import muxy
 
 final class PlanTests: XCTestCase {
-    func testClaudePlansInItsPlanModeWithPermissionsOnlyOfferedForAfter() {
+    func testClaudePlansInItsPlanModeWithoutAnySkippedPermissions() {
+        // Even only allowed, skipped permissions make plan mode go on without the go-ahead.
         XCTAssertEqual(AgentKind.claude.command(.new(prompt: true, id: "abc"), skipPermissions: true, plan: true),
-                       #"claude --allow-dangerously-skip-permissions --permission-mode plan --session-id abc "$MUXY_PROMPT""#)
+                       #"claude --permission-mode plan --session-id abc "$MUXY_PROMPT""#)
+        // The go-ahead: the same conversation, permissions skipped, told to go.
+        XCTAssertEqual(AgentKind.claude.command(.resume(id: "abc"), skipPermissions: true, resumePrompt: true),
+                       #"claude --dangerously-skip-permissions --resume abc "$MUXY_PROMPT""#)
         XCTAssertEqual(AgentKind.claude.command(.new(prompt: true, id: "abc"), skipPermissions: false, plan: true),
                        #"claude --permission-mode plan --session-id abc "$MUXY_PROMPT""#)
         // Without a plan nothing changes.

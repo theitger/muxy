@@ -48,18 +48,20 @@ enum AgentKind: String, CaseIterable, Identifiable, Codable {
     /// The command line that starts it, run by your shell. The prompt
     /// travels in MUXY_PROMPT: `"$MUXY_PROMPT"` reads the same in zsh, bash
     /// and fish, so no quoting of the prompt itself can go wrong.
-    /// `plan`: Claude starts in its plan mode, and with skipped
-    /// permissions only offers them for after the plan is approved.
-    func command(_ start: Start, skipPermissions: Bool, plan: Bool = false) -> String {
+    /// `plan`: Claude starts in its plan mode, without skipped permissions
+    /// whatever `skipPermissions` says: with them (even only allowed) plan
+    /// mode doesn't stop for the go-ahead. `resumePrompt`: a resumed
+    /// conversation gets $MUXY_PROMPT as its next message.
+    func command(_ start: Start, skipPermissions: Bool, plan: Bool = false, resumePrompt: Bool = false) -> String {
         var parts = [rawValue]
         #if DEBUG
         // MUXY_DEBUG_AGENT=/path/to/fake: try launches without a real agent.
         if let fake = ProcessInfo.processInfo.environment["MUXY_DEBUG_AGENT"] { parts = [fake] }
         #endif
         if case .resume = start, self == .codex { parts.append("resume") }
-        if skipPermissions {
+        if skipPermissions, !(plan && self == .claude) {
             switch self {
-            case .claude: parts.append(plan ? "--allow-dangerously-skip-permissions" : "--dangerously-skip-permissions")
+            case .claude: parts.append("--dangerously-skip-permissions")
             case .codex: parts.append("--dangerously-bypass-approvals-and-sandbox")
             }
         }
@@ -75,6 +77,7 @@ enum AgentKind: String, CaseIterable, Identifiable, Codable {
             case let (.codex, id?): parts.append(id)
             case (.codex, nil): parts.append("--last")
             }
+            if resumePrompt { parts.append("\"$MUXY_PROMPT\"") }
         }
         return parts.joined(separator: " ")
     }
