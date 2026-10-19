@@ -68,15 +68,15 @@ struct NewSessionView: View {
         }
         .frame(width: 600)
         .background(
-            RoundedRectangle(cornerRadius: 5, style: .continuous)
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .fill(Theme.surface)
                 .shadow(color: .black.opacity(0.14), radius: 8, y: 3)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 5, style: .continuous)
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .strokeBorder(Theme.textPrimary.opacity(0.16), lineWidth: 1)
         )
-        .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         .background(shortcuts)
         .onAppear(perform: prepare)
         .onChange(of: repo?.path, initial: true) { _, path in
@@ -195,11 +195,11 @@ struct NewSessionView: View {
             .padding(.horizontal, 10)
             .frame(height: 28)
             .background(
-                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
                     .fill(chosenElsewhere != nil ? Theme.fillActive : .clear)
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
                     .strokeBorder(chosenElsewhere != nil ? Theme.textPrimary.opacity(0.3) : Theme.hairline, lineWidth: 1)
             )
         }
@@ -287,7 +287,7 @@ struct NewSessionView: View {
                 .foregroundStyle(Theme.bg)
                 .padding(.horizontal, 14)
                 .frame(height: 32)
-                .background(RoundedRectangle(cornerRadius: 5, style: .continuous).fill(Theme.textPrimary))
+                .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(Theme.textPrimary))
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -334,10 +334,10 @@ struct NewSessionView: View {
     }
 
     private func field(active: Bool) -> some View {
-        RoundedRectangle(cornerRadius: 5, style: .continuous)
+        RoundedRectangle(cornerRadius: 7, style: .continuous)
             .fill(Theme.textPrimary.opacity(0.04))
             .overlay(
-                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
                     .strokeBorder(active ? Theme.textPrimary.opacity(0.28) : Theme.hairline, lineWidth: 1)
             )
     }
@@ -449,11 +449,11 @@ private struct Chip<Label: View>: View {
                 .padding(.horizontal, 10)
                 .frame(height: 28)
                 .background(
-                    RoundedRectangle(cornerRadius: 5, style: .continuous)
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
                         .fill(selected ? Theme.fillActive : (hovered ? Theme.fillHover : .clear))
                 )
                 .overlay(
-                    RoundedRectangle(cornerRadius: 5, style: .continuous)
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
                         .strokeBorder(selected ? Theme.textPrimary.opacity(0.3) : Theme.hairline, lineWidth: 1)
                 )
                 .contentShape(Rectangle())

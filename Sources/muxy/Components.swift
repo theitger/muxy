@@ -30,7 +30,7 @@ struct SessionTile: View {
     var body: some View {
         let look = look
         // Nothing to say: the symbol alone, no tile around it.
-        RoundedRectangle(cornerRadius: size * 0.2, style: .continuous)
+        RoundedRectangle(cornerRadius: size * 0.28, style: .continuous)
             .fill(!attention && (agent == .none || agent == .idle) ? .clear : look.tone.soft)
             .frame(width: size, height: size)
             .overlay {
@@ -58,12 +58,11 @@ struct Badge: View {
             }
             Text(text)
         }
-        .font(Theme.label(size: 10.5))
+        .font(Theme.label(size: 11))
         .foregroundStyle(tone.strong)
-        .padding(.horizontal, 6)
-        .frame(height: 18)
-        .background(RoundedRectangle(cornerRadius: 3, style: .continuous).fill(tone.soft))
-        .overlay(RoundedRectangle(cornerRadius: 3, style: .continuous).strokeBorder(tone.strong.opacity(0.18), lineWidth: 0.5))
+        .padding(.horizontal, 7)
+        .frame(height: 19)
+        .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(tone.soft))
     }
 }
 
@@ -133,11 +132,11 @@ struct Kbd: View {
             .padding(.horizontal, 5)
             .frame(minWidth: 20, minHeight: 18)
             .background(
-                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
                     .fill(Theme.textPrimary.opacity(0.05))
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
                     .strokeBorder(Theme.hairline, lineWidth: 0.5)
             )
     }
@@ -156,7 +155,7 @@ struct IconButton: View {
                 .foregroundStyle(hovered ? Theme.textPrimary : Theme.textDim)
                 .frame(width: 28, height: 28)
                 .background(
-                    RoundedRectangle(cornerRadius: 5, style: .continuous)
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
                         .fill(hovered ? Theme.fillHover : .clear)
                 )
                 .contentShape(Rectangle())
@@ -221,9 +220,8 @@ struct SectionLabel: View {
     }
 
     var body: some View {
-        Text(text.uppercased())
-            .font(Theme.label(size: 10, weight: .semibold))
-            .tracking(0.8)
+        Text(text)
+            .font(.system(size: 11.5, weight: .semibold))
             .foregroundStyle(tone)
             .lineLimit(1)
     }
@@ -246,11 +244,11 @@ struct Segments<Value: Hashable>: View {
                         .padding(.horizontal, 10)
                         .frame(height: 24)
                         .background(
-                            RoundedRectangle(cornerRadius: 4, style: .continuous)
+                            RoundedRectangle(cornerRadius: 6, style: .continuous)
                                 .fill(chosen ? Theme.bg : .clear)
                         )
                         .overlay(
-                            RoundedRectangle(cornerRadius: 4, style: .continuous)
+                            RoundedRectangle(cornerRadius: 6, style: .continuous)
                                 .strokeBorder(chosen ? Theme.hairline : .clear, lineWidth: 1)
                         )
                         .contentShape(Rectangle())
@@ -259,7 +257,7 @@ struct Segments<Value: Hashable>: View {
             }
         }
         .padding(2)
-        .background(RoundedRectangle(cornerRadius: 5, style: .continuous).fill(Theme.textPrimary.opacity(0.05)))
+        .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(Theme.textPrimary.opacity(0.05)))
         .fixedSize()
     }
 }

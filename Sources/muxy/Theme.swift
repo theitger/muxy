@@ -98,14 +98,10 @@ enum Theme {
         }))
     }
 
-    /// Small labels, counts and states: the terminal's font, so the chrome
-    /// reads like the tool it frames.
-    static func label(size: CGFloat = 10.5, weight: NSFont.Weight = .medium) -> Font {
-        if hasTerminalFont, let family = GhosttyColors.fontFamily,
-           let font = NSFontManager.shared.font(withFamily: family, traits: [], weight: weight >= .semibold ? 9 : 5, size: size) {
-            return Font(font)
-        }
-        return .system(size: size, weight: Font.Weight(weight), design: .monospaced)
+    /// Small labels, counts and states: the system face with digits that
+    /// line up.
+    static func label(size: CGFloat = 11, weight: NSFont.Weight = .medium) -> Font {
+        .system(size: size, weight: Font.Weight(weight)).monospacedDigit()
     }
 
     /// Standard motion curve: fast start, long soft landing.

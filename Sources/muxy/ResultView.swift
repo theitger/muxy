@@ -134,7 +134,7 @@ struct ResultButton: View {
             .padding(.horizontal, 8)
             .frame(height: 26)
             .background(
-                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
                     .fill(open ? Theme.fillActive : (hovered ? Theme.fillHover : .clear))
             )
             .contentShape(Rectangle())
@@ -306,15 +306,15 @@ struct ResultPanel: View {
         }
         .frame(width: 340)
         .background(
-            RoundedRectangle(cornerRadius: 5, style: .continuous)
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .fill(Theme.surface)
                 .shadow(color: .black.opacity(0.14), radius: 8, y: 3)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 5, style: .continuous)
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .strokeBorder(Theme.textPrimary.opacity(0.12), lineWidth: 1)
         )
-        .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
     private var padded: some View {
@@ -656,7 +656,7 @@ struct ResultPanel: View {
                         .fixedSize()
                         .padding(.horizontal, 10)
                         .frame(height: 28)
-                        .overlay(RoundedRectangle(cornerRadius: 5, style: .continuous).strokeBorder(Theme.hairline, lineWidth: 1))
+                        .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous).strokeBorder(Theme.hairline, lineWidth: 1))
                     }
                 }
             }
@@ -717,7 +717,7 @@ struct SmallButton: View {
             .padding(.horizontal, 8)
             .frame(height: 22)
             .background(
-                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
                     .fill(prominent ? Theme.textPrimary.opacity(hovered ? 0.85 : 1) : (hovered ? Theme.fillActive : Theme.fillHover))
             )
             .contentShape(Rectangle())
@@ -745,11 +745,11 @@ struct PanelButton: View {
             .padding(.horizontal, 10)
             .frame(height: 28)
             .background(
-                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
                     .fill(prominent ? Theme.textPrimary.opacity(hovered ? 0.85 : 1) : (hovered ? Theme.fillActive : Theme.fillHover))
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
                     .strokeBorder(Theme.hairline, lineWidth: 1)
             )
             .contentShape(Rectangle())

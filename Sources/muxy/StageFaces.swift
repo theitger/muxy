@@ -45,7 +45,7 @@ struct WingCardFace: View {
     /// nothing jumps when you switch), upright and framed.
     var onStage = false
 
-    static let radius: CGFloat = 5
+    static let radius: CGFloat = 9
 
     private var blocked: Bool { face.agent == .blocked }
 
@@ -96,14 +96,6 @@ struct WingCardFace: View {
             }
         }
         .opacity(face.isQuiet && !hovered && !onStage ? 0.62 : 1)
-        // A status edge on the left: what the agent is doing, at a glance.
-        .overlay(alignment: .leading) {
-            if face.agent != .none || face.attention {
-                UnevenRoundedRectangle(topLeadingRadius: Self.radius, bottomLeadingRadius: Self.radius, style: .continuous)
-                    .fill(tone)
-                    .frame(width: 2.5)
-            }
-        }
     }
 
     private var preview: some View {
@@ -119,7 +111,7 @@ struct WingCardFace: View {
             .padding(.vertical, 6)
             .clipped()
             .background(
-                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
                     .fill(Theme.textPrimary.opacity(0.05))
             )
             .padding(.horizontal, 8)
@@ -211,7 +203,7 @@ struct WingCardFace: View {
 
 enum StageMetrics {
     /// The stage card's corners.
-    static let radius: CGFloat = 6
+    static let radius: CGFloat = 10
     /// Gutter between the stage card and the window edge.
     static let margin: CGFloat = 8
 }
@@ -301,7 +293,7 @@ struct WaitingPill: View {
         .foregroundStyle(Theme.orange.strong)
         .padding(.horizontal, 11)
         .frame(height: 26)
-        .background(RoundedRectangle(cornerRadius: 4, style: .continuous).fill(Theme.orange.soft))
+        .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(Theme.orange.soft))
         .contentShape(Rectangle())
     }
 }
@@ -328,11 +320,11 @@ struct TitleBarButton: View {
             .padding(.trailing, 4)
             .frame(height: 28)
             .background(
-                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
                     .fill(hovered ? Theme.fillHover : .clear)
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
                     .strokeBorder(Theme.hairline, lineWidth: 0.5)
             )
             .contentShape(Rectangle())

@@ -110,10 +110,10 @@ struct ContentView: View {
                     .padding(.horizontal, 14)
                     .frame(height: 32)
                     .background(
-                        RoundedRectangle(cornerRadius: 4, style: .continuous).fill(Theme.surface)
+                        RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Theme.surface)
                             .shadow(color: .black.opacity(0.12), radius: 12, y: 4)
                     )
-                    .overlay(RoundedRectangle(cornerRadius: 4, style: .continuous).strokeBorder(Theme.hairline, lineWidth: 0.5))
+                    .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(Theme.hairline, lineWidth: 0.5))
                     .padding(.bottom, 28)
                     .transition(.opacity.combined(with: .offset(y: 6)))
             }
@@ -349,11 +349,11 @@ private struct EmptyState: View {
             }
             .padding(.horizontal, 16)
             .background(
-                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
                     .fill(Theme.surface.opacity(0.7))
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
                     .strokeBorder(Theme.hairline, lineWidth: 0.5)
             )
             .frame(width: 360)
@@ -398,18 +398,18 @@ private struct HubButton: View {
                         .monospacedDigit()
                         .padding(.horizontal, 5)
                         .frame(height: 16)
-                        .background(RoundedRectangle(cornerRadius: 4, style: .continuous).fill(Theme.textPrimary.opacity(0.08)))
+                        .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(Theme.textPrimary.opacity(0.08)))
                 }
             }
             .foregroundStyle(window.showHub || hovered ? Theme.textPrimary : Theme.textBody)
             .padding(.horizontal, 10)
             .frame(height: 28)
             .background(
-                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
                     .fill(window.showHub ? Theme.fillActive : (hovered ? Theme.fillHover : .clear))
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
                     .strokeBorder(Theme.hairline, lineWidth: 0.5)
             )
             .contentShape(Rectangle())

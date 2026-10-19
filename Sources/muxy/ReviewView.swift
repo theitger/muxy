@@ -131,15 +131,15 @@ struct ReviewView: View {
             }
         }
         .background(
-            RoundedRectangle(cornerRadius: 5, style: .continuous)
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .fill(Theme.surface)
                 .shadow(color: .black.opacity(0.14), radius: 8, y: 3)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 5, style: .continuous)
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .strokeBorder(Theme.textPrimary.opacity(0.12), lineWidth: 1)
         )
-        .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         .onAppear {
             turns.refresh(model.checkout)
             model.load()
@@ -190,7 +190,7 @@ struct ReviewView: View {
                     .foregroundStyle(Theme.bg)
                     .padding(.horizontal, 12)
                     .frame(height: 28)
-                    .background(RoundedRectangle(cornerRadius: 5, style: .continuous).fill(Theme.textPrimary))
+                    .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(Theme.textPrimary))
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
@@ -280,7 +280,7 @@ private struct FileRow: View {
             .padding(.horizontal, 8)
             .frame(height: 38)
             .background(
-                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
                     .fill(selected ? Theme.fillActive : (hovered ? Theme.fillHover : .clear))
             )
             .contentShape(Rectangle())
@@ -395,7 +395,7 @@ private struct DiffLineRow: View {
                             .font(.system(size: 8.5, weight: .bold))
                             .foregroundStyle(.white)
                             .frame(width: 15, height: 15)
-                            .background(RoundedRectangle(cornerRadius: 4).fill(Theme.blue.strong))
+                            .background(RoundedRectangle(cornerRadius: 6).fill(Theme.blue.strong))
                     }
                     .buttonStyle(.plain)
                     .help(L("Comment on this line"))
@@ -469,7 +469,7 @@ private struct CommentCard: View {
         }
         .padding(.leading, 10)
         .padding(.vertical, 4)
-        .background(RoundedRectangle(cornerRadius: 5, style: .continuous).fill(Theme.blue.soft))
+        .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(Theme.blue.soft))
         .padding(.leading, 80)
         .padding(.trailing, 12)
         .padding(.vertical, 4)
@@ -492,7 +492,7 @@ private struct CommentEditor: View {
                 .onSubmit { onSave(text) }
                 .padding(8)
                 .background(
-                    RoundedRectangle(cornerRadius: 5, style: .continuous)
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
                         .strokeBorder(Theme.textPrimary.opacity(0.3), lineWidth: 1)
                 )
             HStack(spacing: 8) {

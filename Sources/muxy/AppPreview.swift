@@ -166,7 +166,7 @@ struct AppButton: View {
         .padding(.horizontal, 8)
         .frame(height: 26)
         .background(
-            RoundedRectangle(cornerRadius: 5, style: .continuous)
+            RoundedRectangle(cornerRadius: 7, style: .continuous)
                 .fill(open ? Theme.fillActive : (hovered ? Theme.fillHover : .clear))
         )
         .contentShape(Rectangle())

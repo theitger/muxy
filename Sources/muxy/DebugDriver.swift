@@ -20,6 +20,8 @@ enum DebugDriver {
             window.openReview(scope: value == "branch" ? .branch : .lastTurn)
         case "close-review":
             window.closeReview()
+        case "appearance":
+            AppAppearance.apply(value.flatMap(AppAppearance.init) ?? .system)
         case "panel":
             Results.shared.togglePanel(in: window)
         case "select":

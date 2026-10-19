@@ -4,6 +4,7 @@ import UserNotifications
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate {
     func applicationDidFinishLaunching(_: Notification) {
+        AppAppearance.apply()
         Notifier.setUp(delegate: self)
         // On the first launch the setup asks, with a reason, instead.
         if !Onboarding.isDue { Notifier.requestPermission() }

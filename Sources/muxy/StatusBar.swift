@@ -43,7 +43,7 @@ struct StatusBar: View {
             }
             .buttonStyle(.plain)
         }
-        .font(Theme.label(size: 10.5))
+        .font(Theme.label(size: 11))
         .lineLimit(1)
         .padding(.horizontal, 12)
         .frame(height: 24)
@@ -59,7 +59,7 @@ struct StatusBar: View {
     @ViewBuilder
     private func pip(_ tone: Color, _ count: Int, _ label: String, button: (() -> Void)? = nil) -> some View {
         let content = HStack(spacing: 5) {
-            Rectangle().fill(count > 0 ? tone : Theme.textFaint.opacity(0.5)).frame(width: 6, height: 6)
+            Circle().fill(count > 0 ? tone : Theme.textFaint.opacity(0.5)).frame(width: 6, height: 6)
             Text("\(String(count)) \(label)").foregroundStyle(count > 0 ? Theme.textBody : Theme.textFaint)
         }
         if let button {

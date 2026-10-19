@@ -195,8 +195,8 @@ private struct Column<Content: View>: View {
         .frame(width: width)
         .frame(maxHeight: .infinity, alignment: .top)
         .padding(10)
-        .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(Theme.textPrimary.opacity(0.025)))
-        .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous).strokeBorder(Theme.hairline, lineWidth: 1))
+        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Theme.textPrimary.opacity(0.025)))
+        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Theme.hairline, lineWidth: 1))
     }
 }
 
@@ -208,13 +208,13 @@ private struct CardBackground: ViewModifier {
         content
             .padding(10)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(RoundedRectangle(cornerRadius: 4, style: .continuous).fill(Theme.surfaceActive))
+            .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(Theme.surfaceActive))
             .overlay(
-                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                RoundedRectangle(cornerRadius: 9, style: .continuous)
                     .strokeBorder(highlighted ? Theme.orange.strong.opacity(0.6) : Theme.hairline, lineWidth: 1)
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                RoundedRectangle(cornerRadius: 9, style: .continuous)
                     .strokeBorder(Theme.textPrimary.opacity(hovered ? 0.22 : 0), lineWidth: 1)
             )
             .onHover { hovered = $0 }
@@ -561,7 +561,7 @@ private struct WorktreeRow: View {
         }
         .padding(.horizontal, 10)
         .frame(height: 46)
-        .background(RoundedRectangle(cornerRadius: 5, style: .continuous).fill(hovered ? Theme.fillHover : .clear))
+        .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(hovered ? Theme.fillHover : .clear))
         .onHover { hovered = $0 }
     }
 

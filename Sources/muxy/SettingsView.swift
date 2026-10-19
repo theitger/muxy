@@ -3,6 +3,7 @@ import SwiftUI
 /// ⌘, — deliberately small: muxy takes its look from your Ghostty config.
 struct SettingsView: View {
     @AppStorage(Language.storageKey) private var language = Language.english.rawValue
+    @AppStorage(AppAppearance.storageKey) private var appearance = AppAppearance.system.rawValue
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -24,6 +25,20 @@ struct SettingsView: View {
             Text(L("Some menus switch after the next launch."))
                 .font(.system(size: 11.5))
                 .foregroundStyle(Theme.textDim)
+            HStack {
+                Text(L("Appearance"))
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(Theme.textBody)
+                Spacer()
+                Segments(selection: Binding(
+                    get: { AppAppearance(rawValue: appearance) ?? .system },
+                    set: { choice in
+                        appearance = choice.rawValue
+                        AppAppearance.apply(choice)
+                    }
+                ), options: AppAppearance.allCases.map { ($0, $0.name) })
+            }
+            .padding(.top, 6)
             Divider().padding(.vertical, 6)
             AgentSettings()
             Divider().padding(.vertical, 6)

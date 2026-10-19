@@ -25,7 +25,7 @@ struct TabBarView: View {
             }
             .padding(3)
             .background(
-                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
                     .fill(Theme.textPrimary.opacity(0.05))
             )
             IconButton(symbol: "plus", help: L("New Tab (⌘T)")) {
@@ -96,7 +96,7 @@ private struct SegmentTab: View {
         .padding(.horizontal, 10)
         .frame(height: 26)
         .background(
-            RoundedRectangle(cornerRadius: 4, style: .continuous)
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
                 .fill(isActive ? Theme.bg : .clear)
                 .shadow(color: .black.opacity(isActive ? 0.08 : 0), radius: 1.5, y: 1)
         )
