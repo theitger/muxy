@@ -201,7 +201,7 @@ struct QuickTerminalSettings: View {
                 Spacer()
                 Toggle("", isOn: $quick.enabled)
                     .labelsHidden()
-                    .toggleStyle(.switch)
+                    .toggleStyle(.offOn)
                     .accessibilityLabel(L("Quick terminal"))
             }
             if quick.enabled {

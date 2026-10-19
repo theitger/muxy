@@ -23,7 +23,7 @@ struct RemoteSettings: View {
                 Spacer()
                 Toggle("", isOn: $enabled)
                     .labelsHidden()
-                    .toggleStyle(.switch)
+                    .toggleStyle(.offOn)
                     .onChange(of: enabled) { _, on in server.setEnabled(on) }
             }
 

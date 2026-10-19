@@ -26,6 +26,10 @@ final class RenderTests: XCTestCase {
         let views: [(String, AnyView)] = [
             ("panel", AnyView(ResultPanel(result: full, building: false, hasAgent: true))),
             ("quorum-settings", AnyView(QuorumSettings().frame(width: 420))),
+            ("settings-general", AnyView(SettingsView.page(.general).frame(width: 560))),
+            ("settings-terminal", AnyView(SettingsView.page(.terminal).frame(width: 560))),
+            ("settings-agents", AnyView(SettingsView.page(.agents).frame(width: 560))),
+            ("settings-workflow", AnyView(SettingsView.page(.workflow).frame(width: 560))),
             ("panel-empty", AnyView(ResultPanel(result: nil, building: false, hasAgent: true))),
             ("panel-hub", AnyView(ResultPanel(result: full, building: false, hasAgent: true, extras: PanelExtras(
                 proof: ProofResult(tree: "t", entries: [

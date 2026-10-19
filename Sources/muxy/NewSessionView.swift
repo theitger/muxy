@@ -249,7 +249,7 @@ struct NewSessionView: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
-            .toggleStyle(.switch)
+            .toggleStyle(.offOn)
             .controlSize(.small)
             Spacer(minLength: 8)
             if worktree {

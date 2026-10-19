@@ -125,7 +125,7 @@ struct QuorumSettings: View {
                     } else if let agent {
                         Toggle("", isOn: Binding(get: { agent }, set: { setAgent($0) }))
                             .labelsHidden()
-                            .toggleStyle(.switch)
+                            .toggleStyle(.offOn)
                     }
                 }
                 HStack(spacing: 12) {
@@ -208,7 +208,7 @@ struct QuorumSettings: View {
                 set: { set(key, $0 ? "1" : "0") }
             ))
             .labelsHidden()
-            .toggleStyle(.switch)
+            .toggleStyle(.offOn)
             .controlSize(.small)
         }
     }

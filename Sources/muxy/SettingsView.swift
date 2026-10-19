@@ -1,40 +1,119 @@
 import SwiftUI
 
-/// ⌘, — deliberately small: muxy takes its look from your Ghostty config.
+/// ⌘,: panes on the left, each a short page of cards with one setting
+/// per row (what it is on the left, the control on the right). A new
+/// setting goes into the pane it belongs to; a new area is a new pane.
 struct SettingsView: View {
-    @AppStorage(Language.storageKey) private var language = Language.english.rawValue
-    @AppStorage(AppAppearance.storageKey) private var appearance = AppAppearance.system.rawValue
-    @AppStorage(TerminalColors.storageKey) private var terminalColors = TerminalColors.neutral.rawValue
-    @AppStorage(TerminalColors.fontKey) private var fontFamily = ""
+    enum Pane: String, CaseIterable, Identifiable {
+        case general, terminal, agents, workflow, review, phone, mac
+
+        var id: String { rawValue }
+
+        var title: String {
+            switch self {
+            case .general: L("General")
+            case .terminal: L("Terminal")
+            case .agents: L("Agents")
+            case .workflow: L("Workflow")
+            case .review: L("Review")
+            case .phone: L("Phone")
+            case .mac: L("This Mac")
+            }
+        }
+    }
+
+    @AppStorage("settingsPane") private var pane = Pane.general.rawValue
     @ObservedObject private var watch = AppearanceWatch.shared
-    @AppStorage(TerminalColors.sizeKey) private var fontSize: Double = 0
 
     var body: some View {
-        ScrollView {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Text(L("Language"))
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(Theme.textBody)
+        HStack(spacing: 0) {
+            VStack(alignment: .leading, spacing: 2) {
+                ForEach(Pane.allCases) { item in
+                    PaneButton(title: item.title, selected: pane == item.rawValue) { pane = item.rawValue }
+                }
                 Spacer()
-                Picker("", selection: Binding(
+            }
+            .padding(.horizontal, 10)
+            .padding(.top, 14)
+            .frame(width: 180)
+            .background(Theme.sidebar)
+            Rectangle().fill(Theme.border).frame(width: 1)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    Text((Pane(rawValue: pane) ?? .general).title)
+                        .font(.system(size: 20, weight: .semibold))
+                        .foregroundStyle(Theme.textPrimary)
+                    page(Pane(rawValue: pane) ?? .general)
+                }
+                .padding(.horizontal, 28)
+                .padding(.vertical, 24)
+                .frame(maxWidth: 620, alignment: .leading)
+                .frame(maxWidth: .infinity)
+            }
+            .background(Theme.bg)
+        }
+        .frame(width: 820, height: 580)
+        .tint(Theme.textPrimary)
+        .id(watch.isDark)
+    }
+
+    /// One pane's page on its own (offscreen renders).
+    static func page(_ pane: Pane) -> some View {
+        VStack(alignment: .leading, spacing: 18) { SettingsView().page(pane) }
+    }
+
+    @ViewBuilder
+    private func page(_ pane: Pane) -> some View {
+        switch pane {
+        case .general: GeneralPane()
+        case .terminal: TerminalPane()
+        case .agents: AgentsPane()
+        case .workflow: WorkflowPane()
+        case .review: SettingCard { SettingBlock { QuorumSettings() } }
+        case .phone: SettingCard { SettingBlock { RemoteSettings() } }
+        case .mac: MacPane()
+        }
+    }
+}
+
+private struct PaneButton: View {
+    let title: String
+    let selected: Bool
+    let action: () -> Void
+    @State private var hovered = false
+
+    var body: some View {
+        Button(action: action) {
+            Text(title)
+                .font(.system(size: 13, weight: selected ? .semibold : .regular))
+                .foregroundStyle(selected ? Theme.textPrimary : Theme.textBody)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 10)
+                .frame(height: 30)
+                .background(
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .fill(selected ? Theme.fillActive : (hovered ? Theme.fillHover : .clear))
+                )
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { hovered = $0 }
+    }
+}
+
+private struct GeneralPane: View {
+    @AppStorage(Language.storageKey) private var language = Language.english.rawValue
+    @AppStorage(AppAppearance.storageKey) private var appearance = AppAppearance.system.rawValue
+
+    var body: some View {
+        SettingCard {
+            SettingRow(L("Language"), detail: L("Some menus switch after the next launch.")) {
+                Segments(selection: Binding(
                     get: { Language(rawValue: language) ?? .english },
                     set: { Language.select($0) }
-                )) {
-                    ForEach(Language.allCases) { Text($0.name).tag($0) }
-                }
-                .labelsHidden()
-                .pickerStyle(.segmented)
-                .frame(width: 180)
+                ), options: Language.allCases.map { ($0, $0.name) })
             }
-            Text(L("Some menus switch after the next launch."))
-                .font(.system(size: 11.5))
-                .foregroundStyle(Theme.textDim)
-            HStack {
-                Text(L("Appearance"))
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(Theme.textBody)
-                Spacer()
+            SettingRow(L("Appearance"), detail: L("The terminal follows: light or dark colors to match.")) {
                 Segments(selection: Binding(
                     get: { AppAppearance(rawValue: appearance) ?? .system },
                     set: { choice in
@@ -43,12 +122,26 @@ struct SettingsView: View {
                     }
                 ), options: AppAppearance.allCases.map { ($0, $0.name) })
             }
-            .padding(.top, 6)
-            HStack {
-                Text(L("Terminal colors"))
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(Theme.textBody)
-                Spacer()
+        }
+        if Updater.shared.available {
+            SettingCard { SettingBlock { UpdateSettings() } }
+        }
+        SettingCard {
+            SettingRow(L("Setup"), detail: L("Repositories, agents, hooks, notifications: the first-launch walk-through again.")) {
+                Button(L("Set Up muxy Again…")) { Onboarding.show() }
+            }
+        }
+    }
+}
+
+private struct TerminalPane: View {
+    @AppStorage(TerminalColors.storageKey) private var terminalColors = TerminalColors.neutral.rawValue
+    @AppStorage(TerminalColors.fontKey) private var fontFamily = ""
+    @AppStorage(TerminalColors.sizeKey) private var fontSize: Double = 0
+
+    var body: some View {
+        SettingCard {
+            SettingRow(L("Colors"), detail: L("muxy's neutral pair, or your Ghostty config's theme.")) {
                 Segments(selection: Binding(
                     get: { TerminalColors(rawValue: terminalColors) ?? .neutral },
                     set: { choice in
@@ -57,11 +150,7 @@ struct SettingsView: View {
                     }
                 ), options: TerminalColors.allCases.map { ($0, $0.name) })
             }
-            HStack {
-                Text(L("Terminal font"))
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(Theme.textBody)
-                Spacer()
+            SettingRow(L("Font"), detail: L("Any monospaced font on this Mac, or the one in your Ghostty config.")) {
                 Picker("", selection: Binding(get: { fontFamily }, set: { family in
                     fontFamily = family
                     TerminalColors.apply()
@@ -73,7 +162,9 @@ struct SettingsView: View {
                     }
                 }
                 .labelsHidden()
-                .frame(width: 190)
+                .frame(width: 200)
+            }
+            SettingRow(L("Size")) {
                 Picker("", selection: Binding(get: { fontSize }, set: { size in
                     fontSize = size
                     TerminalColors.apply()
@@ -85,36 +176,59 @@ struct SettingsView: View {
                     }
                 }
                 .labelsHidden()
-                .frame(width: 110)
+                .frame(width: 200)
             }
-            Divider().padding(.vertical, 6)
-            AgentSettings()
-            Divider().padding(.vertical, 6)
-            WorkflowSettings()
-            Divider().padding(.vertical, 6)
-            PromptSettings()
-            Divider().padding(.vertical, 6)
-            QuorumSettings()
-            Divider().padding(.vertical, 6)
-            StayAwakeSettings()
-            Divider().padding(.vertical, 6)
-            QuickTerminalSettings()
-            Divider().padding(.vertical, 6)
-            RemoteSettings()
-            Divider().padding(.vertical, 6)
-            CommandLineSettings()
-            if Updater.shared.available {
-                Divider().padding(.vertical, 6)
-                UpdateSettings()
+        }
+        SettingCard { SettingBlock { QuickTerminalSettings() } }
+    }
+}
+
+private struct AgentsPane: View {
+    @AppStorage("skipPermissions") private var skipPermissions = true
+    @AppStorage("restoreSessions") private var restoreSessions = true
+
+    var body: some View {
+        SettingCard { SettingBlock { HookSettings() } }
+        SettingCard {
+            SettingRow(L("Skip permission prompts"), detail: L("New sessions start Claude with --dangerously-skip-permissions and Codex with --dangerously-bypass-approvals-and-sandbox.")) {
+                Toggle("", isOn: $skipPermissions).labelsHidden().toggleStyle(.offOn)
             }
-            Divider().padding(.vertical, 6)
-            Button(L("Set Up muxy Again…")) { Onboarding.show() }
+            SettingRow(L("Restore sessions"), detail: L("After a quit, a crash or an update, every session comes back: agents with their conversation, shells in their folder.")) {
+                Toggle("", isOn: $restoreSessions).labelsHidden().toggleStyle(.offOn)
+            }
         }
-        .padding(20)
+        SettingCard { SettingBlock { PromptSettings() } }
+    }
+}
+
+private struct WorkflowPane: View {
+    @AppStorage(Proofs.autoKey) private var proofAfterTurn = true
+    @AppStorage(Flow.autoReviewKey) private var reviewWhenPROpens = false
+    @AppStorage(Landing.quorumKey) private var landWithQuorum = true
+
+    var body: some View {
+        SettingCard {
+            SettingRow(L("Check after every turn"), detail: L("muxy runs the repository's checks ([check] in .wtconfig) on the agent's work when a turn ends, and tells you when they fail. Checks with auto = false only run on request and when landing.")) {
+                Toggle("", isOn: $proofAfterTurn).labelsHidden().toggleStyle(.offOn)
+            }
+            SettingRow(L("Review as soon as a pull request opens"), detail: L("Off: muxy suggests the review and you start it. On: quorum reviews every new pull request of a session right away.")) {
+                Toggle("", isOn: $reviewWhenPROpens).labelsHidden().toggleStyle(.offOn)
+                    .disabled(!Quorum.isInstalled)
+            }
+            SettingRow(L("Land with quorum"), detail: Quorum.isInstalled
+                ? L("Landing hands the pushed pull request to quorum's review loop before it merges, unless quorum already passed it.")
+                : L("quorum isn't installed: landing merges once checks pass.")) {
+                Toggle("", isOn: $landWithQuorum).labelsHidden().toggleStyle(.offOn)
+                    .disabled(!Quorum.isInstalled)
+            }
         }
-        .frame(width: 460, height: 680)
-        .tint(Theme.textPrimary)
-        .id(watch.isDark)
+    }
+}
+
+private struct MacPane: View {
+    var body: some View {
+        SettingCard { SettingBlock { StayAwakeSettings() } }
+        SettingCard { SettingBlock { CommandLineSettings() } }
     }
 }
 
@@ -161,96 +275,6 @@ struct StayAwakeSettings: View {
         case .off: L("The Mac sleeps as usual, and agents pause with it.")
         case .open: L("Like caffeinate: no sleep while Muxy runs and the Mac is open. The display may still turn off. No password needed.")
         case .lidClosed: L("While Muxy runs, even with the lid closed. Asks for your password once.")
-        }
-    }
-}
-
-/// Settings → how "New Session" starts agents, and whether they survive
-/// a restart.
-private struct AgentSettings: View {
-    @AppStorage("skipPermissions") private var skipPermissions = true
-    @AppStorage("restoreSessions") private var restoreSessions = true
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HookSettings()
-            skip
-            HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(L("Restore sessions"))
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(Theme.textBody)
-                    Text(L("After a quit, a crash or an update, every session comes back: agents with their conversation, shells in their folder."))
-                        .font(.system(size: 11.5))
-                        .foregroundStyle(Theme.textDim)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                Spacer()
-                Toggle("", isOn: $restoreSessions)
-                    .labelsHidden()
-                    .toggleStyle(.switch)
-            }
-        }
-    }
-
-    private var skip: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(L("Skip permission prompts"))
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(Theme.textBody)
-                Text(L("New sessions start Claude with --dangerously-skip-permissions and Codex with --dangerously-bypass-approvals-and-sandbox."))
-                    .font(.system(size: 11.5))
-                    .foregroundStyle(Theme.textDim)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            Spacer()
-            Toggle("", isOn: $skipPermissions)
-                .labelsHidden()
-                .toggleStyle(.switch)
-        }
-    }
-}
-
-/// Settings → what muxy does on its own between the agent's turns.
-private struct WorkflowSettings: View {
-    @AppStorage(Proofs.autoKey) private var proofAfterTurn = true
-    @AppStorage(Landing.quorumKey) private var landWithQuorum = true
-    @AppStorage(Flow.autoReviewKey) private var reviewWhenPROpens = false
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            toggle(L("Check after every turn"),
-                   L("muxy runs the repository's checks ([check] in .wtconfig) on the agent's work when a turn ends, and tells you when they fail. Checks with auto = false only run on request and when landing."),
-                   $proofAfterTurn)
-            toggle(L("Review as soon as a pull request opens"),
-                   L("Off: muxy suggests the review and you start it. On: quorum reviews every new pull request of a session right away."),
-                   $reviewWhenPROpens)
-                .disabled(!Quorum.isInstalled)
-            toggle(L("Land with quorum"),
-                   Quorum.isInstalled
-                       ? L("Landing hands the pushed pull request to quorum's review loop before it merges.")
-                       : L("quorum isn't installed: landing merges once checks pass."),
-                   $landWithQuorum)
-                .disabled(!Quorum.isInstalled)
-        }
-    }
-
-    private func toggle(_ title: String, _ detail: String, _ value: Binding<Bool>) -> some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(Theme.textBody)
-                Text(detail)
-                    .font(.system(size: 11.5))
-                    .foregroundStyle(Theme.textDim)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            Spacer()
-            Toggle("", isOn: value)
-                .labelsHidden()
-                .toggleStyle(.switch)
         }
     }
 }

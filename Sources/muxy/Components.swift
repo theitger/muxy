@@ -282,3 +282,104 @@ struct Pulse: ViewModifier {
             .onChange(of: active) { dim = active }
     }
 }
+
+/// On or off as two words side by side, like every other choice in muxy:
+/// no switches.
+struct OffOnToggleStyle: ToggleStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        HStack {
+            configuration.label
+            Segments(selection: Binding(get: { configuration.isOn }, set: { configuration.isOn = $0 }),
+                     options: [(false, L("Off")), (true, L("On"))])
+        }
+    }
+}
+
+extension ToggleStyle where Self == OffOnToggleStyle {
+    static var offOn: OffOnToggleStyle { OffOnToggleStyle() }
+}
+
+/// One setting: what it is on the left, the control on the right.
+struct SettingRow<Control: View>: View {
+    let title: String
+    var detail: String?
+    @ViewBuilder let control: Control
+
+    init(_ title: String, detail: String? = nil, @ViewBuilder control: () -> Control) {
+        self.title = title
+        self.detail = detail
+        self.control = control()
+    }
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 16) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(Theme.textPrimary)
+                if let detail {
+                    Text(detail)
+                        .font(.system(size: 11.5))
+                        .foregroundStyle(Theme.textDim)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            control
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 11)
+    }
+}
+
+/// Settings that belong together, in one card with lines between them.
+struct SettingCard<Content: View>: View {
+    var title: String?
+    @ViewBuilder let content: Content
+
+    init(_ title: String? = nil, @ViewBuilder content: () -> Content) {
+        self.title = title
+        self.content = content()
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            if let title {
+                Text(title)
+                    .font(.system(size: 11.5, weight: .semibold))
+                    .foregroundStyle(Theme.textMuted)
+                    .padding(.leading, 4)
+            }
+            _VariadicView.Tree(CardLayout()) { content }
+                .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Theme.surface))
+                .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Theme.border, lineWidth: 1))
+        }
+    }
+
+    /// The card's rows with a hairline between each two.
+    private struct CardLayout: _VariadicView_UnaryViewRoot {
+        func body(children: _VariadicView.Children) -> some View {
+            VStack(spacing: 0) {
+                ForEach(children) { child in
+                    child
+                    if child.id != children.last?.id {
+                        Rectangle().fill(Theme.hairline).frame(height: 1).padding(.leading, 14)
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// A block inside a card that brings its own title and layout (hooks,
+/// phone, quorum): padded like a row.
+struct SettingBlock<Content: View>: View {
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        content
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
