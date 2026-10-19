@@ -1,12 +1,12 @@
 // Renders the muxy app icon: a lowercase m from three equal stems and two
-// arches, one stroke weight with round ends. Light: warm ink on warm grey;
-// dark: warm grey on a warm near-black. Deliberately a touch warmer than the
-// Porsche GT3 RS Ghostty themes muxy was designed with. No detail beyond the
-// letter, so every size is the same mark.
-// Usage: swift Scripts/make-icon.swift <iconset-dir> [icon-composer-dir]
+// arches, one stroke weight with round ends, in muxy's own neutral palette
+// (zinc). Light: ink on near-white; dark: near-white on near-black. No
+// detail beyond the letter, so every size is the same mark.
+// Usage: swift Scripts/make-icon.swift <iconset-dir> [icon-composer-dir] [touch-icon.png]
 //   <iconset-dir>: the light .icns sizes (macOS before 26, alerts)
 //   <icon-composer-dir>/AppIcon.icon: light + dark for macOS 26, whose dark
 //   icon style otherwise tints the app icon itself
+//   <touch-icon.png>: the phone app's home screen icon (180 px, full bleed)
 import AppKit
 
 let outDir = CommandLine.arguments.count > 1 ? CommandLine.arguments[1] : "AppIcon.iconset"
@@ -15,8 +15,8 @@ try? FileManager.default.createDirectory(atPath: outDir, withIntermediateDirecto
 struct Look {
     let paper: Int
     let ink: Int
-    static let light = Look(paper: 0xE6E1D8, ink: 0x2B2723)
-    static let dark = Look(paper: 0x1C1A17, ink: 0xD8D1C3)
+    static let light = Look(paper: 0xFAFAFA, ink: 0x09090B)
+    static let dark = Look(paper: 0x111113, ink: 0xFAFAFA)
 }
 
 func rgb(_ hex: Int, _ alpha: CGFloat = 1) -> CGColor {
@@ -124,5 +124,8 @@ if CommandLine.arguments.count > 2 {
     }
 
     """.write(to: icon.appendingPathComponent("icon.json"), atomically: true, encoding: .utf8)
+}
+if CommandLine.arguments.count > 3 {
+    try! render(px: 180, .light, fullBleed: true).write(to: URL(fileURLWithPath: CommandLine.arguments[3]))
 }
 print("iconset: \(outDir)")
