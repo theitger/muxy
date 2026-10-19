@@ -44,8 +44,8 @@ final class TerminalSession: NSObject, ObservableObject, Identifiable {
     }
     /// Which agent runs here, once one does.
     @Published var kind: AgentKind?
-    /// Claude's conversation log, as the hook reports it — the remote
-    /// renders it as a chat.
+    /// The agent's conversation log (Claude's or Codex's), as the hook
+    /// reports it; the remote renders it as a chat.
     var transcriptPath: String?
     /// The agent's own id for its conversation: `claude --resume` and
     /// `codex resume` take it, so a restart picks up where it was.

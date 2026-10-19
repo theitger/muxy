@@ -636,10 +636,11 @@ final class Store: ObservableObject {
             session.kind = kind
             session.reportsByHook = true
             if let id = event.agentSession { session.agentSessionID = id }
-            // The remote reads Claude's log format only.
-            if kind == .claude, let transcript = event.transcript { session.transcriptPath = transcript }
-            // Results read every agent's log.
-            if let transcript = event.transcript { Results.shared.noteLog(transcript, for: session) }
+            // The remote shows it as a chat; results read it too.
+            if let transcript = event.transcript {
+                session.transcriptPath = transcript
+                Results.shared.noteLog(transcript, for: session)
+            }
             switch event.name {
             case "start":
                 if session.agent == .none { session.agent = .idle }

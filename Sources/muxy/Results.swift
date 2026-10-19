@@ -50,7 +50,7 @@ final class Results: ObservableObject {
     @Published private(set) var panels: Set<WindowModel.ID> = []
 
     /// Each session's log as its hook reported it, for every agent (the
-    /// session's own `transcriptPath` is Claude's only, for the remote).
+    /// remote reads `transcriptPath`, kept per session too).
     private var logs: [TerminalSession.ID: String] = [:]
     private var tokens: [TerminalSession.ID: Int] = [:]
 

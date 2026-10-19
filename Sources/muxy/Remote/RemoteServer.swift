@@ -325,6 +325,8 @@ final class RemoteConnection {
     private var lastParse = Date.distantPast
     private var lastHistoryRead = Date.distantPast
     private var parsing = false
+    /// Agent conversations whose log was looked for once already.
+    private var searched: Set<String> = []
 
     init(secret: Data, send: @escaping (Data) -> Void, close: @escaping () -> Void) {
         self.secret = secret
@@ -400,9 +402,32 @@ final class RemoteConnection {
             if let tab { RemoteState.type(message["text"] as? String ?? "", enter: message["enter"] as? Bool ?? false, into: tab) }
         case "key":
             if let tab, let key = message["key"] as? String { RemoteState.press(key, in: tab) }
+        case "choose":
+            // An answer to the question on screen, by its number.
+            if let tab, let number = message["number"] as? Int,
+               let choice = Inbox.choices(of: tab).first(where: { $0.number == number }) {
+                Inbox.choose(choice, in: tab)
+            }
         case "open":
             let id = (message["directory"] as? String).flatMap(RemoteState.open)
             send(["t": "opened", "session": id ?? NSNull()])
+        case "new":
+            // Like ⌘N: a repository, an agent, a task, in a worktree or not.
+            let directory = (((message["directory"] as? String) ?? "~") as NSString).expandingTildeInPath
+            CommandCenter.shared.newSession(
+                directory: directory, agent: message["agent"] as? String,
+                worktree: (message["worktree"] as? Bool).map { $0 ? "on" : "off" }, branch: nil,
+                issue: nil, prompt: message["prompt"] as? String
+            ) { [weak self] reply in
+                Task { @MainActor in
+                    self?.send([
+                        "t": "opened", "session": reply.ok ? reply.output : NSNull(),
+                        "error": reply.ok ? NSNull() : reply.output,
+                    ])
+                }
+            }
+        case "repos":
+            sendRepos()
         default:
             break
         }
@@ -437,9 +462,26 @@ final class RemoteConnection {
         pushChat(id, session)
     }
 
+    /// The repositories a new session can start in, as the ⌘N panel
+    /// lists them; the scan runs off the main thread.
+    private func sendRepos() {
+        let open = Store.shared.orderedWorkspaces.compactMap(\.context.root)
+        Task { [weak self] in
+            let repos = await Task.detached(priority: .utility) {
+                Repos.load(open: open).prefix(40).map { ["path": Paths.abbreviate($0.path), "name": $0.name] }
+            }.value
+            self?.send(["t": "repos", "repos": Array(repos)])
+        }
+    }
+
     /// The transcript is parsed off the main thread, at most once a second
     /// — a busy Claude rewrites it constantly.
     private func pushChat(_ id: String, _ session: TerminalSession) {
+        // A session restored after a restart: its log, found by the agent's id.
+        if session.transcriptPath == nil, let kind = session.kind, let id = session.agentSessionID,
+           searched.insert(id).inserted {
+            session.transcriptPath = Transcripts.locate(agent: kind, conversation: id)
+        }
         guard let path = session.transcriptPath, !parsing,
               Date().timeIntervalSince(lastParse) >= 1 else { return }
         let modified = (try? FileManager.default.attributesOfItem(atPath: path)[.modificationDate] as? Date)?

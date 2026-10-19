@@ -291,7 +291,7 @@ enum Transcripts {
     }
 
     /// ["/bin/zsh", "-lc", "go test ./..."] → "go test ./...".
-    private static func commandLine(_ value: Any?) -> String? {
+    static func commandLine(_ value: Any?) -> String? {
         if let text = value as? String { return text }
         guard let parts = value as? [String], !parts.isEmpty else { return nil }
         if parts.count >= 3, parts[0].hasSuffix("sh"), parts[1].hasPrefix("-"), parts[1].contains("c") {

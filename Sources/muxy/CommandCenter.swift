@@ -227,7 +227,7 @@ final class CommandCenter {
 
     /// A session as the ⌘N panel would start it; what isn't given comes
     /// from the panel's last choices. Answers with the new session's id.
-    private func newSession(
+    func newSession(
         directory: String?, agent: String?, worktree: String?, branch: String?, issue: String?, prompt: String?,
         reply: @escaping (Reply) -> Void
     ) {
