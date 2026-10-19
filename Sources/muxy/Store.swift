@@ -59,6 +59,7 @@ final class Store: ObservableObject {
         Radar.shared.start()
         HubModel.shared.start()
         Queue.shared.resume()
+        WorkLedger.shared.start()
         // Restored sessions: what was proven on their files before.
         DispatchQueue.main.asyncAfter(deadline: .now() + 4) {
             Proofs.shared.recall(self.workspaces.compactMap(\.context.checkout))
