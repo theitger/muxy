@@ -62,7 +62,7 @@ struct ContentView: View {
                 // Wings away: the terminal fills the window, like Ghostty.
                 VStack(spacing: 0) {
                     if window.showHub {
-                        HubView(store: store, window: window)
+                        HubView(store: store, window: window, sidebarFolded: true)
                     } else if let workspace = window.selectedWorkspace {
                         TabBarView(store: store, window: window, workspace: workspace)
                         WithPreview(workspace: workspace, cornerRadius: 0) {

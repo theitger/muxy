@@ -92,6 +92,8 @@ struct SettingsView: View {
             Divider().padding(.vertical, 6)
             WorkflowSettings()
             Divider().padding(.vertical, 6)
+            PromptSettings()
+            Divider().padding(.vertical, 6)
             QuorumSettings()
             Divider().padding(.vertical, 6)
             StayAwakeSettings()
@@ -244,6 +246,45 @@ private struct WorkflowSettings: View {
             Toggle("", isOn: value)
                 .labelsHidden()
                 .toggleStyle(.switch)
+        }
+    }
+}
+
+/// Settings → what an agent is told when it starts on an issue.
+private struct PromptSettings: View {
+    @AppStorage(Issues.templateKey) private var template = ""
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text(L("Prompt for issues"))
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(Theme.textBody)
+                Spacer()
+                if !template.isEmpty, template != Issues.defaultTemplate {
+                    Button(L("Back to the default")) { template = "" }
+                        .buttonStyle(.link)
+                        .font(.system(size: 11.5))
+                }
+            }
+            Text(L("What the agent gets when you start it on an issue. Fields in braces are filled in; an empty one leaves no gap."))
+                .font(.system(size: 11.5))
+                .foregroundStyle(Theme.textDim)
+                .fixedSize(horizontal: false, vertical: true)
+            TextEditor(text: Binding(
+                get: { template.isEmpty ? Issues.defaultTemplate : template },
+                set: { template = $0 == Issues.defaultTemplate ? "" : $0 }
+            ))
+            .font(Theme.mono(size: 11.5))
+            .scrollContentBackground(.hidden)
+            .padding(6)
+            .frame(height: 170)
+            .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Theme.fillHover))
+            .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(Theme.border, lineWidth: 1))
+            Text(Issues.templateFields.joined(separator: "  "))
+                .font(Theme.mono(size: 10.5))
+                .foregroundStyle(Theme.textDim)
+                .textSelection(.enabled)
         }
     }
 }

@@ -575,5 +575,8 @@ enum German {
         "Signed in to GitHub through gh. Opens your profile.": "Über gh bei GitHub angemeldet. Öffnet dein Profil.",
         "Open the pull request on GitHub": "Pull Request auf GitHub öffnen",
         "All": "Alle",
+        "Prompt for issues": "Prompt für Issues",
+        "Back to the default": "Zurück zum Standard",
+        "What the agent gets when you start it on an issue. Fields in braces are filled in; an empty one leaves no gap.": "Was der Agent bekommt, wenn du ihn auf einem Issue startest. Felder in geschweiften Klammern werden ausgefüllt; ein leeres hinterlässt keine Lücke.",
     ]
 }

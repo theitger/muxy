@@ -6,6 +6,8 @@ import SwiftUI
 struct HubView: View {
     @ObservedObject var store: Store
     @ObservedObject var window: WindowModel
+    /// Shown without the sidebar: the window's own buttons sit top left.
+    var sidebarFolded = false
     @ObservedObject private var hub = HubModel.shared
     @ObservedObject private var inventory = InventoryModel.shared
     @ObservedObject private var radar = Radar.shared
@@ -45,6 +47,10 @@ struct HubView: View {
 
     private var header: some View {
         HStack(spacing: 12) {
+            if sidebarFolded {
+                Color.clear.frame(width: 66)
+                IconButton(symbol: "sidebar.left", help: L("Sidebar (⌘B)")) { store.toggleSidebar() }
+            }
             Segments(selection: $page, options: [("board", L("Board")), ("reviews", L("Reviews")), ("worktrees", L("Worktrees"))])
             .onChange(of: page) { if page == "worktrees" { inventory.scan() } }
             Spacer()
@@ -299,7 +305,7 @@ private struct Column<Content: View>: View {
             .foregroundStyle(Theme.textPrimary)
             .frame(height: 24)
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: 8) { content }
+                LazyVStack(alignment: .leading, spacing: 6) { content }
                     .padding(.bottom, 20)
             }
             .scrollIndicators(.never)
@@ -339,62 +345,71 @@ private struct IssueCard: View {
     var showsRepo = true
     let start: ([AgentKind]) -> Void
     @AppStorage("newSessionAgent") private var preferred = AgentKind.claude.rawValue
+    @State private var hovered = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 7) {
-            HStack(spacing: 6) {
-                if showsRepo {
-                    SectionLabel(issue.repo.split(separator: "/").last.map(String.init) ?? issue.repo)
-                }
-                Text("#" + String(issue.number)).font(Theme.label(size: 10.5)).foregroundStyle(Theme.textDim)
-                if let created = issue.created {
-                    Text(WorktreeRow.ago(Date().timeIntervalSince(created)))
-                        .font(Theme.label(size: 10.5)).foregroundStyle(Theme.textFaint)
-                        .help(created.formatted(date: .abbreviated, time: .shortened))
-                }
-                Spacer()
-                Button {
-                    if let url = URL(string: issue.url) { NSWorkspace.shared.open(url) }
-                } label: {
-                    Icon("arrow.up.right", size: 9.5).foregroundStyle(Theme.textDim)
-                }
-                .buttonStyle(.plain)
-                .help(L("Open on GitHub"))
-            }
+        let agent = AgentKind(rawValue: preferred) ?? .claude
+        VStack(alignment: .leading, spacing: 4) {
             Text(issue.title)
                 .font(.system(size: 12.5, weight: .medium))
                 .foregroundStyle(Theme.textPrimary)
+                .lineLimit(2)
                 .fixedSize(horizontal: false, vertical: true)
-            if !issue.labels.isEmpty {
-                HStack(spacing: 4) {
-                    ForEach(issue.labels.prefix(3), id: \.self) { label in
-                        Badge(text: label, tone: label == "ready-for-agent" ? Theme.greenTone : (label.contains("priority") ? Theme.orange : Theme.neutral))
-                    }
-                }
-            }
             HStack(spacing: 6) {
-                let agent = AgentKind(rawValue: preferred) ?? .claude
-                SmallButton(title: L("Start %@", agent.name), prominent: true) { start([agent]) }
-                    .disabled(!local)
-                Menu {
-                    ForEach(AgentKind.allCases) { kind in
-                        Button(L("Start %@", kind.name)) { start([kind]) }
+                Text("#" + String(issue.number)).foregroundStyle(Theme.textDim)
+                if showsRepo {
+                    Text(issue.repo.split(separator: "/").last.map(String.init) ?? issue.repo).foregroundStyle(Theme.textDim)
+                }
+                if let created = issue.created {
+                    Text(WorktreeRow.ago(Date().timeIntervalSince(created)))
+                        .foregroundStyle(Theme.textFaint)
+                        .help(created.formatted(date: .abbreviated, time: .shortened))
+                }
+                if issue.labels.contains("ready-for-agent") {
+                    Text("ready-for-agent").foregroundStyle(Theme.greenTone.strong)
+                }
+                if let priority = issue.labels.first(where: { $0.lowercased().contains("priority") }) {
+                    Text(priority.replacingOccurrences(of: "priority: ", with: "")).foregroundStyle(Theme.orange.strong)
+                }
+                Spacer(minLength: 0)
+            }
+            .font(Theme.label(size: 11))
+            .lineLimit(1)
+            if hovered {
+                HStack(spacing: 6) {
+                    if local {
+                        SmallButton(title: L("Start %@", agent.name), prominent: true) { start([agent]) }
+                        Menu {
+                            ForEach(AgentKind.allCases) { kind in
+                                Button(L("Start %@", kind.name)) { start([kind]) }
+                            }
+                            Divider()
+                            Button(L("Claude and Codex side by side")) { start(AgentKind.allCases) }
+                        } label: {
+                            Text(L("More")).font(.system(size: 11.5, weight: .medium))
+                        }
+                        .menuStyle(.borderlessButton)
+                        .fixedSize()
+                    } else {
+                        Text(L("Not cloned here")).font(.system(size: 11)).foregroundStyle(Theme.textDim)
                     }
-                    Divider()
-                    Button(L("Claude and Codex side by side")) { start(AgentKind.allCases) }
-                } label: {
-                    Text(L("More")).font(.system(size: 11.5, weight: .medium))
+                    Spacer()
+                    SmallButton(title: "GitHub", symbol: "arrow.up.right") {
+                        if let url = URL(string: issue.url) { NSWorkspace.shared.open(url) }
+                    }
                 }
-                .menuStyle(.borderlessButton)
-                .fixedSize()
-                .disabled(!local)
-                Spacer()
-                if !local {
-                    Text(L("Not cloned here")).font(.system(size: 10.5)).foregroundStyle(Theme.textDim)
-                }
+                .padding(.top, 2)
             }
         }
-        .modifier(CardBackground())
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(hovered ? Theme.fillHover : Theme.surfaceActive))
+        .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(Theme.border, lineWidth: 1))
+        .contentShape(Rectangle())
+        .onHover { hovered = $0 }
+        .animation(.easeOut(duration: 0.12), value: hovered)
+        .help(issue.labels.joined(separator: ", "))
     }
 }
 

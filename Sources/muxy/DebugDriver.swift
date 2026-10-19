@@ -38,6 +38,8 @@ enum DebugDriver {
                 ws.sessions.map { "[\($0.title)] agentTitle=\($0.agentTitle ?? "nil") cwd=\($0.cwd) root=\(ws.context.root ?? "nil") checkout=\(ws.context.checkout ?? "nil")" }.joined(separator: " | ")
             }.joined(separator: "\n")
             return reply(true, text)
+        case "sidebar":
+            store.toggleSidebar()
         case "settings":
             store.openSettings?()
         case "shot-other":

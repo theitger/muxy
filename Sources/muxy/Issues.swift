@@ -162,18 +162,52 @@ enum Issues {
 
     /// What the agent is asked: the issue itself, then one instruction,
     /// worded the same for every agent.
-    static func prompt(for issue: Issue, note: String = "", localRepo: String? = nil) -> String {
+    /// What an issue becomes for the agent, editable in Settings. Fields
+    /// in braces are filled in; one that is empty takes its line with it.
+    static let defaultTemplate = """
+    GitHub issue {reference}: {title}
+
+    {url}
+
+    {labels}
+
+    {body}
+
+    {note}
+
+    Work on this issue. When you open the pull request, write "Closes {reference}" in its description.
+    """
+
+    static let templateKey = "issuePromptTemplate"
+
+    /// The fields a template can use, for Settings to list.
+    static let templateFields = ["{reference}", "{title}", "{url}", "{labels}", "{body}", "{note}", "{number}", "{repo}"]
+
+    static var template: String {
+        let saved = UserDefaults.standard.string(forKey: templateKey) ?? ""
+        return saved.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? defaultTemplate : saved
+    }
+
+    static func prompt(for issue: Issue, note: String = "", localRepo: String? = nil, template: String? = nil) -> String {
         let reference = localRepo?.lowercased() == issue.repo.lowercased() ? "#\(issue.number)" : "\(issue.repo)#\(issue.number)"
-        var parts = ["GitHub issue \(reference): \(issue.title)", issue.url]
-        if !issue.labels.isEmpty { parts.append("Labels: " + issue.labels.joined(separator: ", ")) }
-        let body = (issue.body ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-        if !body.isEmpty {
-            // The prompt travels in an environment variable: keep it sane.
-            parts.append(body.count > 20000 ? String(body.prefix(20000)) + "\n[…]" : body)
+        var body = (issue.body ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        // The prompt travels in an environment variable: keep it sane.
+        if body.count > 20000 { body = String(body.prefix(20000)) + "\n[…]" }
+        let values: [String: String] = [
+            "{reference}": reference, "{title}": issue.title, "{url}": issue.url,
+            "{labels}": issue.labels.isEmpty ? "" : "Labels: " + issue.labels.joined(separator: ", "),
+            "{body}": body, "{note}": note.isEmpty ? "" : "Note: " + note,
+            "{number}": String(issue.number), "{repo}": issue.repo
+        ]
+        var text = template ?? Self.template
+        // The body last: braces inside it stay as they are.
+        for (field, value) in values where field != "{body}" {
+            text = text.replacingOccurrences(of: field, with: value)
         }
-        if !note.isEmpty { parts.append("Note: " + note) }
-        parts.append("Work on this issue. When you open the pull request, write \"Closes \(reference)\" in its description.")
-        return parts.joined(separator: "\n\n")
+        text = text.replacingOccurrences(of: "{body}", with: body)
+        // Empty fields leave no gaps.
+        while text.contains("\n\n\n") { text = text.replacingOccurrences(of: "\n\n\n", with: "\n\n") }
+        return text.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     /// "123-fix-login-redirect": the number, then the title's first words.
