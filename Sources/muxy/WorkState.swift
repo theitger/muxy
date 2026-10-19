@@ -47,10 +47,14 @@ enum WorkState {
         return Snapshot(commit: commit.output, tree: tree, head: head)
     }
 
-    /// commit-tree needs a name even where git has none configured.
+    /// commit-tree needs a name even where git has none configured. The
+    /// date is fixed: the same files on the same HEAD are the same commit,
+    /// so looking again (the radar does, every minute and a half) leaves no
+    /// new objects behind.
     static let identity = [
         "GIT_AUTHOR_NAME": "muxy", "GIT_AUTHOR_EMAIL": "muxy@localhost",
-        "GIT_COMMITTER_NAME": "muxy", "GIT_COMMITTER_EMAIL": "muxy@localhost"
+        "GIT_COMMITTER_NAME": "muxy", "GIT_COMMITTER_EMAIL": "muxy@localhost",
+        "GIT_AUTHOR_DATE": "1700000000 +0000", "GIT_COMMITTER_DATE": "1700000000 +0000"
     ]
 
     /// Paths that differ between two commits (or a commit and the working

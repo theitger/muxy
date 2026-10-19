@@ -24,12 +24,14 @@ struct WorktreeInfo: Identifiable, Equatable {
     var containers: String?
     var running: Int = 0
     var prunable = false
+    /// muxy's ready-made worktree for the next session: kept on purpose.
+    var spare = false
 
     var id: String { path }
 
     /// Nothing would be lost: no uncommitted work, nothing unmerged.
     var isFinished: Bool {
-        owner != .main && changes == 0 && (ahead == 0 || prState == .merged)
+        owner != .main && !spare && changes == 0 && (ahead == 0 || prState == .merged)
     }
 
     var age: TimeInterval? { lastCommit.map { Date().timeIntervalSince($0) } }
@@ -97,6 +99,8 @@ enum Inventory {
             info.pr = pr.number
             info.prState = pr.state
         }
+        let marker = (try? String(contentsOfFile: (root as NSString).appendingPathComponent(".git/muxy-spare"), encoding: .utf8)) ?? ""
+        info.spare = marker.trimmingCharacters(in: .whitespacesAndNewlines).hasSuffix(entry.path)
         let project = projectName(of: entry.path)
         if info.owner == .main || project != mainProject, let running = compose[project] {
             info.containers = project

@@ -588,6 +588,7 @@ private struct WorktreeRow: View {
     private var status: String {
         if info.prunable { return L("folder gone") }
         if info.owner == .main { return L("main checkout") }
+        if info.spare { return L("ready for the next session") }
         var parts: [String] = []
         if info.changes > 0 { parts.append(info.changes == 1 ? L("1 change") : L("%d changes", info.changes)) }
         if info.ahead > 0, info.prState != .merged { parts.append(L("%d unmerged", info.ahead)) }

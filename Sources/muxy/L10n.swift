@@ -530,5 +530,7 @@ enum German {
         "Light": "Hell",
         "Dark": "Dunkel",
         "Appearance": "Darstellung",
+        "The agent asks you something: answer it, then land again": "Der Agent fragt dich etwas: antworte, dann erneut landen",
+        "ready for the next session": "bereit für die nächste Session",
     ]
 }

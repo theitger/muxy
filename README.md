@@ -75,6 +75,89 @@ working on it, red when they failed or the PR has conflicts, grey for
 drafts and PRs GitHub still holds back (review, out-of-date branch,
 required check missing). Green only when it could be merged right now.
 
+## Proven, not claimed
+
+An agent saying "tests pass" is a claim. After every turn Muxy runs the
+repository's own checks on the agent's work itself, only those whose files
+changed, and the result says both: what the agent claims and what Muxy
+found. A failed check lights up the session; **Send failures to the agent**
+hands it the command and the end of its output. Checks are sections in
+`.wtconfig`:
+
+```ini
+[check "frontend"]
+    run = cd frontend && pnpm run check
+    paths = frontend/
+[check "backend"]
+    run = make test
+    paths = backend/
+    auto = false        # only on request and when landing
+```
+
+Without any, the test command [quorum](https://github.com/yungweng/quorum)
+gates its fixes with is used, on request. The same files are never checked
+twice: results are kept per tree. Agents can prove their own work before
+they say they're done: `muxy proof` inside a Muxy terminal waits for the
+checks and exits non-zero when one fails.
+
+## Every turn, and the way back
+
+Muxy keeps the files as they were before and after every turn as hidden
+git refs (`refs/muxy/turns/…`: no commits on your branch, nothing pushed).
+The result lists the turns; one click shows what a turn changed, another
+puts the files back to it (and keeps the state you left as a turn of its
+own, so going back can be undone).
+
+**Changes** (`⇧⌘D`) shows the last turn, the whole branch or any turn as
+a diff. Hover a line, write what the agent should change there, collect
+comments across files, and send them as one message: each comment at its
+`file:line`, the line quoted.
+
+## Collisions before they happen
+
+Five agents in five worktrees of one repository will step on each other.
+Muxy merges every session's files with every other's, and with the branch
+they will land on, in git's object store (`git merge-tree`: nothing is
+checked out, a check takes milliseconds) whenever a turn ends and every
+minute and a half. A session that would conflict says with whom and in
+which files, long before a pull request; **Tell the agent** asks it to keep
+those changes small, or to merge the base in now.
+
+## Land
+
+**Land** takes a session's pull request the rest of the way: everything
+committed, up to date with its base (merged in when that is clean), the
+checks, a push, quorum's review-and-fix loop when it is installed, then
+GitHub's auto-merge with the repository's own merge method. Wherever a step
+needs thought (uncommitted work, a real conflict, a failing check) it goes
+back to the agent with exactly that, and landing resumes when its turn
+ends; after three rounds it stops and leaves it to you. When the PR is
+merged, the session closes and its worktree goes.
+
+## Side by side
+
+Pick **Both** in `⌘N` (or `muxy new --agent both`) and Claude and Codex
+work on the same task, each in its own worktree on its own branch. The
+hub shows them next to each other with their checks and collisions; **Keep**
+closes the other and removes its worktree, its branch stays.
+
+## The hub
+
+`⇧⌘H` (or **Hub** in the title bar) puts all work on one board: the
+issues GitHub has assigned to you across your repositories (`ready-for-agent`
+first) and pull requests waiting for your review, then every session as it
+moves through working, in review and ready to land. An issue starts with
+one click, in its own worktree, on a branch named after it, with the agent
+asked to close it from the PR. GitHub is reached through `gh`: its login is
+Muxy's; signed out, the hub offers to sign in.
+
+**Worktrees** lists every worktree of your repositories, whoever made it:
+Muxy, a Claude Code subagent, quorum or you by hand. Each with its branch,
+PR, uncommitted changes, unmerged commits, age and running containers, and
+whether it can go without losing anything. **Remove finished** takes all of
+those at once. Containers a worktree shares with the main checkout (the
+same Compose project name) are never stopped with it.
+
 ## On your phone
 
 <picture>
@@ -92,6 +175,12 @@ The phone app speaks German for now.
 Pairing puts a secret on the phone, and every connection is end-to-end
 encrypted with it (fresh X25519 keys, ChaCha20-Poly1305). "Pair Again"
 locks all phones out.
+
+## Light and dark
+
+Muxy follows the system, or stays light or dark (Settings → Appearance).
+Terminals switch along with it, using your Ghostty config's
+`theme = light:…,dark:…` pair, and the chrome follows the terminal.
 
 ## The quiet details
 
@@ -190,7 +279,9 @@ installed, its shell integration and terminfo are bundled into Muxy.
 | `⌃1…9` · `⌘⌥↑/↓` | switch session |
 | `⌘J` | next session that wants you (any window) |
 | `⇧⌘J` | inbox: everything waiting on you, answerable in place |
-| `⌘I` | the session's result |
+| `⌘I` | the session's result: proof, turns, collisions, quorum, land |
+| `⇧⌘D` | changes: last turn, whole branch or any turn, with line comments |
+| `⇧⌘H` | the hub: issues, sessions in flight, worktrees |
 | `⌘F` · `⌘G` · `⇧⌘G` | find in the scrollback |
 | `⌘K` | search sessions |
 | `⌘B` | show/hide the sidebar (drag its edge to resize) |
@@ -209,10 +300,12 @@ muxy new [options] [prompt]    # like ⌘N; prints the new session's id
 muxy notify [--session <id>] [--title <t>] <message>
 muxy status [--json]           # every open session
 muxy focus <id>                # that session on stage, Muxy in front
+muxy proof [--session <id>]    # run the checks, wait, exit 1 on failure
+muxy land [--session <id>]     # land the session's pull request
 ```
 
 - **`new`**: `--repo <dir>` (default: the current folder), `--agent
-  claude|codex|none`, `--worktree` / `--no-worktree`, `--branch <name>`,
+  claude|codex|both|none` (both: side by side, each in its own worktree), `--worktree` / `--no-worktree`, `--branch <name>`,
   `--issue <ref>`; the rest is the task (`-` reads it from stdin). What you
   leave out follows the ⌘N panel's last choices. Starts Muxy if it isn't
   running.

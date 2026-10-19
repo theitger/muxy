@@ -147,3 +147,14 @@ final class ProofTests: XCTestCase {
         XCTAssertEqual(again.entries.first?.outcome, .passed)
     }
 }
+
+final class SnapshotStabilityTests: XCTestCase {
+    func testSameFilesSameCommit() throws {
+        let repo = try TempRepo()
+        try repo.write("README.md", "changed\n")
+        let first = try XCTUnwrap(WorkState.snapshot(of: repo.root))
+        Thread.sleep(forTimeInterval: 1.1)
+        let second = try XCTUnwrap(WorkState.snapshot(of: repo.root))
+        XCTAssertEqual(first.commit, second.commit)
+    }
+}

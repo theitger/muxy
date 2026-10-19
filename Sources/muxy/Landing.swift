@@ -98,6 +98,11 @@ final class Landing: ObservableObject {
             steps[workspace.id] = .waitingForAgent(L("Waiting for the agent's turn to end"))
             return
         }
+        // Typing now would answer the agent's open question.
+        if workspace.sessions.contains(where: { $0.agent == .blocked }) {
+            steps[workspace.id] = .failed(L("The agent asks you something: answer it, then land again"))
+            return
+        }
         steps[workspace.id] = .preparing(L("Looking at the branch"))
         Task.detached(priority: .userInitiated) {
             let state = Self.inspect(checkout: checkout, root: root)
@@ -312,6 +317,10 @@ final class Landing: ObservableObject {
     }
 
     private func ask(_ workspace: Workspace, _ step: String, _ message: String) {
+        if workspace.sessions.contains(where: { $0.agent == .blocked }) {
+            steps[workspace.id] = .failed(L("The agent asks you something: answer it, then land again"))
+            return
+        }
         guard let session = agent(of: workspace) else {
             steps[workspace.id] = .failed(step + " — " + L("no agent runs in this session"))
             return
