@@ -97,6 +97,7 @@ enum Launcher {
                 }
             }
             if Shell.execute(git, ["switch", "--quiet", "-c", branch], in: path).status == 0 {
+                Worktrees.allowDirenv(in: path, root: root)
                 return (path, problem)
             }
         }
@@ -115,7 +116,12 @@ enum Launcher {
         guard result.status == 0 else {
             throw Failure(message: result.error.isEmpty ? L("git worktree add failed.") : result.error)
         }
-        guard let recipe else { return (path, nil) }
+        guard let recipe else {
+            Worktrees.allowDirenv(in: path, root: root)
+            return (path, nil)
+        }
+        // After the setup: it may write the .envrc in the first place.
+        defer { Worktrees.allowDirenv(in: path, root: root) }
         do {
             try Worktrees.setUp(path, root: root, recipe: recipe, progress: progress)
             return (path, nil)

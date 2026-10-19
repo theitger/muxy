@@ -298,3 +298,32 @@ final class OwnPullTests: XCTestCase {
         XCTAssertFalse(SavedSessions.file.path.contains("Application Support"))
     }
 }
+
+final class DirenvTests: XCTestCase {
+    func testAWorktreeGetsTheMainCheckoutsAllowedEnvrcOnly() throws {
+        guard let direnv = Shell.find("direnv") else { throw XCTSkip("direnv isn't installed") }
+        let repo = try TempRepo()
+        // direnv's allow list in a folder of the test's own, not yours.
+        let data = (repo.base as NSString).appendingPathComponent("xdg")
+        let previous = ProcessInfo.processInfo.environment["XDG_DATA_HOME"]
+        setenv("XDG_DATA_HOME", data, 1)
+        defer { if let previous { setenv("XDG_DATA_HOME", previous, 1) } else { unsetenv("XDG_DATA_HOME") } }
+
+        try repo.write(".envrc", "export MUXY_TEST=1\n")
+        let same = try repo.addWorktree("same", branch: "same")
+        try repo.write(".envrc", "export MUXY_TEST=1\n", in: same)
+        let other = try repo.addWorktree("other", branch: "other")
+        try repo.write(".envrc", "export MUXY_TEST=2\n", in: other)
+
+        // Not allowed in the main checkout: nothing is allowed anywhere.
+        Worktrees.allowDirenv(in: same, root: repo.root)
+        XCTAssertFalse(Worktrees.isAllowed(direnv: direnv, in: same))
+
+        _ = Shell.execute(direnv, ["allow", repo.root], in: repo.root)
+        XCTAssertTrue(Worktrees.isAllowed(direnv: direnv, in: repo.root))
+        Worktrees.allowDirenv(in: same, root: repo.root)
+        Worktrees.allowDirenv(in: other, root: repo.root)
+        XCTAssertTrue(Worktrees.isAllowed(direnv: direnv, in: same), "the same file, allowed in main")
+        XCTAssertFalse(Worktrees.isAllowed(direnv: direnv, in: other), "a different file stays blocked")
+    }
+}
