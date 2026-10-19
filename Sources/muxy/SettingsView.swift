@@ -198,6 +198,31 @@ private struct AgentsPane: View {
             }
         }
         SettingCard { SettingBlock { PromptSettings() } }
+        SettingCard { ClaudeLimitsRow() }
+    }
+}
+
+/// Claude's usage limits in muxy: a script in front of the status line.
+private struct ClaudeLimitsRow: View {
+    @State private var on = ClaudeStatusTap.isInstalled()
+    @State private var problem: String?
+
+    var body: some View {
+        SettingRow(L("Claude's limits in muxy"), detail: problem ?? L("Claude Code tells only its status line how much of your plan is used. On: a small script in front of your status line keeps that for muxy and runs your status line as before. Off: your status line as it was. Codex's limits need nothing.")) {
+            Toggle("", isOn: Binding(get: { on }, set: { set($0) }))
+                .labelsHidden().toggleStyle(.offOn)
+                .disabled(!Paths.isApp)
+        }
+    }
+
+    private func set(_ wanted: Bool) {
+        do {
+            if wanted { try ClaudeStatusTap.install() } else { try ClaudeStatusTap.uninstall() }
+            problem = nil
+        } catch {
+            problem = (error as? HookInstaller.Failure)?.message ?? error.localizedDescription
+        }
+        on = ClaudeStatusTap.isInstalled()
     }
 }
 

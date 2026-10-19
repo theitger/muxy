@@ -56,6 +56,8 @@ final class Queue: ObservableObject {
     @Published private(set) var items: [Item] = []
     /// Started and not stopped: queued items start as slots free up.
     @Published private(set) var running = false
+    /// Why queued items wait although a slot is free: a used-up limit.
+    @Published private(set) var held: String?
 
     private var timer: Timer?
     private static let storeKey = "queue"
@@ -142,9 +144,16 @@ final class Queue: ObservableObject {
         for index in items.indices where items[index].phase.isActive {
             advance(&items[index], now: now)
         }
+        // An agent whose plan is (nearly) used up gets nothing new until it frees.
+        held = nil
         while running, items.filter({ $0.phase.isActive }).count < parallel,
-              let next = items.firstIndex(where: { $0.phase == .queued }) {
+              let next = items.firstIndex(where: { $0.phase == .queued && Usage.shared.exhausted($0.agent) == nil }) {
             launch(&items[next], now: now)
+        }
+        if running, let waiting = items.first(where: { $0.phase == .queued }),
+           let window = Usage.shared.exhausted(waiting.agent) {
+            held = window.resets.map { L("%@'s limit is used up until %@", waiting.agent.name, $0.formatted(date: .omitted, time: .shortened)) }
+                ?? L("%@'s limit is used up", waiting.agent.name)
         }
         if !items.contains(where: { $0.phase == .queued }) { running = false }
         if !running, !items.contains(where: { $0.phase.isActive }) { end() }

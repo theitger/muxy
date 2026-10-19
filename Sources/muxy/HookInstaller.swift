@@ -159,6 +159,41 @@ enum HookInstaller {
         return true
     }
 
+    /// Claude Code's statusLine command in `file`, nil when it has none.
+    static func statusLineCommand(in file: URL) throws -> String? {
+        guard let root = try read(file) else { return nil }
+        return root["statusLine"]?["command"]?.stringValue
+    }
+
+    /// Sets Claude Code's statusLine command, everything else in the file
+    /// as it was; nil takes the status line out.
+    static func setStatusLine(command: String?, in file: URL) throws {
+        var root = try read(file) ?? .object([])
+        guard case var .object(members) = root else {
+            throw Failure(message: "\(file.lastPathComponent) is not a JSON object.")
+        }
+        let index = members.firstIndex { $0.key == "statusLine" }
+        if let command {
+            if let index, case var .object(fields) = members[index].value {
+                if let at = fields.firstIndex(where: { $0.key == "command" }) {
+                    fields[at].value = .string(command)
+                } else {
+                    fields.append(JSON.Member(key: "command", value: .string(command)))
+                }
+                members[index].value = .object(fields)
+            } else {
+                let line = JSON.object([JSON.Member(key: "type", value: .string("command")),
+                                        JSON.Member(key: "command", value: .string(command))])
+                if let index { members[index].value = line } else { members.append(JSON.Member(key: "statusLine", value: line)) }
+            }
+        } else if let index {
+            members.remove(at: index)
+        }
+        root = .object(members)
+        let original = try? String(contentsOf: resolved(file), encoding: .utf8)
+        try write(root.formatted(like: original), to: file)
+    }
+
     /// Copies the hook script to its stable place; returns whether it
     /// changed. Executable, since the agents run it directly.
     @discardableResult

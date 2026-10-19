@@ -502,7 +502,10 @@ private struct QueueSection: View {
                 }
             }
             HStack(spacing: 6) {
-                if queue.running {
+                if queue.running, let held = queue.held {
+                    SmallButton(title: L("Stop")) { queue.stop() }
+                    Text(held).font(.system(size: 10.5)).foregroundStyle(Theme.orange.strong)
+                } else if queue.running {
                     SmallButton(title: L("Stop")) { queue.stop() }
                     Text(waiting == 0 ? L("Nothing waits.") : L("%d wait, %d at a time", waiting, parallel))
                         .font(.system(size: 10.5)).foregroundStyle(Theme.textDim)
