@@ -359,7 +359,7 @@ private struct EmptyState: View {
             .frame(width: 360)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Theme.terminal)
+        .background(Theme.bg)
     }
 
     private var divider: some View {

@@ -21,11 +21,11 @@ final class TerminalSession: NSObject, ObservableObject, Identifiable {
         // The user's config 1:1 — Ghostty paints its own background too.
         // (Turning that off to let the window paint it renders the default
         // text washed out, so it is not an option.)
-        // Empty theme: the wrapper renders its theme AFTER the config file,
-        // so any non-empty value would override the user's own colors.
+        // The wrapper renders its theme AFTER the config file: empty (the
+        // default) leaves your colors alone; muxy's neutral one replaces them.
         return TerminalController(
             configFilePath: existing,
-            theme: TerminalTheme(light: .init(), dark: .init())
+            theme: TerminalColors.current.theme
         )
     }()
 
@@ -217,7 +217,7 @@ final class TerminalSession: NSObject, ObservableObject, Identifiable {
         guard agent != .none else { return nil }
         let clean = Self.clean(title)
         if clean.isEmpty || clean == "Claude Code" || AgentKind(commandLine: clean) != nil || clean.hasPrefix("~")
-            || clean.hasPrefix("/") { return nil }
+            || clean.hasPrefix("/") || clean == Paths.folderName(cwd) { return nil }
         return clean
     }
 

@@ -22,6 +22,8 @@ enum DebugDriver {
             window.closeReview()
         case "appearance":
             AppAppearance.apply(value.flatMap(AppAppearance.init) ?? .system)
+        case "terminal-colors":
+            TerminalColors.select(value.flatMap(TerminalColors.init) ?? .ghostty)
         case "panel":
             Results.shared.togglePanel(in: window)
         case "select":

@@ -92,7 +92,10 @@ struct WingCardFace: View {
                     .strokeBorder(Theme.orange.strong.opacity(0.6), lineWidth: onStage ? 1.5 : 1)
             } else if onStage {
                 RoundedRectangle(cornerRadius: Self.radius, style: .continuous)
-                    .strokeBorder(Theme.textPrimary.opacity(0.5), lineWidth: 1.5)
+                    .strokeBorder(Theme.textPrimary.opacity(0.55), lineWidth: 1.5)
+            } else {
+                RoundedRectangle(cornerRadius: Self.radius, style: .continuous)
+                    .strokeBorder(hovered ? Theme.textDim.opacity(0.6) : Theme.border, lineWidth: 1)
             }
         }
         .opacity(face.isQuiet && !hovered && !onStage ? 0.62 : 1)

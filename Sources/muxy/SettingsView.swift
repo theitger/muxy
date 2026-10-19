@@ -4,6 +4,7 @@ import SwiftUI
 struct SettingsView: View {
     @AppStorage(Language.storageKey) private var language = Language.english.rawValue
     @AppStorage(AppAppearance.storageKey) private var appearance = AppAppearance.system.rawValue
+    @AppStorage(TerminalColors.storageKey) private var terminalColors = TerminalColors.ghostty.rawValue
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -39,6 +40,19 @@ struct SettingsView: View {
                 ), options: AppAppearance.allCases.map { ($0, $0.name) })
             }
             .padding(.top, 6)
+            HStack {
+                Text(L("Terminal colors"))
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(Theme.textBody)
+                Spacer()
+                Segments(selection: Binding(
+                    get: { TerminalColors(rawValue: terminalColors) ?? .ghostty },
+                    set: { choice in
+                        terminalColors = choice.rawValue
+                        TerminalColors.select(choice)
+                    }
+                ), options: TerminalColors.allCases.map { ($0, $0.name) })
+            }
             Divider().padding(.vertical, 6)
             AgentSettings()
             Divider().padding(.vertical, 6)

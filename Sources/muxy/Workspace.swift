@@ -55,7 +55,13 @@ final class Workspace: ObservableObject, Identifiable {
     /// conversation title when there is one, else the folder.
     var title: String {
         if context.pr == nil, let issue = sessions.lazy.compactMap(\.issue).first { return issue.heading }
-        return sessions.lazy.compactMap(\.agentTitle).first ?? context.shortFolder
+        if let agentTitle = sessions.lazy.compactMap(\.agentTitle).first { return agentTitle }
+        // A worktree muxy made (often a spare, "session-…"): its branch says more.
+        if let checkout = context.checkout, let root = context.root, let branch = context.branch,
+           Worktrees.isManaged(checkout, root: root) {
+            return branch
+        }
+        return context.shortFolder
     }
 
     /// Branch in a git checkout, the parent path anywhere else.

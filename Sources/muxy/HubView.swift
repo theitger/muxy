@@ -24,7 +24,7 @@ struct HubView: View {
                 board
             }
         }
-        .background(Theme.terminal)
+        .background(Theme.bg)
         .onAppear {
             hub.refresh()
             if page == "worktrees" { inventory.scan() }

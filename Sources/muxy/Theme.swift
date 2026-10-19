@@ -1,40 +1,41 @@
 import SwiftUI
 import AppKit
 
-/// UI colors. The background is parsed 1:1 from the user's ghostty theme
-/// files at launch; chrome tones (sidebar, borders, active states) are
-/// derived from it so the app always matches the terminal.
+/// UI colors. The terminal keeps your Ghostty theme 1:1 (its background
+/// parsed from the theme files at launch); everything around it speaks one
+/// neutral palette of its own, zinc greys, so the chrome stays calm under
+/// any theme and color is left to mean something (waiting, running, failed).
 enum Theme {
     private static let ghostty = GhosttyColors.load()
 
-    static let bg = dynamic(light: ghostty.light, dark: ghostty.dark)
-    static let surface = dynamic(
-        light: ghostty.light.shifted(by: -0.045),
-        dark: ghostty.dark.shifted(by: 0.028)
-    )
-    static let surfaceActive = dynamic(
-        light: ghostty.light.shifted(by: 0.6),
-        dark: ghostty.dark.shifted(by: 0.07)
-    )
-    static let border = dynamic(
-        light: ghostty.light.shifted(by: -0.11),
-        dark: ghostty.dark.shifted(by: 0.08)
-    )
+    /// The page: panels, the hub, chosen segments.
+    static let bg = dyn(light: 0xFFFFFF, dark: 0x09090B)
+    /// Floating panels and popovers.
+    static let surface = dyn(light: 0xFFFFFF, dark: 0x18181B)
+    /// Cards in the sidebar.
+    static let surfaceActive = dyn(light: 0xFFFFFF, dark: 0x1F1F23)
+    static let border = dyn(light: 0xE4E4E7, dark: 0x27272A)
 
-    /// The terminal's own background at its configured opacity — chrome
-    /// painted with it reads as part of the terminal, not a frame around it.
-    static let terminal = bg.opacity(ghostty.opacity)
+    /// The terminal's own background at its configured opacity: the strip
+    /// above a terminal is painted with it, so the two read as one.
+    static let terminal = Color(nsColor: NSColor(name: nil) { appearance in
+        let dark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+        let rgb = TerminalColors.current == .neutral
+            ? (dark ? TerminalColors.neutralDark : TerminalColors.neutralLight)
+            : (dark ? ghostty.dark : ghostty.light)
+        return rgb.nsColor
+    }).opacity(ghostty.opacity)
 
-    /// The sidebar: a darker tone at exactly the terminal's opacity. Areas of
-    /// different opacity side by side leave a visible line in Mission
+    /// The sidebar and title bar, at exactly the terminal's opacity. Areas
+    /// of different opacity side by side leave a visible line in Mission
     /// Control, where macOS redraws the window blur.
-    static let sidebar = surface.opacity(ghostty.opacity)
+    static let sidebar = dyn(light: 0xFAFAFA, dark: 0x111113).opacity(ghostty.opacity)
 
-    static let textPrimary = dyn(light: 0x1A1A1A, dark: 0xF0F0F0)
-    static let textBody = dyn(light: 0x3A3A3A, dark: 0xC8C8C8)
-    static let textMuted = dyn(light: 0x707070, dark: 0x9A9A9A)
-    static let textDim = dyn(light: 0x909090, dark: 0x6A6A6A)
-    static let textFaint = dyn(light: 0xA6A6A6, dark: 0x5A5A5A)
+    static let textPrimary = dyn(light: 0x09090B, dark: 0xFAFAFA)
+    static let textBody = dyn(light: 0x3F3F46, dark: 0xD4D4D8)
+    static let textMuted = dyn(light: 0x71717A, dark: 0xA1A1AA)
+    static let textDim = dyn(light: 0x8E8E96, dark: 0x7A7A83)
+    static let textFaint = dyn(light: 0xB0B0B7, dark: 0x55555C)
     static let accent = dyn(light: 0xE8630C, dark: 0xFF8A2E)
     static let green = dyn(light: 0x2E7D32, dark: 0x28C840)
     static let red = dyn(light: 0xB3001B, dark: 0xE63946)
@@ -57,10 +58,10 @@ enum Theme {
     static let purple = tone(soft: 0xF4EEFD, strong: 0x6B3FB8, base: 0x8957E5, darkStrong: 0xC2A5F5)
     static let neutral = Tone(soft: textPrimary.opacity(0.06), strong: textMuted)
 
-    /// Hover / selection fills — ink at low opacity works on any theme.
-    static let fillHover = textPrimary.opacity(0.04)
-    static let fillActive = textPrimary.opacity(0.075)
-    static let hairline = textPrimary.opacity(0.09)
+    /// Hover and selection: the palette's muted greys.
+    static let fillHover = dyn(light: 0xF4F4F5, dark: 0x27272A)
+    static let fillActive = dyn(light: 0xE9E9EC, dark: 0x303036)
+    static let hairline = border
 
     /// The color an agent state speaks in.
     static func tone(for agent: AgentState) -> Tone {
