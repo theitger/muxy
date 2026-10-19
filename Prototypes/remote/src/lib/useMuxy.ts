@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Channel, type ChannelState } from './channel'
 import { fromBase64URL } from './crypto'
-import type { ChatItem, Key, Screen, Session } from './protocol'
+import { useDemo, isDemo } from './demo'
+import type { ChatItem, Key, Repo, Screen, Session } from './protocol'
 
 const SECRET_KEY = 'muxy.secret'
 const ROOM_KEY = 'muxy.room'
@@ -76,7 +77,14 @@ export function forgetPairing() {
   store(ROOM_KEY, null)
 }
 
-export function useMuxy() {
+/** Muxy before 0.4 knew only Claude: its agent tabs came as "claude". */
+function compatible(s: Session): Session {
+  const tabs = s.tabs.map((t) => ((t.kind as string) === 'claude' ? { ...t, kind: 'agent' as const, agentKind: t.agentKind ?? ('claude' as const) } : t))
+  const agentKind = s.agentKind ?? tabs.find((t) => t.kind === 'agent')?.agentKind
+  return { ...s, tabs, agentKind }
+}
+
+function useChannel() {
   const [pairing] = useState(readPairing)
   const [state, setState] = useState<ChannelState>('connecting')
   const [sessions, setSessions] = useState<Session[]>([])
@@ -85,7 +93,8 @@ export function useMuxy() {
   const [sent, setSent] = useState<string[]>(readSent)
   const [screens, setScreens] = useState<Record<string, Screen>>({})
   const [chats, setChats] = useState<Record<string, ChatItem[]>>({})
-  const [opened, setOpened] = useState<{ session: string | null; at: number } | null>(null)
+  const [repos, setRepos] = useState<Repo[]>([])
+  const [opened, setOpened] = useState<{ session: string | null; error?: string; at: number } | null>(null)
   const channel = useRef<Channel | null>(null)
   const watching = useRef<{ tab: string; history: boolean } | null>(null)
 
@@ -98,7 +107,7 @@ export function useMuxy() {
       (m) => {
         switch (m.t) {
           case 'sessions':
-            setSessions(m.sessions as Session[])
+            setSessions((m.sessions as Session[]).map(compatible))
             setRecent(m.recent as string[])
             if (Array.isArray(m.history)) setShellHistory(m.history as string[])
             break
@@ -106,10 +115,17 @@ export function useMuxy() {
             setScreens((s) => ({ ...s, [m.tab as string]: m as unknown as Screen }))
             break
           case 'chat':
-            setChats((s) => ({ ...s, [m.tab as string]: m.items as ChatItem[] }))
+            setChats((s) => ({
+              ...s,
+              // Muxy before 0.4 called the agent's messages "claude".
+              [m.tab as string]: (m.items as ChatItem[]).map((i) => ((i.kind as string) === 'claude' ? { ...i, kind: 'agent' } : i) as ChatItem),
+            }))
             break
           case 'opened':
-            setOpened({ session: (m.session as string) ?? null, at: Date.now() })
+            setOpened({ session: (m.session as string) ?? null, error: (m.error as string) ?? undefined, at: Date.now() })
+            break
+          case 'repos':
+            setRepos(m.repos as Repo[])
             break
         }
       },
@@ -148,11 +164,41 @@ export function useMuxy() {
     channel.current?.send({ t: 'key', tab, key: k })
   }, [])
 
-  const open = useCallback((directory: string) => {
-    channel.current?.send({ t: 'open', directory })
+  const choose = useCallback((tab: string, number: number) => {
+    channel.current?.send({ t: 'choose', tab, number })
   }, [])
 
-  return { paired: !!pairing, state, sessions, recent, history, screens, chats, opened, watch, type, key, open }
+  const loadRepos = useCallback(() => {
+    channel.current?.send({ t: 'repos' })
+  }, [])
+
+  const start = useCallback((spec: NewSession) => {
+    channel.current?.send({ t: 'new', ...spec })
+  }, [])
+
+  return {
+    paired: !!pairing,
+    state,
+    sessions,
+    recent,
+    repos,
+    history,
+    screens,
+    chats,
+    opened,
+    watch,
+    type,
+    key,
+    choose,
+    loadRepos,
+    start,
+  }
 }
 
-export type Muxy = ReturnType<typeof useMuxy>
+/** What the phone asks for when it starts a session (like ⌘N). */
+export type NewSession = { directory: string; agent: 'claude' | 'codex' | 'none'; prompt: string; worktree: boolean }
+
+export type Muxy = ReturnType<typeof useChannel>
+
+/** `pnpm dev` with #demo: made-up sessions, nothing sent anywhere. */
+export const useMuxy: () => Muxy = isDemo ? useDemo : useChannel

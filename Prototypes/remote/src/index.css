@@ -47,6 +47,9 @@
   --m-red-soft: #fef2f2;    --m-red: #b91c1c;
   --m-neutral-soft: rgb(26 26 26 / 0.06);
   --m-keycap: #ffffff;
+  --m-code: rgb(26 26 26 / 0.05);
+  --m-bubble: #e4e4df;
+  --m-switch: #34c759;
 
   /* Ghostty palette (GT3 RS Light) for terminal output. */
   --ansi-red: #b3001b;
@@ -113,6 +116,9 @@
     --m-red-soft: rgb(220 38 38 / 0.16);     --m-red: #f87171;
     --m-neutral-soft: rgb(240 240 240 / 0.06);
     --m-keycap: #3a3a3c;
+    --m-code: rgb(240 240 240 / 0.07);
+    --m-bubble: #2a2a2a;
+    --m-switch: #30d158;
     --ansi-red: #e63946;
     --ansi-green: #7ab870;
     --ansi-yellow: #f5c400;
@@ -146,6 +152,9 @@
   --m-red-soft: rgb(220 38 38 / 0.16);     --m-red: #f87171;
   --m-neutral-soft: rgb(240 240 240 / 0.06);
   --m-keycap: #3a3a3c;
+  --m-code: rgb(240 240 240 / 0.07);
+  --m-bubble: #2a2a2a;
+  --m-switch: #30d158;
   --ansi-red: #e63946;
   --ansi-green: #7ab870;
   --ansi-yellow: #f5c400;
@@ -185,6 +194,9 @@
   --color-tone-red-soft: var(--m-red-soft);
   --color-tone-neutral-soft: var(--m-neutral-soft);
   --color-keycap: var(--m-keycap);
+  --color-code: var(--m-code);
+  --color-bubble: var(--m-bubble);
+  --color-tone-green-strong: var(--m-switch);
   --color-ansi-red: var(--ansi-red);
   --color-ansi-green: var(--ansi-green);
   --color-ansi-yellow: var(--ansi-yellow);
@@ -244,6 +256,21 @@
   }
   button {
     cursor: pointer;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  /* Chrome isn't text; what agents say is. */
+  body {
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+  }
+  .selectable,
+  textarea,
+  input {
+    -webkit-user-select: text;
+    user-select: text;
+    -webkit-touch-callout: default;
   }
 }
 
@@ -272,9 +299,54 @@ body {
 .caret {
   animation: caret 1s steps(1) infinite;
 }
+/* A light sweep over the text of what an agent is doing. */
+@keyframes shimmer {
+  from { background-position: 150% 0; }
+  to { background-position: -50% 0; }
+}
+.shimmer {
+  background: linear-gradient(100deg, currentColor 40%, color-mix(in srgb, currentColor 35%, transparent) 50%, currentColor 60%) 0 0 / 250% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: shimmer 2.2s linear infinite;
+}
+/* New rows and messages arrive, they don't pop. */
+@keyframes arrive {
+  from { opacity: 0; transform: translateY(6px); }
+}
+.arrive {
+  animation: arrive 320ms cubic-bezier(0.32, 0.72, 0, 1) both;
+}
+@keyframes fade-in {
+  from { opacity: 0; }
+}
+.fade-in {
+  animation: fade-in 240ms ease-out both;
+}
+/* Rows dim under the thumb like UITableView cells. */
+.row-press {
+  transition: background-color 180ms ease-out;
+}
+.row-press:active {
+  background-color: var(--m-active);
+  transition: none;
+}
+.no-scrollbar {
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
 @media (prefers-reduced-motion: reduce) {
   .pulse-soft,
-  .caret {
+  .caret,
+  .shimmer,
+  .arrive,
+  .fade-in {
     animation: none;
+  }
+  .shimmer {
+    -webkit-text-fill-color: currentColor;
   }
 }
