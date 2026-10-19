@@ -73,7 +73,7 @@ enum Flow {
         if let review, review.running { return .wait(review.summary) }
         if quorumInstalled, review == nil { return .review }
         if let review, !review.succeeded {
-            let open = review.blockers + review.critical
+            let open = review.open
             return .fix(open > 0 ? L("Fix %d findings", open) : L("Review again"))
         }
         if context.mergeability == .conflicting { return .fix(L("Resolve conflicts")) }

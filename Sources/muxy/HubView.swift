@@ -152,8 +152,19 @@ struct HubView: View {
                 Column(title: L("Working"), count: working.count) {
                     ForEach(working) { SessionCard(workspace: $0, window: window) }
                 }
-                Column(title: L("In review"), count: review.count) {
+                Column(title: L("In review"), count: review.count + pulls.count) {
                     ForEach(review) { SessionCard(workspace: $0, window: window) }
+                    if !pulls.isEmpty {
+                        // Work left elsewhere: a terminal outside muxy, a
+                        // worktree an agent made itself, a closed session.
+                        SectionLabel(L("Your PRs without a session"))
+                            .padding(.top, review.isEmpty ? 0 : 6)
+                        ForEach(pulls) { pull in
+                            PullCard(pull: pull, local: hub.checkout(of: pull.repo) != nil) { agent in
+                                hub.open(pull, agent: agent, in: window)
+                            }
+                        }
+                    }
                 }
                 Column(title: L("Ready to land"), count: ready.count) {
                     ForEach(ready) { SessionCard(workspace: $0, window: window) }
@@ -165,7 +176,11 @@ struct HubView: View {
         }
     }
 
-    /// Assigned issues no session works on yet.
+    /// Your open PRs no session works on, filtered, latest change first.
+    private var pulls: [HubModel.OwnPull] {
+        hub.pullsWithoutSession.filter { matches($0.repo) }
+    }
+
     /// Assigned issues no session works on yet, filtered, newest first.
     private var openIssues: [Issue] {
         hub.issues.filter { issue in
@@ -414,6 +429,72 @@ private struct ReviewRequestCard: View {
                 }
                 SmallButton(title: L("Open"), symbol: "arrow.up.right") {
                     if let url = URL(string: request.url) { NSWorkspace.shared.open(url) }
+                }
+            }
+        }
+        .modifier(CardBackground())
+    }
+}
+
+/// A pull request of yours without a session: where it is, and a way back
+/// into it, with an agent or a terminal.
+private struct PullCard: View {
+    let pull: HubModel.OwnPull
+    let local: Bool
+    let open: (AgentKind?) -> Void
+    @AppStorage("newSessionAgent") private var preferred = AgentKind.claude.rawValue
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            HStack(spacing: 6) {
+                SectionLabel(pull.repo.split(separator: "/").last.map(String.init) ?? pull.repo)
+                Text("#" + String(pull.number)).font(Theme.label(size: 10.5)).foregroundStyle(Theme.textDim)
+                if let updated = pull.updated {
+                    Text(WorktreeRow.ago(Date().timeIntervalSince(updated)))
+                        .font(Theme.label(size: 10.5)).foregroundStyle(Theme.textFaint)
+                        .help(updated.formatted(date: .abbreviated, time: .shortened))
+                }
+                if pull.draft { Badge(text: L("Draft"), tone: Theme.neutral) }
+                Spacer()
+                Button {
+                    if let url = URL(string: pull.url) { NSWorkspace.shared.open(url) }
+                } label: {
+                    Icon("arrow.up.right", size: 9.5).foregroundStyle(Theme.textDim)
+                }
+                .buttonStyle(.plain)
+                .help(L("Open on GitHub"))
+            }
+            Text(pull.title)
+                .font(.system(size: 12.5, weight: .medium))
+                .foregroundStyle(Theme.textPrimary)
+                .fixedSize(horizontal: false, vertical: true)
+            if let branch = pull.branch {
+                Text(branch).font(Theme.label(size: 10.5)).foregroundStyle(Theme.textDim)
+                    .lineLimit(1).truncationMode(.middle)
+            }
+            HStack(spacing: 6) {
+                let agent = AgentKind(rawValue: preferred) ?? .claude
+                let ready = local && pull.branch != nil
+                SmallButton(title: L("New %@ chat", agent.name), prominent: true) { open(agent) }
+                    .help(L("A new chat in the worktree with the PR's branch"))
+                    .disabled(!ready)
+                Menu {
+                    ForEach(AgentKind.allCases) { kind in
+                        Button(L("New %@ chat", kind.name)) { open(kind) }
+                    }
+                    Divider()
+                    Button(L("Terminal only")) { open(nil) }
+                } label: {
+                    Text(L("More")).font(.system(size: 11.5, weight: .medium))
+                }
+                .menuStyle(.borderlessButton)
+                .fixedSize()
+                .disabled(!ready)
+                Spacer()
+                if !local {
+                    Text(L("Not cloned here")).font(.system(size: 10.5)).foregroundStyle(Theme.textDim)
+                } else if pull.branch == nil {
+                    Text(L("From a fork")).font(.system(size: 10.5)).foregroundStyle(Theme.textDim)
                 }
             }
         }
@@ -835,8 +916,8 @@ private struct ReviewRunRow: View {
                     Text((status.repo.split(separator: "/").last.map(String.init) ?? status.repo) + " #" + String(status.number ?? 0))
                         .font(.system(size: 11.5, weight: .medium)).foregroundStyle(Theme.textDim)
                     Badge(text: status.kind == .babysit ? "babysit" : "review")
-                    if status.blockers + status.critical > 0 {
-                        Badge(text: L("%d open", status.blockers + status.critical), tone: Theme.orange)
+                    if status.open > 0 {
+                        Badge(text: status.open == 1 ? L("1 finding open") : L("%d findings open", status.open), tone: Theme.orange)
                     }
                 }
                 Text(status.title ?? status.summary)

@@ -360,7 +360,7 @@ final class Landing: ObservableObject {
                 } else if status.outcome == nil, status.isClean {
                     continue // its verdict isn't in quorum's history yet
                 } else {
-                    let open = status.blockers + status.critical
+                    let open = status.open
                     set(.failed(open > 0 ? L("quorum stopped with %d open findings", open)
                                          : L("quorum stopped: %@", status.reason ?? status.outcome ?? "?")), for: workspace)
                 }

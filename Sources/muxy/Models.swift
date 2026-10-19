@@ -167,6 +167,14 @@ struct RepoContext: Equatable {
 enum Paths {
     static let home = FileManager.default.homeDirectoryForCurrentUser.path
 
+    /// The packaged Muxy.app, not a dev build and not the tests (whose
+    /// runner has a bundle id of its own): only it may touch what the
+    /// installed app relies on, its state, sessions and hooks.
+    static let isApp = Bundle.main.bundleIdentifier == "com.theitger.muxy"
+
+    /// Running under XCTest: state goes to a folder of its own.
+    static let isTesting = NSClassFromString("XCTestCase") != nil
+
     /// "/Users/x/foo" → "~/foo".
     static func abbreviate(_ path: String) -> String {
         path.hasPrefix(home) ? "~" + path.dropFirst(home.count) : path

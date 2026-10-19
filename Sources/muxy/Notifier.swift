@@ -7,7 +7,7 @@ import UserNotifications
 @MainActor
 enum Notifier {
     static var available: Bool {
-        Bundle.main.bundleIdentifier != nil
+        Paths.isApp
     }
 
     static func setUp(delegate: UNUserNotificationCenterDelegate) {

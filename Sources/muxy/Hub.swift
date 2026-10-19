@@ -25,9 +25,23 @@ final class HubModel: ObservableObject {
         var id: String { "\(repo)#\(number)" }
     }
 
+    /// A pull request of yours that is still open.
+    struct OwnPull: Identifiable, Equatable {
+        var repo: String
+        var number: Int
+        var title: String
+        var url: String
+        var draft = false
+        var updated: Date?
+        /// Its branch, known for repositories cloned here; nil for a fork's.
+        var branch: String?
+        var id: String { "\(repo)#\(number)" }
+    }
+
     @Published private(set) var account = Account()
     @Published private(set) var issues: [Issue] = []
     @Published private(set) var reviews: [ReviewRequest] = []
+    @Published private(set) var pulls: [OwnPull] = []
     @Published private(set) var loading = false
     @Published private(set) var updated: Date?
     /// "owner/name" → local main checkout.
@@ -37,11 +51,23 @@ final class HubModel: ObservableObject {
     func start() {
         guard timer == nil else { return }
         refresh()
-        let timer = Timer.scheduledTimer(withTimeInterval: 300, repeats: true) { [weak self] _ in
+        let timer = Timer.scheduledTimer(withTimeInterval: 120, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.refresh() }
         }
         timer.tolerance = 30
         self.timer = timer
+        // Back from GitHub (a merge, a new PR): fresh at once, not in minutes.
+        NotificationCenter.default.addObserver(
+            forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in self?.refreshIfStale() }
+        }
+    }
+
+    /// Refreshes unless the last answer is under half a minute old.
+    func refreshIfStale() {
+        guard updated.map({ Date().timeIntervalSince($0) > 30 }) ?? true else { return }
+        refresh()
     }
 
     func refresh() {
@@ -57,10 +83,12 @@ final class HubModel: ObservableObject {
                 if let slug = Issues.repo(of: repo.path), map[slug.lowercased()] == nil { map[slug.lowercased()] = repo.path }
             }
             let found = map
+            let pulls = account.login == nil ? [] : Self.ownPulls(cloned: Set(found.keys))
             await MainActor.run {
                 self.account = account
                 if let issues { self.issues = issues }
                 if let reviews { self.reviews = reviews }
+                if let pulls { self.pulls = pulls }
                 self.checkouts = found
                 self.loading = false
                 self.updated = Date()
@@ -80,6 +108,21 @@ final class HubModel: ObservableObject {
                 || workspace.context.branch?.hasPrefix("\(issue.number)-") == true
                     && workspace.context.root.map { checkout(of: issue.repo) == $0 } == true
         }
+    }
+
+    /// The session working on a pull request: on its branch, or showing it.
+    func session(for pull: OwnPull) -> Workspace? {
+        guard let root = checkout(of: pull.repo) else { return nil }
+        return Store.shared.workspaces.first { workspace in
+            workspace.context.root == root
+                && (workspace.context.pr == pull.number || pull.branch != nil && workspace.context.branch == pull.branch)
+        }
+    }
+
+    /// Your open pull requests no session works on: the work you left
+    /// somewhere else (another terminal, a worktree an agent made itself).
+    var pullsWithoutSession: [OwnPull] {
+        pulls.filter { session(for: $0) == nil }
     }
 
     // MARK: gh (blocking)
@@ -135,6 +178,87 @@ final class HubModel: ObservableObject {
                   let repo = (row["repository"] as? [String: Any])?["nameWithOwner"] as? String else { return nil }
             return ReviewRequest(repo: repo, number: number, title: title, url: row["url"] as? String ?? "",
                                  author: (row["author"] as? [String: Any])?["login"] as? String ?? "")
+        }
+    }
+
+    /// Your open pull requests, newest change first. Their branches come
+    /// from one `gh pr list` per repository cloned here (search has none).
+    nonisolated static func ownPulls(cloned: Set<String>) -> [OwnPull]? {
+        guard let gh = Shell.find("gh") else { return nil }
+        let result = Shell.execute(gh, [
+            "search", "prs", "--author", "@me", "--state", "open", "--limit", "100",
+            "--sort", "updated", "--json", "number,title,url,repository,isDraft,updatedAt"
+        ], in: Paths.home, timeout: 30)
+        guard result.status == 0,
+              let rows = try? JSONSerialization.jsonObject(with: Data(result.output.utf8)) as? [[String: Any]] else { return nil }
+        var pulls: [OwnPull] = rows.compactMap { row in
+            guard let number = row["number"] as? Int, let title = row["title"] as? String,
+                  let repo = (row["repository"] as? [String: Any])?["nameWithOwner"] as? String else { return nil }
+            return OwnPull(repo: repo, number: number, title: title, url: row["url"] as? String ?? "",
+                           draft: row["isDraft"] as? Bool ?? false,
+                           updated: (row["updatedAt"] as? String).flatMap { ISO8601DateFormatter().date(from: $0) })
+        }
+        for repo in Set(pulls.map { $0.repo.lowercased() }).intersection(cloned) {
+            let listed = Shell.execute(gh, [
+                "pr", "list", "-R", repo, "--author", "@me", "--state", "open", "--limit", "100",
+                "--json", "number,headRefName,isCrossRepository"
+            ], in: Paths.home, timeout: 30)
+            guard listed.status == 0,
+                  let rows = try? JSONSerialization.jsonObject(with: Data(listed.output.utf8)) as? [[String: Any]] else { continue }
+            for row in rows where row["isCrossRepository"] as? Bool != true {
+                guard let number = row["number"] as? Int, let branch = row["headRefName"] as? String,
+                      let index = pulls.firstIndex(where: { $0.number == number && $0.repo.lowercased() == repo }) else { continue }
+                pulls[index].branch = branch
+            }
+        }
+        return pulls
+    }
+
+    /// Where a branch is checked out in a repository, if anywhere.
+    nonisolated static func worktree(of branch: String, root: String) -> String? {
+        guard let output = Shell.run("/usr/bin/git", ["worktree", "list", "--porcelain"], in: root) else { return nil }
+        var path: String?
+        for line in output.split(separator: "\n", omittingEmptySubsequences: false) {
+            if line.hasPrefix("worktree ") { path = String(line.dropFirst("worktree ".count)) }
+            if line == "branch refs/heads/\(branch)" { return path }
+        }
+        return nil
+    }
+
+    // MARK: Picking work up
+
+    /// A pull request of yours becomes a session again: in the worktree
+    /// that has its branch, else in a new one on it (fetched when only
+    /// GitHub has it). `agent` nil opens a terminal.
+    func open(_ pull: OwnPull, agent: AgentKind?, in window: WindowModel) {
+        guard let root = checkout(of: pull.repo), let branch = pull.branch else {
+            if let url = URL(string: pull.url) { NSWorkspace.shared.open(url) }
+            return
+        }
+        window.showHub = false
+        Task.detached(priority: .userInitiated) {
+            let git = "/usr/bin/git"
+            let existing = Self.worktree(of: branch, root: root)
+            var problem: String?
+            if existing == nil,
+               Shell.execute(git, ["rev-parse", "--verify", "--quiet", "refs/heads/\(branch)"], in: root).status != 0,
+               Shell.execute(git, ["fetch", "--quiet", "origin", "refs/heads/\(branch):refs/heads/\(branch)"], in: root, timeout: 60).status != 0 {
+                problem = L("Couldn't fetch %@ from GitHub.", branch)
+            } else if existing == nil {
+                // Pushes and PR lookups follow the branch on GitHub.
+                _ = Shell.execute(git, ["branch", "--quiet", "--set-upstream-to=origin/\(branch)", branch], in: root)
+            }
+            let failed = problem
+            await MainActor.run {
+                if let problem = failed {
+                    window.show(problem)
+                    return
+                }
+                Store.shared.launch(
+                    SessionSpec(directory: existing ?? root, agent: agent, branch: existing == nil ? branch : nil),
+                    in: window
+                )
+            }
         }
     }
 

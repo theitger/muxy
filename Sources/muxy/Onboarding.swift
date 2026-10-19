@@ -14,7 +14,7 @@ enum Onboarding {
     /// keep interrupting work, unless MUXY_ONBOARDING=1 asks for it.
     static var isDue: Bool {
         if ProcessInfo.processInfo.environment["MUXY_ONBOARDING"] == "1" { return true }
-        guard Bundle.main.bundleIdentifier != nil else { return false }
+        guard Paths.isApp else { return false }
         return !UserDefaults.standard.bool(forKey: doneKey)
     }
 
