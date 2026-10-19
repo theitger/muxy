@@ -272,8 +272,8 @@ private struct FileRow: View {
                 if comments > 0 {
                     Badge(text: "\(comments)", tone: Theme.blue, symbol: "text.bubble.fill")
                 }
-                Text("+\(file.additions)").foregroundStyle(Theme.greenTone.strong)
-                Text("−\(file.deletions)").foregroundStyle(Theme.redTone.strong)
+                Text("+" + String(file.additions)).foregroundStyle(Theme.greenTone.strong)
+                Text("−" + String(file.deletions)).foregroundStyle(Theme.redTone.strong)
             }
             .font(.system(size: 10.5, weight: .medium))
             .monospacedDigit()

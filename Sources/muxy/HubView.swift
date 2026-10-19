@@ -134,7 +134,9 @@ struct HubView: View {
         let context = workspace.context
         guard context.repo != nil else { return .none }
         if landing.step(for: workspace)?.isActive == true { return .review }
-        guard let _ = context.pr, context.prState == .open else {
+        // Merged or closed: nothing left to do on the board.
+        if context.pr != nil, context.prState != .open { return .none }
+        guard context.pr != nil else {
             return workspace.agent == .none && workspace.variantGroup == nil && context.branch == nil ? .none : .working
         }
         if workspace.agent == .working || workspace.agent == .blocked { return .working }
@@ -169,7 +171,7 @@ private struct Column<Content: View>: View {
             HStack(spacing: 6) {
                 Image(systemName: symbol).font(.system(size: 11, weight: .semibold))
                 Text(title).font(.system(size: 12.5, weight: .semibold))
-                Text("\(count)").font(.system(size: 11.5)).monospacedDigit().foregroundStyle(Theme.textDim)
+                Text(String(count)).font(.system(size: 11.5)).monospacedDigit().foregroundStyle(Theme.textDim)
                 Spacer()
             }
             .foregroundStyle(Theme.textPrimary)
@@ -217,7 +219,7 @@ private struct IssueCard: View {
                 Text(issue.repo.split(separator: "/").last.map(String.init) ?? issue.repo)
                     .font(.system(size: 10.5, weight: .semibold)).tracking(0.5).textCase(.uppercase)
                     .foregroundStyle(Theme.textFaint)
-                Text("#\(issue.number)").font(.system(size: 11, weight: .medium)).foregroundStyle(Theme.textDim)
+                Text("#" + String(issue.number)).font(.system(size: 11, weight: .medium)).foregroundStyle(Theme.textDim)
                 Spacer()
                 Button {
                     if let url = URL(string: issue.url) { NSWorkspace.shared.open(url) }
@@ -273,7 +275,7 @@ private struct ReviewRequestCard: View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 6) {
                 Image(systemName: "arrow.triangle.pull").font(.system(size: 10, weight: .semibold)).foregroundStyle(Theme.textDim)
-                Text("#\(request.number)").font(.system(size: 11, weight: .medium)).foregroundStyle(Theme.textDim)
+                Text("#" + String(request.number)).font(.system(size: 11, weight: .medium)).foregroundStyle(Theme.textDim)
                 Text(request.author).font(.system(size: 11)).foregroundStyle(Theme.textFaint)
                 Spacer()
             }

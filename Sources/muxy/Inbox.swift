@@ -262,7 +262,7 @@ private struct InboxRow: View {
                     ForEach(choices, id: \.number) { choice in
                         Button { Inbox.choose(choice, in: item.session) } label: {
                             HStack(spacing: 6) {
-                                Text("\(choice.number)")
+                                Text(String(choice.number))
                                     .font(.system(size: 11, weight: .semibold))
                                     .monospacedDigit()
                                     .foregroundStyle(Theme.textDim)

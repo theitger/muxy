@@ -41,41 +41,68 @@ enum Inventory {
     /// All worktrees of `roots`. Blocking: a few git calls per worktree,
     /// one gh call and one docker call per repository.
     static func scan(roots: [String]) -> [WorktreeInfo] {
+        // Per repository first (one gh and one docker call), then every
+        // worktree on its own, several at once: git status dominates.
+        struct Job {
+            var entry: Entry
+            var root: String
+            var start: String
+            var disposable: [String]
+            var prs: [String: (number: Int, state: Git.PullRequest.State)]
+            var mainProject: String
+        }
         let compose = composeProjects()
-        var all: [WorktreeInfo] = []
-        for root in roots {
+        var perRoot = [[Job]](repeating: [], count: roots.count)
+        let rootLock = NSLock()
+        DispatchQueue.concurrentPerform(iterations: roots.count) { index in
+            let root = roots[index]
             let recipe = WorktreeRecipe.load(root: root)
             let start = Launcher.startPoint(in: root, recipe: recipe)
             let prs = pullRequests(in: root)
             let mainProject = projectName(of: root)
-            for entry in entries(of: root) {
-                var info = WorktreeInfo(
-                    path: entry.path, root: root, branch: entry.branch, owner: owner(of: entry.path, root: root),
-                    changes: 0, ahead: 0, prunable: entry.prunable
-                )
-                guard !entry.prunable, FileManager.default.fileExists(atPath: entry.path) else {
-                    info.prunable = true
-                    all.append(info)
-                    continue
-                }
-                if let stamp = Shell.run(git, ["log", "-1", "--format=%ct"], in: entry.path).flatMap(Double.init) {
-                    info.lastCommit = Date(timeIntervalSince1970: stamp)
-                }
-                info.changes = changes(in: entry.path, disposable: (recipe?.disposable ?? []) + [WorktreeRecipe.portsFile])
-                info.ahead = Shell.run(git, ["rev-list", "--count", "\(start)..HEAD"], in: entry.path).flatMap(Int.init) ?? 0
-                if let branch = entry.branch, let pr = prs[branch] {
-                    info.pr = pr.number
-                    info.prState = pr.state
-                }
-                let project = projectName(of: entry.path)
-                if info.owner == .main || project != mainProject, let running = compose[project] {
-                    info.containers = project
-                    info.running = running
-                }
-                all.append(info)
-            }
+            let disposable = (recipe?.disposable ?? []) + [WorktreeRecipe.portsFile]
+            let made = entries(of: root).map { Job(entry: $0, root: root, start: start, disposable: disposable, prs: prs, mainProject: mainProject) }
+            rootLock.withLock { perRoot[index] = made }
         }
-        return all
+        let jobs = perRoot.flatMap { $0 }
+        var results = [WorktreeInfo?](repeating: nil, count: jobs.count)
+        let lock = NSLock()
+        DispatchQueue.concurrentPerform(iterations: jobs.count) { index in
+            let job = jobs[index]
+            let info = inspect(job.entry, root: job.root, start: job.start, disposable: job.disposable,
+                               prs: job.prs, mainProject: job.mainProject, compose: compose)
+            lock.withLock { results[index] = info }
+        }
+        return results.compactMap { $0 }
+    }
+
+    private static func inspect(
+        _ entry: Entry, root: String, start: String, disposable: [String],
+        prs: [String: (number: Int, state: Git.PullRequest.State)], mainProject: String, compose: [String: Int]
+    ) -> WorktreeInfo {
+        var info = WorktreeInfo(
+            path: entry.path, root: root, branch: entry.branch, owner: owner(of: entry.path, root: root),
+            changes: 0, ahead: 0, prunable: entry.prunable
+        )
+        guard !entry.prunable, FileManager.default.fileExists(atPath: entry.path) else {
+            info.prunable = true
+            return info
+        }
+        if let stamp = Shell.run(git, ["log", "-1", "--format=%ct"], in: entry.path).flatMap(Double.init) {
+            info.lastCommit = Date(timeIntervalSince1970: stamp)
+        }
+        info.changes = changes(in: entry.path, disposable: disposable)
+        info.ahead = Shell.run(git, ["rev-list", "--count", "\(start)..HEAD"], in: entry.path).flatMap(Int.init) ?? 0
+        if let branch = entry.branch, let pr = prs[branch] {
+            info.pr = pr.number
+            info.prState = pr.state
+        }
+        let project = projectName(of: entry.path)
+        if info.owner == .main || project != mainProject, let running = compose[project] {
+            info.containers = project
+            info.running = running
+        }
+        return info
     }
 
     struct Entry {

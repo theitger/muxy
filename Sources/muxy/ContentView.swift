@@ -384,7 +384,7 @@ private struct HubButton: View {
                     .font(.system(size: 12, weight: .medium))
                 let waiting = hub.issues.filter { hub.session(for: $0) == nil }.count
                 if waiting > 0 {
-                    Text("\(waiting)")
+                    Text(String(waiting))
                         .font(.system(size: 10.5, weight: .semibold))
                         .monospacedDigit()
                         .padding(.horizontal, 5)

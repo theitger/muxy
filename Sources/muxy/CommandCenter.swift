@@ -177,6 +177,12 @@ final class CommandCenter {
                 Landing.shared.land(workspace)
                 reply(Reply(ok: true, output: "landing \(workspace.title)"))
             }
+        #if DEBUG
+        case "debug":
+            // Development only: drive the UI and photograph a window
+            // without screen-recording rights.
+            DebugDriver.handle(action: text("action", max: 40) ?? "", value: text("value", max: 4096), store: store, reply: { reply(Reply(ok: $0, output: $1)) })
+        #endif
         default:
             reply(Reply(ok: false, output: "unknown command; is the muxy app older than this muxy tool?"))
         }

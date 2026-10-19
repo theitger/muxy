@@ -601,7 +601,7 @@ struct ResultPanel: View {
                         .font(.system(size: 12.5))
                         .foregroundStyle(Theme.textPrimary)
                     if changes.files > 0 {
-                        Text("+\(changes.insertions) −\(changes.deletions)")
+                        Text("+" + String(changes.insertions) + " −" + String(changes.deletions))
                             .font(Theme.mono(size: 10.5))
                             .foregroundStyle(Theme.textDim)
                     }

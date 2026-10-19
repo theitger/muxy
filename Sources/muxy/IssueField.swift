@@ -286,7 +286,7 @@ struct IssueRow: View {
             Image(systemName: issue.isOpen ? "smallcircle.filled.circle" : "checkmark.circle")
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(issue.isOpen ? Theme.greenTone.strong : Theme.purple.strong)
-            Text("#\(issue.number)")
+            Text("#" + String(issue.number))
                 .font(.system(size: 12, weight: .semibold))
                 .monospacedDigit()
                 .foregroundStyle(Theme.textMuted)

@@ -149,7 +149,7 @@ struct WingCardFace: View {
             if let port = face.appPort {
                 HStack(spacing: 2) {
                     Image(systemName: "globe").font(.system(size: 9, weight: .semibold))
-                    Text(":\(port)").font(.system(size: 10, weight: .medium)).monospacedDigit()
+                    Text(":" + String(port)).font(.system(size: 10, weight: .medium)).monospacedDigit()
                 }
                 .foregroundStyle(Theme.textDim)
                 .accessibilityLabel(L("Runs an app on port %d", port))
