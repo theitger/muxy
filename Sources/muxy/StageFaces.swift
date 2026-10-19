@@ -185,7 +185,7 @@ struct WingCardFace: View {
             chips.append(Fact(text: quorum, symbol: "person.3", tone: face.quorumRunning ? Theme.blue : Theme.neutral))
         }
         if let port = face.appPort {
-            chips.append(Fact(text: ":" + String(port), symbol: "globe", tone: Theme.neutral))
+            chips.append(Fact(text: L("app on :%@", String(port)), symbol: "globe", tone: Theme.neutral))
         }
         return chips
     }

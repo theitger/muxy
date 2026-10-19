@@ -32,13 +32,25 @@ struct QuorumStatus: Equatable {
     var number: Int? { key.split(separator: "#").last.flatMap { Int($0) } }
     var url: URL? { number.flatMap { URL(string: "https://github.com/\(repo)/pull/\($0)") } }
 
-    var isClean: Bool { blockers == 0 && critical == 0 }
-
-    /// Finished and quorum says it worked: converged, nothing open. A run
-    /// that failed or was cancelled is never this, whatever its counts.
-    var succeeded: Bool {
-        !running && isClean && ["converged", "ok", "clean", "merged", "success"].contains(outcome ?? "")
+    /// Finished and quorum says it worked. A run that failed or was
+    /// cancelled is never this, whatever its counts.
+    var converged: Bool {
+        !running && ["converged", "ok", "clean", "merged", "success"].contains(outcome ?? "")
     }
+
+    /// A babysit that converged fixed what it found: its counts are those
+    /// findings (quorum's own HISTORY shows them so), none of them open.
+    private var countsAreFixed: Bool { kind == .babysit && converged }
+
+    /// Blockers and critical findings still open.
+    var open: Int { countsAreFixed ? 0 : blockers + critical }
+    /// Blockers and critical findings a converged babysit fixed.
+    var fixed: Int { countsAreFixed ? blockers + critical : 0 }
+
+    var isClean: Bool { open == 0 }
+
+    /// Converged with nothing open.
+    var succeeded: Bool { converged && isClean }
 
     /// One line for a card.
     var summary: String {
@@ -52,7 +64,8 @@ struct QuorumStatus: Equatable {
         let findings = blockers + critical
         switch outcome {
         case "converged", "clean", "merged", "ok", "success":
-            return findings == 0 ? L("quorum: clean") : L("quorum: %d open", findings)
+            if open > 0 { return open == 1 ? L("quorum: 1 finding open") : L("quorum: %d findings open", open) }
+            return fixed > 0 ? L("quorum: clean, %d fixed", fixed) : L("quorum: clean")
         case nil:
             return findings == 0 ? L("quorum: no blockers") : L("quorum: %d blockers", findings)
         case let other?:

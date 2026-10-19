@@ -206,8 +206,27 @@ final class ReviewFixTests: XCTestCase {
         XCTAssertFalse(status.succeeded, "failed with zero counts")
         status.outcome = "converged"
         XCTAssertTrue(status.succeeded)
+        status.outcome = "failed"
         status.blockers = 1
         XCTAssertFalse(status.succeeded)
+        XCTAssertEqual(status.open, 1)
+    }
+
+    func testAConvergedBabysitFixedWhatItFound() {
+        // As in quorum's history: a babysit converged after fixing 2 blockers.
+        var status = QuorumStatus(kind: .babysit, key: "o/r#1", running: false, blockers: 2, outcome: "converged", date: Date())
+        XCTAssertEqual(status.open, 0)
+        XCTAssertEqual(status.fixed, 2)
+        XCTAssertTrue(status.succeeded)
+        XCTAssertEqual(status.summary, L("quorum: clean, %d fixed", 2))
+        // Still running, its counts are this round's: open.
+        status.running = true
+        XCTAssertEqual(status.open, 2)
+        XCTAssertFalse(status.succeeded)
+        // A review fixes nothing: what it found is open, whatever it ended with.
+        let review = QuorumStatus(kind: .review, key: "o/r#1", running: false, critical: 1, outcome: "ok", date: Date())
+        XCTAssertEqual(review.open, 1)
+        XCTAssertFalse(review.succeeded)
     }
 
     func testUnknownGitStateIsNeverFinished() {

@@ -916,8 +916,8 @@ private struct ReviewRunRow: View {
                     Text((status.repo.split(separator: "/").last.map(String.init) ?? status.repo) + " #" + String(status.number ?? 0))
                         .font(.system(size: 11.5, weight: .medium)).foregroundStyle(Theme.textDim)
                     Badge(text: status.kind == .babysit ? "babysit" : "review")
-                    if status.blockers + status.critical > 0 {
-                        Badge(text: L("%d open", status.blockers + status.critical), tone: Theme.orange)
+                    if status.open > 0 {
+                        Badge(text: status.open == 1 ? L("1 finding open") : L("%d findings open", status.open), tone: Theme.orange)
                     }
                 }
                 Text(status.title ?? status.summary)
