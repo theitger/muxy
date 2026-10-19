@@ -292,8 +292,20 @@ enum Quorum {
         case (false, false):
             return nil
         case (true, false):
-            let pushed = Shell.execute(git, ["push", "--quiet", "origin", "refs/heads/\(branch):refs/heads/\(branch)"], in: root, timeout: 300)
-            return pushed.status == 0 ? nil : L("Push failed: %@", pushed.error.split(separator: "\n").last.map(String.init) ?? "")
+            // From the checkout that has the branch, as you would: pre-push
+            // hooks check the checked-out code and refuse anything else
+            // (and may run the whole quality gate, hence the long timeout).
+            guard let checkout else {
+                return L("%@ has unpushed commits but no checkout here: push it from where you work on it.", branch)
+            }
+            let pushed = Shell.execute(git, ["push", "--quiet", "origin", "HEAD"], in: checkout, timeout: 1800)
+            guard pushed.status == 0 else {
+                let lines = pushed.error.split(separator: "\n").map(String.init).filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+                // The hook's own words say why, git's last line only that it failed.
+                let why = lines.first { !$0.hasPrefix("error: failed to push") && !$0.hasPrefix("To ") && !$0.contains("[remote rejected]") } ?? lines.last ?? ""
+                return L("Push failed: %@", why)
+            }
+            return nil
         case (false, true):
             // Up to origin: in its checkout when it has one, else the ref.
             let moved = if let checkout {

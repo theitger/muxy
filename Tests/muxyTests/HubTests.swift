@@ -464,6 +464,17 @@ final class QuorumPrepareTests: XCTestCase {
     func testUnpushedCommitsArePushedFirst() throws {
         let repo = try TempRepo()
         let (checkout, _) = try setUp(repo)
+        // A pre-push hook like Phoenix's: only the checked-out branch, from
+        // its own checkout, may be pushed.
+        let hook = repo.path(".git/hooks/pre-push")
+        try """
+        #!/bin/sh
+        head=$(git rev-parse HEAD)
+        while read local_ref local_oid remote_ref remote_oid; do
+          [ "$local_oid" = "$head" ] || { echo 'Push one checked-out branch at a time' >&2; exit 1; }
+        done
+        """.write(toFile: hook, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: hook)
         // Like the merge of the base muxy made before the session closed.
         try repo.write("b.txt", "two\n", in: checkout)
         try repo.commit("Two", in: checkout)

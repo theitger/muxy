@@ -373,6 +373,7 @@ enum German {
         "Not cloned here": "Hier nicht geklont",
         "Your PRs without a session": "Deine PRs ohne Session",
         "Queue": "Warteschlange",
+        "%@ has unpushed commits but no checkout here: push it from where you work on it.": "%@ hat ungepushte Commits, aber hier keinen Checkout: push ihn von dort, wo du daran arbeitest.",
         "%@ has uncommitted changes: commit or discard them first.": "%@ hat uncommittete Änderungen: erst committen oder verwerfen.",
         "Couldn't bring %@ up to date with GitHub.": "%@ ließ sich nicht auf den Stand von GitHub bringen.",
         "%@ has commits here and on GitHub that the other doesn't: open a session to bring them together.": "%@ hat hier und auf GitHub Commits, die der anderen Seite fehlen: öffne eine Session, um sie zusammenzuführen.",
