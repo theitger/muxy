@@ -84,7 +84,7 @@ enum DragGhost {
             HStack(spacing: 10) {
                 SessionTile(
                     agent: workspace.agent, attention: workspace.needsAttention,
-                    isGit: workspace.context.repo != nil, size: 24
+                    isGit: workspace.context.repo != nil, kind: workspace.featured?.kind, size: 24
                 )
                 VStack(alignment: .leading, spacing: 1) {
                     Text(workspace.title)
@@ -123,7 +123,7 @@ enum DragGhost {
                     HStack(spacing: 7) {
                         SessionTile(
                             agent: workspace.agent, attention: workspace.needsAttention,
-                            isGit: workspace.context.repo != nil, size: 18
+                            isGit: workspace.context.repo != nil, kind: workspace.featured?.kind, size: 18
                         )
                         Text(workspace.title)
                             .font(.system(size: 10.5, weight: .semibold))

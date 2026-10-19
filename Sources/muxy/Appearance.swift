@@ -30,3 +30,29 @@ enum AppAppearance: String, CaseIterable, Identifiable {
         }
     }
 }
+
+/// Whether muxy is drawn dark right now, whoever decided it (the system or
+/// Settings). Views key their tree on it: switching rebuilds them, so no
+/// text keeps a color resolved for the other appearance.
+@MainActor
+final class AppearanceWatch: ObservableObject {
+    static let shared = AppearanceWatch()
+
+    @Published private(set) var isDark = false
+    private var observation: NSKeyValueObservation?
+
+    private init() {
+        isDark = Self.dark()
+        observation = NSApplication.shared.observe(\.effectiveAppearance) { [weak self] _, _ in
+            Task { @MainActor in
+                guard let self else { return }
+                let dark = Self.dark()
+                if dark != self.isDark { self.isDark = dark }
+            }
+        }
+    }
+
+    private static func dark() -> Bool {
+        NSApplication.shared.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+    }
+}

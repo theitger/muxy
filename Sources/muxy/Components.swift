@@ -13,6 +13,8 @@ struct SessionTile: View {
     let agent: AgentState
     let attention: Bool
     var isGit = false
+    /// The agent in it: shown as its own logo while it works or waits.
+    var kind: AgentKind?
     var size: CGFloat = 28
 
     private var look: (symbol: String, tone: Theme.Tone) {
@@ -34,10 +36,18 @@ struct SessionTile: View {
             .fill(!attention && (agent == .none || agent == .idle) ? .clear : look.tone.soft)
             .frame(width: size, height: size)
             .overlay {
-                Icon(look.symbol, size: size * 0.42)
-                    .foregroundStyle(look.tone.strong)
-                    // The only motion in the sidebar, and only while work runs.
-                    .modifier(Pulse(active: agent == .working))
+                // An agent at work or at rest is its own logo; states that
+                // want something (you, a fix, a look) keep their sign.
+                if let kind, agent == .working || (agent == .idle && !attention) {
+                    AgentGlyph(kind: kind, size: size * 0.55)
+                        .opacity(agent == .idle ? 0.55 : 1)
+                        // The only motion in the sidebar, and only while work runs.
+                        .modifier(Pulse(active: agent == .working))
+                } else {
+                    Icon(look.symbol, size: size * 0.42)
+                        .foregroundStyle(look.tone.strong)
+                        .modifier(Pulse(active: agent == .working))
+                }
             }
             .animation(.easeOut(duration: 0.2), value: look.symbol)
     }
@@ -77,15 +87,15 @@ struct PRBadge: View {
             Group {
                 switch status {
                 case .none: Badge(text: label)
-                case .running: Badge(text: label, tone: Theme.blue, symbol: "circle.dotted")
-                case .fixing: Badge(text: label, tone: Theme.yellow, symbol: "wrench.adjustable.fill")
-                case .failed: Badge(text: label, tone: Theme.redTone, symbol: "xmark")
-                case .conflicts: Badge(text: label, tone: Theme.redTone, symbol: "arrow.triangle.merge")
-                case .draft: Badge(text: label, symbol: "pencil")
-                case .waiting: Badge(text: label, symbol: "hourglass")
-                case .ready: Badge(text: label, tone: Theme.greenTone, symbol: "checkmark")
-                case .merged: Badge(text: label, tone: Theme.purple, symbol: "arrow.triangle.merge")
-                case .closed: Badge(text: label, symbol: "xmark.circle")
+                case .running: Badge(text: label, tone: Theme.blue)
+                case .fixing: Badge(text: label, tone: Theme.yellow)
+                case .failed: Badge(text: label, tone: Theme.redTone)
+                case .conflicts: Badge(text: label, tone: Theme.redTone)
+                case .draft: Badge(text: label)
+                case .waiting: Badge(text: label)
+                case .ready: Badge(text: label, tone: Theme.greenTone)
+                case .merged: Badge(text: label, tone: Theme.purple)
+                case .closed: Badge(text: label)
                 }
             }
             .help(help)

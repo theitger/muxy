@@ -352,7 +352,7 @@ final class Store: ObservableObject {
         return session
     }
 
-    /// Visual order across all windows — ⌘J walks it.
+    /// Visual order across all windows.
     var orderedWorkspaces: [Workspace] {
         windows.flatMap(\.orderedWorkspaces)
     }
@@ -362,22 +362,6 @@ final class Store: ObservableObject {
         if let session { workspace.selectedSessionID = session.id }
         window.select(workspace)
         if window !== activeWindow { window.bringToFront() }
-    }
-
-    /// ⌘J: the next session that wants you, in any window, in the inbox's
-    /// order (blocked, then failed, then news; oldest first). Repeated
-    /// presses walk on from the one on stage. Says so when nobody waits.
-    func jumpToAttention() {
-        let items = Inbox.items(in: self)
-        let current = activeWindow?.selectedWorkspace?.selectedSession?.id
-        let start = items.firstIndex { $0.session.id == current } ?? -1
-        for step in 0 ..< items.count {
-            let item = items[(start + 1 + step) % items.count]
-            if item.session.id == current { continue }
-            select(item.workspace, session: item.session)
-            return
-        }
-        activeWindow?.show(L("Nobody is waiting right now"))
     }
 
     func toggleInbox() {
@@ -795,7 +779,6 @@ final class Store: ObservableObject {
         case "n": targetWindow().showNewSession.toggle()
         case "t": targetWindow().newTab()
         case "w": window?.closeCurrent()
-        case "j": jumpToAttention()
         case "i": if let window { Results.shared.togglePanel(in: window) }
         case "k": window?.showSwitcher.toggle()
         case "b": toggleSidebar()

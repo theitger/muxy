@@ -6,6 +6,7 @@ struct SettingsView: View {
     @AppStorage(AppAppearance.storageKey) private var appearance = AppAppearance.system.rawValue
     @AppStorage(TerminalColors.storageKey) private var terminalColors = TerminalColors.neutral.rawValue
     @AppStorage(TerminalColors.fontKey) private var fontFamily = ""
+    @ObservedObject private var watch = AppearanceWatch.shared
     @AppStorage(TerminalColors.sizeKey) private var fontSize: Double = 0
 
     var body: some View {
@@ -111,6 +112,7 @@ struct SettingsView: View {
         }
         .frame(width: 460, height: 680)
         .tint(Theme.textPrimary)
+        .id(watch.isDark)
     }
 }
 

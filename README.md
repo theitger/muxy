@@ -55,7 +55,7 @@ The inbox (`⇧⌘J`, or the pill in the title bar) lists everything waiting on
 you across all windows: blocked agents first, then failed turns, then news,
 oldest first. Each row shows the last lines, the prompt's choices as
 buttons and a reply line, so you answer without leaving what you're in.
-`⌘J` walks the same list.
+
 
 ## See what it came to, and try it
 
@@ -290,7 +290,6 @@ installed, its shell integration and terminfo are bundled into Muxy.
 | `⌘W` | close tab → the last tab closes the session → an empty window closes |
 | `⌘1…9` · `⌃Tab` | switch tab |
 | `⌃1…9` · `⌘⌥↑/↓` | switch session |
-| `⌘J` | next session that wants you (any window) |
 | `⇧⌘J` | inbox: everything waiting on you, answerable in place |
 | `⌘I` | the session's result: proof, turns, collisions, quorum, land |
 | `⇧⌘D` | changes: last turn, whole branch or any turn, with line comments |

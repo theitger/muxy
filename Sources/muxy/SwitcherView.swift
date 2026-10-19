@@ -93,7 +93,7 @@ struct SwitcherView: View {
         HStack(spacing: 10) {
             SessionTile(
                 agent: workspace.agent, attention: workspace.needsAttention,
-                isGit: workspace.context.repo != nil, size: 24
+                isGit: workspace.context.repo != nil, kind: workspace.featured?.kind, size: 24
             )
             Text(workspace.title)
                 .font(.system(size: 13, weight: .medium))

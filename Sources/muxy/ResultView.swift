@@ -447,7 +447,7 @@ struct ResultPanel: View {
                             .foregroundStyle(Theme.redTone.strong)
                     }
                     if proof.verdict == .failed {
-                        SmallButton(title: L("Send failures to the agent"), symbol: "paperplane.fill", prominent: true, action: actions.sendFailures)
+                        SmallButton(title: L("Send failures to the agent"), prominent: true, action: actions.sendFailures)
                     }
                 } else if extras.hasChecks {
                     Text(L("Not run on these files yet."))
@@ -639,7 +639,7 @@ struct ResultPanel: View {
             if let pr, pr.state == .open {
                 HStack(spacing: 8) {
                     if extras.canLand, extras.landing?.isActive != true {
-                        PanelButton(title: L("Land"), symbol: "airplane.arrival", prominent: true, action: actions.land)
+                        PanelButton(title: L("Land"), symbol: nil, prominent: true, action: actions.land)
                             .help(L("Up to date, checks, push, review, merge: one step after the other"))
                     }
                     if extras.quorumInstalled, extras.quorum?.running != true {
@@ -725,7 +725,7 @@ struct SmallButton: View {
 
 struct PanelButton: View {
     let title: String
-    let symbol: String
+    let symbol: String?
     var prominent = false
     let action: () -> Void
     @State private var hovered = false
@@ -734,7 +734,7 @@ struct PanelButton: View {
         Button(action: action) {
             HStack(spacing: 5) {
                 Text(title)
-                Icon(symbol, size: 9.5)
+                if let symbol { Icon(symbol, size: 9.5) }
             }
             .font(.system(size: 12, weight: prominent ? .semibold : .medium))
             .foregroundStyle(prominent ? Theme.bg : Theme.textPrimary)

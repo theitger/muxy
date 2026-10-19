@@ -64,15 +64,12 @@ private struct SegmentTab: View {
 
     private var isActive: Bool { workspace.selectedSessionID == session.id }
 
-    private var symbol: String {
-        if session.agent != .none { return "sparkle" }
-        return "chevron.forward"
-    }
 
     var body: some View {
         HStack(spacing: 6) {
-            Icon(symbol, size: 10)
-                .foregroundStyle(isActive ? Theme.textMuted : Theme.textFaint)
+            if let kind = session.kind, session.agent != .none {
+                AgentGlyph(kind: kind, size: 11)
+            }
             Text(session.tabTitle)
                 .font(.system(size: 12, weight: .medium))
                 .foregroundStyle(isActive ? Theme.textPrimary : (hovered ? Theme.textBody : Theme.textMuted))

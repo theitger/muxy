@@ -10,12 +10,13 @@ struct WindowRoot: View {
     /// Rebuilds the window when the language changes (terminals survive:
     /// they are only reparented).
     @AppStorage(Language.storageKey) private var language = Language.english.rawValue
+    @ObservedObject private var appearance = AppearanceWatch.shared
 
     var body: some View {
         Group {
             if let model = store.window(windowID) {
                 ContentView(store: store, window: model)
-                    .id(language)
+                    .id("\(language)-\(appearance.isDark)")
             } else {
                 Color.clear
             }
@@ -79,7 +80,7 @@ struct ContentView: View {
         .overlay(alignment: .top) {
             if window.showSwitcher {
                 ZStack(alignment: .top) {
-                    Color.black.opacity(0.32)
+                    Color.black.opacity(0.12)
                         .contentShape(Rectangle())
                         .onTapGesture { window.showSwitcher = false }
                     SwitcherView(store: store, window: window)
@@ -92,7 +93,7 @@ struct ContentView: View {
         .overlay(alignment: .top) {
             if window.showNewSession {
                 ZStack(alignment: .top) {
-                    Color.black.opacity(0.32)
+                    Color.black.opacity(0.12)
                         .contentShape(Rectangle())
                         .onTapGesture { window.showNewSession = false }
                     NewSessionView(store: store, window: window)
@@ -342,8 +343,6 @@ private struct EmptyState: View {
                 hint(L("New Session"), "⌘N")
                 divider
                 hint(L("Search sessions"), "⌘K")
-                divider
-                hint(L("Next one waiting"), "⌘J")
                 divider
                 hint(L("New Window"), "⇧⌘N")
             }

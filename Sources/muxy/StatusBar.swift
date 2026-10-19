@@ -13,6 +13,11 @@ struct StatusBar: View {
     @ObservedObject private var hub = HubModel.shared
 
     var body: some View {
+        // Session states change without the store noticing: look each second.
+        TimelineView(.periodic(from: .now, by: 1)) { _ in bar }
+    }
+
+    private var bar: some View {
         let sessions = store.workspaces
         let working = sessions.filter { $0.agent == .working }.count
         let waiting = sessions.filter { $0.agent == .blocked }.count
@@ -22,9 +27,9 @@ struct StatusBar: View {
         let behind = radar.byCheckout.values.flatMap { $0 }.filter(\.withBase).count
         let running = quorum.byKey.values.filter(\.running).count
         let landings = landing.steps.values.filter(\.isActive).count
-        HStack(spacing: 14) {
+        return HStack(spacing: 14) {
             pip(Theme.blue.strong, working, L("working"))
-            pip(Theme.orange.strong, waiting, L("need you"), button: waiting > 0 ? { store.jumpToAttention() } : nil)
+            pip(Theme.orange.strong, waiting, L("need you"), button: waiting > 0 ? { store.toggleInbox() } : nil)
             pip(Theme.redTone.strong, failed, L("failed"))
             pip(Theme.textDim, idle, L("idle"))
             divider
@@ -63,7 +68,7 @@ struct StatusBar: View {
             Text("\(String(count)) \(label)").foregroundStyle(count > 0 ? Theme.textBody : Theme.textFaint)
         }
         if let button {
-            Button(action: button) { content }.buttonStyle(.plain).help(L("Next one waiting (⌘J)"))
+            Button(action: button) { content }.buttonStyle(.plain).help(L("Inbox (⇧⌘J)"))
         } else {
             content
         }

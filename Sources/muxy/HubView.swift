@@ -63,7 +63,7 @@ struct HubView: View {
         } else if let problem = hub.account.problem {
             HStack(spacing: 8) {
                 Text(problem).font(.system(size: 12)).foregroundStyle(Theme.orange.strong)
-                SmallButton(title: L("Sign in to GitHub"), symbol: "person.crop.circle.badge.plus", prominent: true) {
+                SmallButton(title: L("Sign in to GitHub"), prominent: true) {
                     hub.signIn(in: window)
                 }
             }
@@ -84,7 +84,7 @@ struct HubView: View {
         let width = max(250, (geometry.size.width - 28 - 36) / 4)
         ScrollView(.horizontal) {
             HStack(alignment: .top, spacing: 12) {
-                Column(title: L("For you"), count: openIssues.count + hub.reviews.count, symbol: "tray.full") {
+                Column(title: L("For you"), count: openIssues.count + hub.reviews.count) {
                     ForEach(openIssues, id: \.self) { issue in
                         IssueCard(issue: issue, local: hub.checkout(of: issue.repo) != nil) { agents in
                             hub.start(issue, agents: agents, in: window)
@@ -104,13 +104,13 @@ struct HubView: View {
                             .font(.system(size: 12)).foregroundStyle(Theme.textDim).padding(.vertical, 8)
                     }
                 }
-                Column(title: L("Working"), count: working.count, symbol: "sparkle") {
+                Column(title: L("Working"), count: working.count) {
                     ForEach(working) { SessionCard(workspace: $0, window: window) }
                 }
-                Column(title: L("In review"), count: review.count, symbol: "eye") {
+                Column(title: L("In review"), count: review.count) {
                     ForEach(review) { SessionCard(workspace: $0, window: window) }
                 }
-                Column(title: L("Ready to land"), count: ready.count, symbol: "airplane.arrival") {
+                Column(title: L("Ready to land"), count: ready.count) {
                     ForEach(ready) { SessionCard(workspace: $0, window: window) }
                 }
             }
@@ -175,13 +175,11 @@ private struct Column<Content: View>: View {
     @Environment(\.columnWidth) private var width
     let title: String
     let count: Int
-    let symbol: String
     @ViewBuilder let content: Content
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 6) {
-                Icon(symbol, size: 10).foregroundStyle(Theme.textDim)
                 SectionLabel(title, tone: Theme.textMuted)
                 Text(String(count)).font(Theme.label(size: 10.5)).foregroundStyle(Theme.textDim)
                 Spacer()
@@ -256,7 +254,7 @@ private struct IssueCard: View {
             }
             HStack(spacing: 6) {
                 let agent = AgentKind(rawValue: preferred) ?? .claude
-                SmallButton(title: L("Start %@", agent.name), symbol: "play.fill", prominent: true) { start([agent]) }
+                SmallButton(title: L("Start %@", agent.name), prominent: true) { start([agent]) }
                     .disabled(!local)
                 Menu {
                     ForEach(AgentKind.allCases) { kind in
@@ -299,7 +297,7 @@ private struct ReviewRequestCard: View {
                 .fixedSize(horizontal: false, vertical: true)
             HStack(spacing: 6) {
                 if local != nil, Quorum.isInstalled {
-                    SmallButton(title: L("Review with quorum"), symbol: "person.3.fill", action: review)
+                    SmallButton(title: L("Review with quorum"), action: review)
                 }
                 SmallButton(title: L("Open"), symbol: "arrow.up.right") {
                     if let url = URL(string: request.url) { NSWorkspace.shared.open(url) }
@@ -323,7 +321,7 @@ private struct SessionCard: View {
         let context = workspace.context
         VStack(alignment: .leading, spacing: 7) {
             HStack(spacing: 8) {
-                SessionTile(agent: workspace.agent, attention: workspace.needsAttention, isGit: true, size: 20)
+                SessionTile(agent: workspace.agent, attention: workspace.needsAttention, isGit: true, kind: workspace.agentTab?.kind, size: 20)
                 Text(workspace.title)
                     .font(.system(size: 12.5, weight: .semibold))
                     .foregroundStyle(Theme.textPrimary)
@@ -338,22 +336,22 @@ private struct SessionCard: View {
                 Text(step.text).font(.system(size: 11.5)).foregroundStyle(Theme.blue.strong).lineLimit(2)
             }
             HStack(spacing: 6) {
-                SmallButton(title: L("Open"), symbol: "arrow.right") {
+                SmallButton(title: L("Open")) {
                     window.showHub = false
                     window.select(workspace)
                 }
                 if context.checkout != nil {
-                    SmallButton(title: L("Review"), symbol: "plus.forwardslash.minus") {
+                    SmallButton(title: L("Review")) {
                         window.openReview(workspace, scope: .branch)
                     }
                 }
                 if landing.canLand(workspace), landing.step(for: workspace)?.isActive != true {
-                    SmallButton(title: L("Land"), symbol: "airplane.arrival", prominent: true) {
+                    SmallButton(title: L("Land"), prominent: true) {
                         landing.land(workspace)
                     }
                 }
                 if workspace.variantGroup != nil {
-                    SmallButton(title: L("Keep"), symbol: "star.fill") {
+                    SmallButton(title: L("Keep")) {
                         FanOut.confirmKeep(workspace)
                     }
                 }
@@ -379,10 +377,10 @@ struct Signals: View {
         if proofs.isRunning(checkout) || proof != nil || !collisions.isEmpty || status != nil {
             FlowSignals {
                 if proofs.isRunning(checkout) {
-                    Badge(text: L("checking"), tone: Theme.blue, symbol: "shield")
+                    Badge(text: L("checking"), tone: Theme.blue)
                 } else if let proof {
                     switch proof.verdict {
-                    case .passed: Badge(text: L("proven"), tone: Theme.greenTone, symbol: "checkmark.shield.fill")
+                    case .passed: Badge(text: L("proven"), tone: Theme.greenTone)
                     case .failed: Badge(text: proof.failed.count == 1 ? L("1 check fails") : L("%d checks fail", proof.failed.count),
                                         tone: Theme.redTone, symbol: "xmark.shield.fill")
                     default: EmptyView()
@@ -435,13 +433,13 @@ private struct WorktreesPage: View {
                 }
                 Spacer()
                 if list.contains(where: { $0.owner == .quorum }), Quorum.isInstalled {
-                    SmallButton(title: L("quorum gc"), symbol: "trash") {
+                    SmallButton(title: L("quorum gc")) {
                         inventory.quorumGC { window.show(L("quorum cleaned its cache")) }
                     }
                     .help(L("quorum's own cleanup for its run folders"))
                 }
                 if !finished.isEmpty {
-                    SmallButton(title: L("Remove %d finished", finished.count), symbol: "sparkles", prominent: true) {
+                    SmallButton(title: L("Remove %d finished", finished.count), prominent: true) {
                         confirmRemove(finished)
                     }
                 }
@@ -526,9 +524,9 @@ private struct WorktreeRow: View {
                     if let pr = info.pr {
                         Badge(text: "#\(pr)", tone: info.prState == .merged ? Theme.purple : (info.prState == .closed ? Theme.neutral : Theme.blue))
                     }
-                    if hasSession { Badge(text: L("open"), tone: Theme.blue, symbol: "macwindow") }
+                    if hasSession { Badge(text: L("open"), tone: Theme.blue) }
                     if info.running > 0, let project = info.containers {
-                        Badge(text: L("%d containers", info.running), tone: Theme.yellow, symbol: "shippingbox.fill")
+                        Badge(text: L("%d containers", info.running), tone: Theme.yellow)
                             .help(project)
                     }
                 }

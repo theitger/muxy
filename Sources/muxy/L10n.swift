@@ -330,7 +330,7 @@ enum German {
         "Send": "Senden",
         "Your answer": "Deine Antwort",
         "has news": "hat Neuigkeiten",
-        "Inbox (⇧⌘J). Next one: ⌘J": "Inbox (⇧⌘J). Nächster: ⌘J",
+        "Inbox (⇧⌘J)": "Inbox (⇧⌘J)",
         "Inbox: %d waiting": "Inbox: %d warten",
         "Waiting on you": "Wartet auf dich",
         "next": "nächster",
@@ -518,7 +518,6 @@ enum German {
         "behind base": "hinter der Basis",
         "landing": "landen",
         "hub": "Hub",
-        "Next one waiting (⌘J)": "Zur nächsten, die wartet (⌘J)",
         "Before the turn": "Vor dem Turn",
         "Turn ended": "Turn beendet",
         "Not a git checkout: nothing to review": "Kein Git-Checkout: nichts zu reviewen",
@@ -569,5 +568,6 @@ enum German {
         "Review model": "Review-Modell",
         "Fix model": "Fix-Modell",
         "engine default": "Standard der Engine",
+        "checks fail": "Checks schlagen fehl",
     ]
 }

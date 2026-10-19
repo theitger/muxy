@@ -134,7 +134,7 @@ final class Inbox: ObservableObject {
 }
 
 /// The pill in the title bar: how many wait on you. A click opens the
-/// inbox (⇧⌘J); ⌘J goes to the next one.
+/// inbox (⇧⌘J).
 struct InboxPill: View {
     @ObservedObject var store: Store
     @ObservedObject var window: WindowModel
@@ -147,7 +147,7 @@ struct InboxPill: View {
                 WaitingPill(text: waiting.count == 1 ? first.workspace.title : L("%d sessions waiting", waiting.count))
             }
             .buttonStyle(.plain)
-            .help(L("Inbox (⇧⌘J). Next one: ⌘J"))
+            .help(L("Inbox (⇧⌘J)"))
             .accessibilityLabel(L("Inbox: %d waiting", waiting.count))
             .popover(isPresented: Binding(
                 get: { inbox.isOpen(in: window) },
@@ -174,10 +174,6 @@ struct InboxView: View {
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundStyle(Theme.textPrimary)
                     Spacer()
-                    Kbd("⌘J")
-                    Text(L("next"))
-                        .font(.system(size: 11))
-                        .foregroundStyle(Theme.textDim)
                 }
                 .padding(.horizontal, 14)
                 .frame(height: 40)

@@ -51,7 +51,9 @@ enum TerminalColors: String, CaseIterable, Identifiable {
         guard fontFamily != nil || fontSize != nil else { return base }
         func withFont(_ config: TerminalConfiguration) -> TerminalConfiguration {
             var result = config
-            if let family = fontFamily { result = result.fontFamily(family) }
+            // font-family repeats as a fallback list in Ghostty: an empty
+            // one first clears yours, or the choice would only be a fallback.
+            if let family = fontFamily { result = result.custom("font-family", "\"\"").fontFamily(family) }
             if let size = fontSize { result = result.fontSize(Float(size)) }
             return result
         }

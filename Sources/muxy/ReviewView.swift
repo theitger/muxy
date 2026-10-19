@@ -278,7 +278,7 @@ private struct FileRow: View {
                 }
                 Spacer(minLength: 4)
                 if comments > 0 {
-                    Badge(text: "\(comments)", tone: Theme.blue, symbol: "text.bubble.fill")
+                    Badge(text: "\(comments)", tone: Theme.blue)
                 }
                 Text("+" + String(file.additions)).foregroundStyle(Theme.greenTone.strong)
                 Text("−" + String(file.deletions)).foregroundStyle(Theme.redTone.strong)

@@ -41,7 +41,7 @@ enum Theme {
     static let red = dyn(light: 0xB3001B, dark: 0xE63946)
     static let dotIdle = dyn(light: 0xC4C4C0, dark: 0x3A3A3A)
     static let claude = dyn(light: 0xBE5A38, dark: 0xD97757)
-    static let codex = dyn(light: 0x4A55E0, dark: 0x8E9BFF)
+    static let codex = dyn(light: 0x0D0D0D, dark: 0xF5F5F5)
 
     // Status tones: a soft tint for backgrounds, a strong shade for
     // text and icons on it.

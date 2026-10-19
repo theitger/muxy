@@ -30,6 +30,14 @@ enum DebugDriver {
             if let index = value.flatMap(Int.init) { window.selectWorkspace(index: index) }
         case "open":
             if let value { window.newWorkspace(directory: value) }
+        case "font":
+            UserDefaults.standard.set(value ?? "", forKey: TerminalColors.fontKey)
+            TerminalColors.apply()
+        case "titles":
+            let text = store.workspaces.map { ws in
+                ws.sessions.map { "[\($0.title)] agentTitle=\($0.agentTitle ?? "nil") cwd=\($0.cwd) root=\(ws.context.root ?? "nil") checkout=\(ws.context.checkout ?? "nil")" }.joined(separator: " | ")
+            }.joined(separator: "\n")
+            return reply(true, text)
         case "settings":
             store.openSettings?()
         case "shot-other":

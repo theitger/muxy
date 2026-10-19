@@ -17,6 +17,10 @@ struct WingFace {
     var result: ResultFace?
     /// The web app it runs, if any (Open app).
     var appPort: Int?
+    /// Branch, or where it runs outside git.
+    var subtitle: String = ""
+    /// The agent the card speaks for.
+    var kind: AgentKind?
     /// muxy's own checks: running, or how they came out.
     var proof: ProofResult.Outcome?
     var proving = false
@@ -59,28 +63,46 @@ struct WingCardFace: View {
 
     // MARK: Detailed
 
+    /// What a session is, where it stands and what muxy knows about its
+    /// work, as facts rather than a picture of its terminal. Its screen
+    /// shows only while the agent asks you something: that is what to read.
     private var card: some View {
-        VStack(alignment: .leading, spacing: 0) {
+        VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 8) {
-                SessionTile(agent: face.agent, attention: face.attention, isGit: face.isGit, size: 20)
+                SessionTile(agent: face.agent, attention: face.attention, isGit: face.isGit, kind: face.kind, size: 20)
                 Text(face.title)
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.system(size: 12.5, weight: .semibold))
                     .foregroundStyle(Theme.textPrimary)
                     .lineLimit(1)
                 Spacer(minLength: 4)
                 PRBadge(pr: face.pr, status: face.prStatus)
             }
-            .padding(.horizontal, 10)
-            .padding(.top, 9)
-            .padding(.bottom, 7)
-
-            preview
-
-            ticker
-                .padding(.horizontal, 10)
-                .padding(.top, 7)
-                .padding(.bottom, 9)
+            if !face.subtitle.isEmpty, face.subtitle != face.title {
+                Text(face.subtitle)
+                    .font(Theme.mono(size: 10.5))
+                    .foregroundStyle(Theme.textDim)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+            if face.showsResult || (face.activity != face.subtitle && face.activity != face.title) {
+                status
+            }
+            if blocked, !face.lines.isEmpty {
+                VStack(alignment: .leading, spacing: 1.5) {
+                    ForEach(Array(face.lines.suffix(3).enumerated()), id: \.offset) { _, line in
+                        Text(Theme.displayable(line)).lineLimit(1).truncationMode(.tail)
+                    }
+                }
+                .font(Theme.mono(size: 9.5))
+                .foregroundStyle(Theme.textMuted)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 7)
+                .padding(.vertical, 5)
+                .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(Theme.orange.soft))
+            }
+            facts
         }
+        .padding(10)
         .background(
             RoundedRectangle(cornerRadius: Self.radius, style: .continuous)
                 .fill(Theme.surfaceActive)
@@ -98,29 +120,11 @@ struct WingCardFace: View {
                     .strokeBorder(hovered ? Theme.textDim.opacity(0.6) : Theme.border, lineWidth: 1)
             }
         }
-        .opacity(face.isQuiet && !hovered && !onStage ? 0.62 : 1)
+        .opacity(face.isQuiet && !hovered && !onStage ? 0.7 : 1)
     }
 
-    private var preview: some View {
-            VStack(alignment: .leading, spacing: 1.5) {
-                ForEach(Array(face.lines.enumerated()), id: \.offset) { _, line in
-                    Text(Theme.displayable(line)).lineLimit(1).truncationMode(.tail)
-                }
-            }
-            .font(Theme.mono(size: 9.5))
-            .foregroundStyle(Theme.textDim)
-            .frame(maxWidth: .infinity, minHeight: 58, maxHeight: 58, alignment: .bottomLeading)
-            .padding(.horizontal, 7)
-            .padding(.vertical, 6)
-            .clipped()
-            .background(
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .fill(Theme.textPrimary.opacity(0.05))
-            )
-            .padding(.horizontal, 8)
-    }
-
-    private var ticker: some View {
+    /// One line: what is happening now, or what the last turn came to.
+    private var status: some View {
         HStack(spacing: 6) {
             switch face.agent {
             case .working:
@@ -136,28 +140,59 @@ struct WingCardFace: View {
                 ResultLine(face: result)
             } else {
                 Text(face.activity)
-                    .font(.system(size: 11, weight: blocked ? .semibold : .regular))
-                    .foregroundStyle(tone)
+                    .font(.system(size: 11.5, weight: blocked ? .semibold : .regular))
+                    .foregroundStyle(tone == Theme.textDim ? Theme.textMuted : tone)
                     .lineLimit(1)
                     .truncationMode(.tail)
             }
-            Spacer(minLength: 4)
-            FaceSignals(face: face)
-            if let port = face.appPort {
-                HStack(spacing: 2) {
-                    Icon("globe", size: 9)
-                    Text(":" + String(port)).font(.system(size: 10, weight: .medium)).monospacedDigit()
-                }
-                .foregroundStyle(Theme.textDim)
-                .accessibilityLabel(L("Runs an app on port %d", port))
-            }
-            HStack(spacing: 4) {
-                ForEach(Array(face.agents.enumerated()), id: \.offset) { _, state in
-                    Icon("sparkle", size: 9)
-                        .foregroundStyle(state == .none || state == .idle ? Theme.textFaint : Theme.tone(for: state).strong)
-                }
+            Spacer(minLength: 0)
+        }
+    }
+
+    /// What muxy knows beyond the agent, in words: checks, collisions,
+    /// quorum, landing, the app it serves. Nothing when there is nothing.
+    @ViewBuilder
+    private var facts: some View {
+        let chips = factChips
+        if !chips.isEmpty {
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 4) { ForEach(chips, id: \.text) { chip($0) } }
+                VStack(alignment: .leading, spacing: 4) { ForEach(chips, id: \.text) { chip($0) } }
             }
         }
+    }
+
+    private struct Fact {
+        var text: String
+        var symbol: String
+        var tone: Theme.Tone
+    }
+
+    private var factChips: [Fact] {
+        var chips: [Fact] = []
+        if let landing = face.landing { chips.append(Fact(text: landing, symbol: "airplane", tone: Theme.blue)) }
+        if face.proving {
+            chips.append(Fact(text: L("checking"), symbol: "shield", tone: Theme.blue))
+        } else if face.proof == .failed {
+            chips.append(Fact(text: L("checks fail"), symbol: "xmark.shield.fill", tone: Theme.redTone))
+        } else if face.proof == .passed {
+            chips.append(Fact(text: L("proven"), symbol: "checkmark.shield.fill", tone: Theme.greenTone))
+        }
+        for other in face.collisions.prefix(2) {
+            chips.append(Fact(text: L("collides: %@", other), symbol: "arrow.triangle.merge", tone: Theme.orange))
+        }
+        if let quorum = face.quorum {
+            chips.append(Fact(text: quorum, symbol: "person.3", tone: face.quorumRunning ? Theme.blue : Theme.neutral))
+        }
+        if let port = face.appPort {
+            chips.append(Fact(text: ":" + String(port), symbol: "globe", tone: Theme.neutral))
+        }
+        return chips
+    }
+
+    private func chip(_ fact: Fact) -> some View {
+        Badge(text: fact.text, tone: fact.tone)
+            .lineLimit(1)
     }
 
     private var tone: Color {
@@ -174,7 +209,7 @@ struct WingCardFace: View {
 
     private var row: some View {
         HStack(spacing: 10) {
-            SessionTile(agent: face.agent, attention: face.attention, isGit: face.isGit)
+            SessionTile(agent: face.agent, attention: face.attention, isGit: face.isGit, kind: face.kind)
             VStack(alignment: .leading, spacing: 1) {
                 Text(face.title)
                     .font(.system(size: 13, weight: onStage ? .semibold : .medium))
@@ -280,7 +315,7 @@ struct StageTitle: View {
     }
 }
 
-/// "login-fix ⌘J" — someone else wants you.
+/// "login-fix": someone else wants you.
 struct WaitingPill: View {
     let text: String
 
@@ -289,7 +324,6 @@ struct WaitingPill: View {
             Circle().fill(Theme.orange.strong).frame(width: 6, height: 6)
             Text(text.count > 30 ? text.prefix(29) + "…" : text)
                 .lineLimit(1)
-            Text("⌘J").opacity(0.55)
         }
         .font(.system(size: 12, weight: .medium))
         .foregroundStyle(Theme.orange.strong)

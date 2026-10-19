@@ -103,6 +103,8 @@ extension Workspace {
             agents: sessions.filter { $0.agent != .none }.map(\.agent),
             result: resultFace,
             appPort: Previews.shared.ports(of: self).first(where: \.isWeb)?.port,
+            subtitle: subtitle,
+            kind: featured?.kind,
             proof: Proofs.shared.result(for: context.checkout)?.verdict,
             proving: Proofs.shared.isRunning(context.checkout),
             collisions: Radar.shared.collisions(for: context.checkout).map {
