@@ -16,7 +16,7 @@ enum AgentState {
 }
 
 /// Which coding agent runs in a tab.
-enum AgentKind: String, CaseIterable, Identifiable {
+enum AgentKind: String, CaseIterable, Identifiable, Codable {
     case claude
     case codex
 

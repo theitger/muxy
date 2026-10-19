@@ -14,6 +14,7 @@ struct HubView: View {
     @ObservedObject private var proofs = Proofs.shared
     @ObservedObject private var quorum = QuorumWatch.shared
     @ObservedObject private var landing = Landing.shared
+    @ObservedObject private var queue = Queue.shared
     @AppStorage("hubPage") private var page = "board"
     /// Board filters: an organization, a repository (both "" for all), and
     /// only issues an agent can take on its own.
@@ -117,6 +118,10 @@ struct HubView: View {
         let width = max(150, (geometry.size.width - 28 - 30) / 4 - 20)
         HStack(alignment: .top, spacing: 10) {
                 Column(title: L("For you"), count: openIssues.count + hub.reviews.filter { matches($0.repo) }.count) {
+                    if !queue.items.isEmpty {
+                        QueueSection(queue: queue, window: window)
+                            .padding(.bottom, 6)
+                    }
                     let groups = issueGroups
                     ForEach(groups, id: \.repo) { group in
                         // One repository: no heading needed.
@@ -130,7 +135,8 @@ struct HubView: View {
                             .help(group.repo)
                         }
                         ForEach(group.issues, id: \.self) { issue in
-                            IssueCard(issue: issue, local: hub.checkout(of: issue.repo) != nil, showsRepo: groups.count <= 1) { agents in
+                            IssueCard(issue: issue, local: hub.checkout(of: issue.repo) != nil, showsRepo: groups.count <= 1,
+                                      queue: { queue.add(issue, agent: $0) }) { agents in
                                 hub.start(issue, agents: agents, in: window)
                             }
                         }
@@ -184,7 +190,7 @@ struct HubView: View {
     /// Assigned issues no session works on yet, filtered, newest first.
     private var openIssues: [Issue] {
         hub.issues.filter { issue in
-            hub.session(for: issue) == nil && matches(issue.repo)
+            hub.session(for: issue) == nil && !queue.contains(issue) && matches(issue.repo)
                 && (!readyOnly || issue.labels.contains("ready-for-agent"))
         }
         .sorted { ($0.created ?? .distantPast, $0.number) > ($1.created ?? .distantPast, $1.number) }
@@ -345,6 +351,7 @@ private struct IssueCard: View {
     let issue: Issue
     let local: Bool
     var showsRepo = true
+    let queue: (AgentKind) -> Void
     let start: ([AgentKind]) -> Void
     @AppStorage("newSessionAgent") private var preferred = AgentKind.claude.rawValue
 
@@ -390,6 +397,10 @@ private struct IssueCard: View {
                     }
                     Divider()
                     Button(L("Claude and Codex side by side")) { start(AgentKind.allCases) }
+                    Divider()
+                    ForEach(AgentKind.allCases) { kind in
+                        Button(L("Queue for %@", kind.name)) { queue(kind) }
+                    }
                 } label: {
                     Text(L("More")).font(.system(size: 11.5, weight: .medium))
                 }
@@ -433,6 +444,98 @@ private struct ReviewRequestCard: View {
             }
         }
         .modifier(CardBackground())
+    }
+}
+
+/// The queue: what waits, what runs, how each one ended, and the
+/// button that starts or stops it.
+private struct QueueSection: View {
+    @ObservedObject var queue: Queue
+    @ObservedObject var window: WindowModel
+    @AppStorage(Queue.parallelKey) private var parallel = Queue.defaultParallel
+
+    var body: some View {
+        let waiting = queue.items.filter { $0.phase == .queued }.count
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                SectionLabel(L("Queue"))
+                Text(String(queue.items.count)).font(Theme.label(size: 11)).foregroundStyle(Theme.textDim)
+                Spacer()
+                if queue.items.contains(where: { $0.phase.isFinished }) {
+                    Button(L("Clear finished")) { queue.clearFinished() }
+                        .buttonStyle(.plain)
+                        .font(.system(size: 11)).foregroundStyle(Theme.textDim)
+                }
+            }
+            VStack(alignment: .leading, spacing: 0) {
+                ForEach(queue.items) { item in
+                    QueueRow(item: item, remove: { queue.remove(item) }, open: {
+                        if let workspace = HubModel.shared.session(for: item.issue) {
+                            window.showHub = false
+                            Store.shared.select(workspace)
+                        }
+                    })
+                    if item.id != queue.items.last?.id {
+                        Rectangle().fill(Theme.hairline).frame(height: 1)
+                    }
+                }
+            }
+            HStack(spacing: 6) {
+                if queue.running {
+                    SmallButton(title: L("Stop")) { queue.stop() }
+                    Text(waiting == 0 ? L("Nothing waits.") : L("%d wait, %d at a time", waiting, parallel))
+                        .font(.system(size: 10.5)).foregroundStyle(Theme.textDim)
+                } else if waiting > 0 {
+                    SmallButton(title: L("Start queue"), prominent: true) { queue.start() }
+                    Text(L("%d at a time, no permission prompts", parallel))
+                        .font(.system(size: 10.5)).foregroundStyle(Theme.textDim)
+                }
+            }
+        }
+        .modifier(CardBackground())
+    }
+}
+
+private struct QueueRow: View {
+    let item: Queue.Item
+    let remove: () -> Void
+    let open: () -> Void
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            AgentGlyph(kind: item.agent, size: 11)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(item.issue.title)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(Theme.textPrimary)
+                    .lineLimit(2)
+                Text("#" + String(item.issue.number) + " · " + status.text)
+                    .font(.system(size: 10.5))
+                    .foregroundStyle(status.color)
+                    .lineLimit(2)
+            }
+            Spacer(minLength: 4)
+            if item.phase != .queued {
+                Button(L("Open"), action: open).buttonStyle(.plain)
+                    .font(.system(size: 11)).foregroundStyle(Theme.textDim)
+            }
+            if !item.phase.isActive {
+                Button(action: remove) { Icon("xmark", size: 9).foregroundStyle(Theme.textDim) }
+                    .buttonStyle(.plain)
+                    .help(L("Remove from the queue"))
+            }
+        }
+        .padding(.vertical, 6)
+    }
+
+    private var status: (text: String, color: Color) {
+        switch item.phase {
+        case .queued: (L("waits"), Theme.textDim)
+        case .running: (L("runs"), Theme.blue.strong)
+        case .ready: (L("ready to land"), Theme.greenTone.strong)
+        case let .needsYou(why): (why, Theme.orange.strong)
+        case let .failed(why): (why, Theme.redTone.strong)
+        }
     }
 }
 
