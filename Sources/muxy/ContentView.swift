@@ -198,7 +198,8 @@ private struct StageTopBar: View {
                     title: workspace.title,
                     place: [workspace.context.repo, workspace.subtitle].compactMap { $0 }.joined(separator: " · "),
                     pr: workspace.context.pr,
-                    prStatus: workspace.prStatus
+                    prStatus: workspace.prStatus,
+                    prURL: workspace.pullRequestURL
                 )
             }
             Spacer(minLength: 12)

@@ -77,6 +77,15 @@ final class Workspace: ObservableObject, Identifiable {
         sessions.first { $0.kind != nil && ($0.agent == .idle || $0.agent == .working) }
     }
 
+    /// Its pull request on GitHub, once the repository's name is known.
+    var pullRequestURL: URL? {
+        guard let pr = context.pr, let root = context.root,
+              let slug = QuorumWatch.shared.slugs[root] ?? HubModel.shared.checkouts.first(where: { $0.value == root })?.key
+        else { return nil }
+        let host = slug.split(separator: "/").count == 3 ? "" : "github.com/"
+        return URL(string: "https://\(host)\(slug)/pull/\(pr)")
+    }
+
     /// The fan-out it is one variant of.
     var variantGroup: String? {
         sessions.lazy.compactMap(\.variantGroup).first

@@ -9,6 +9,9 @@ final class HubModel: ObservableObject {
 
     struct Account: Equatable {
         var login: String?
+        var name: String?
+        var avatar: URL?
+        var profile: URL?
         /// gh missing or signed out: what to say instead.
         var problem: String?
     }
@@ -83,8 +86,16 @@ final class HubModel: ObservableObject {
 
     nonisolated static func loadAccount() -> Account {
         guard let gh = Shell.find("gh") else { return Account(problem: L("gh is not installed.")) }
-        let result = Shell.execute(gh, ["api", "user", "--jq", ".login"], in: Paths.home, timeout: 15)
-        if result.status == 0, !result.output.isEmpty { return Account(login: result.output) }
+        let result = Shell.execute(gh, ["api", "user"], in: Paths.home, timeout: 15)
+        if result.status == 0,
+           let json = try? JSONSerialization.jsonObject(with: Data(result.output.utf8)) as? [String: Any],
+           let login = json["login"] as? String {
+            return Account(
+                login: login, name: json["name"] as? String,
+                avatar: (json["avatar_url"] as? String).flatMap(URL.init(string:)),
+                profile: (json["html_url"] as? String).flatMap(URL.init(string:))
+            )
+        }
         let text = result.error.lowercased()
         if text.contains("auth login") || text.contains("not logged") || text.contains("401") {
             return Account(problem: L("gh is not signed in."))
@@ -95,7 +106,7 @@ final class HubModel: ObservableObject {
     nonisolated static func assignedIssues() -> [Issue]? {
         guard let gh = Shell.find("gh") else { return nil }
         let result = Shell.execute(gh, [
-            "search", "issues", "--assignee", "@me", "--state", "open", "--limit", "60",
+            "search", "issues", "--assignee", "@me", "--state", "open", "--limit", "200",
             "--sort", "updated", "--json", "number,title,url,labels,repository,state,updatedAt"
         ], in: Paths.home, timeout: 30)
         guard result.status == 0,

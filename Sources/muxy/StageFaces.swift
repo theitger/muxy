@@ -299,6 +299,7 @@ struct StageTitle: View {
     let place: String
     let pr: Int?
     let prStatus: PRStatus
+    var prURL: URL?
 
     var body: some View {
         HStack(spacing: 8) {
@@ -309,7 +310,13 @@ struct StageTitle: View {
                 .font(.system(size: 12.5))
                 .foregroundStyle(Theme.textMuted)
                 .truncationMode(.middle)
-            PRBadge(pr: pr, status: prStatus)
+            Button {
+                if let prURL { NSWorkspace.shared.open(prURL) }
+            } label: {
+                PRBadge(pr: pr, status: prStatus)
+            }
+            .buttonStyle(.plain)
+            .disabled(prURL == nil)
         }
         .lineLimit(1)
     }

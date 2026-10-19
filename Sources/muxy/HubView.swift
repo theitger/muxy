@@ -54,12 +54,29 @@ struct HubView: View {
     @ViewBuilder
     private var account: some View {
         if let login = hub.account.login {
-            HStack(spacing: 5) {
-                Icon("person.crop.circle.fill", size: 12)
-                Text(login).font(.system(size: 12, weight: .medium))
+            Button {
+                if let profile = hub.account.profile { NSWorkspace.shared.open(profile) }
+            } label: {
+                HStack(spacing: 7) {
+                    AsyncImage(url: hub.account.avatar) { image in
+                        image.resizable().interpolation(.high)
+                    } placeholder: {
+                        Circle().fill(Theme.fillActive)
+                    }
+                    .frame(width: 20, height: 20)
+                    .clipShape(Circle())
+                    .overlay(Circle().strokeBorder(Theme.border, lineWidth: 1))
+                    VStack(alignment: .leading, spacing: 0) {
+                        Text(hub.account.name ?? login).font(.system(size: 12, weight: .medium)).foregroundStyle(Theme.textPrimary)
+                        if hub.account.name != nil {
+                            Text("@" + login).font(.system(size: 10.5)).foregroundStyle(Theme.textDim)
+                        }
+                    }
+                }
+                .contentShape(Rectangle())
             }
-            .foregroundStyle(Theme.textMuted)
-            .help(L("Signed in to GitHub through gh"))
+            .buttonStyle(.plain)
+            .help(L("Signed in to GitHub through gh. Opens your profile."))
         } else if let problem = hub.account.problem {
             HStack(spacing: 8) {
                 Text(problem).font(.system(size: 12)).foregroundStyle(Theme.orange.strong)
@@ -327,7 +344,13 @@ private struct SessionCard: View {
                     .foregroundStyle(Theme.textPrimary)
                     .lineLimit(2)
                 Spacer(minLength: 4)
-                PRBadge(pr: context.pr, status: workspace.prStatus)
+                Button {
+                    if let url = workspace.pullRequestURL { NSWorkspace.shared.open(url) }
+                } label: {
+                    PRBadge(pr: context.pr, status: workspace.prStatus)
+                }
+                .buttonStyle(.plain)
+                .help(L("Open the pull request on GitHub"))
             }
             Text([context.repo, context.branch].compactMap { $0 }.joined(separator: " · "))
                 .font(.system(size: 11)).foregroundStyle(Theme.textDim).lineLimit(1).truncationMode(.middle)
