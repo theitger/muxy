@@ -166,4 +166,13 @@ final class QuorumRunTests: XCTestCase {
         try write("r/output/findings.json", #"{"schema":2}"#)
         XCTAssertNotNil(QuorumCompat.warning(for: cache + "/r", installed: QuorumCompat.tested))
     }
+
+    func testLegacyBabysitUsesTheRetainedCheckoutHead() throws {
+        let repo = try TempRepo()
+        let run = cache + "/legacy-babysit"
+        try FileManager.default.createDirectory(atPath: run, withIntermediateDirectories: true)
+        try FileManager.default.createSymbolicLink(atPath: run + "/worktree", withDestinationPath: repo.root)
+
+        XCTAssertEqual(Quorum.acceptedHead(kind: .babysit, in: run), try repo.head().lowercased())
+    }
 }

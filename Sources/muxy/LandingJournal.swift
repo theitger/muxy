@@ -38,23 +38,32 @@ final class LandingJournal: ObservableObject {
     @Published private(set) var receipts: [String: LandingReceipt] = [:]
     @Published private(set) var problem: String?
     private let file: URL
+    /// Decode failures protect the existing journal. Write failures may be
+    /// transient and should be retried when the next transition is saved.
+    private var canSave = true
+
+    var persistenceBlocked: Bool { !canSave }
 
     init(file: URL = URL(fileURLWithPath: StateDirectory.path + "/landing.json")) {
         self.file = file
         guard FileManager.default.fileExists(atPath: file.path) else { return }
         do { receipts = try JSONDecoder().decode([String: LandingReceipt].self, from: Data(contentsOf: file)) }
-        catch { problem = L("Landing could not be restored: %@", error.localizedDescription) }
+        catch {
+            canSave = false
+            problem = L("Landing could not be restored: %@", error.localizedDescription)
+        }
     }
 
     @discardableResult
     func put(_ receipt: LandingReceipt) -> Bool {
-        guard problem == nil else { return false }
+        guard canSave else { return false }
         var next = receipts
         next[receipt.id] = receipt
         do {
             try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
             try JSONEncoder().encode(next).write(to: file, options: .atomic)
             receipts = next
+            problem = nil
             return true
         } catch {
             problem = L("Landing could not be saved: %@", error.localizedDescription)

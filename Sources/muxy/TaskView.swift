@@ -557,7 +557,7 @@ struct TaskQueueSettings: View {
                     if let reason = queue.reason(for: item) { Text(reason).font(.system(size: 12)).foregroundStyle(Theme.textMuted) }
                     if let started = item.started {
                         TimelineView(.periodic(from: .now, by: 30)) { context in
-                            Text(L("Elapsed: %@ · %d of %d review attempts", QuorumRunView.duration(context.date.timeIntervalSince(started)), item.babysits, (item.limits ?? AutomationLimits()).reviewAttempts))
+                            Text(L("Elapsed: %@ · %d of %d review attempts", QuorumRunView.duration(context.date.timeIntervalSince(started)), item.reviewCount, (item.limits ?? AutomationLimits()).reviewAttempts))
                                 .font(.system(size: 12)).foregroundStyle(Theme.textDim)
                         }
                     }

@@ -50,7 +50,7 @@ final class Acceptance: ObservableObject {
 
     func covers(_ workspace: Workspace) -> Bool {
         let context = workspace.context
-        guard TaskLedger.shared.problem == nil else { return false }
+        guard !TaskLedger.shared.persistenceBlocked else { return false }
         guard let repo = context.repo, let pr = context.pr else { return false }
         return covers(repo: repo, pr: pr, head: context.prHead)
             && TaskLedger.shared.record(for: TaskTarget(workspace: workspace)).satisfied(at: context.prHead)
@@ -82,7 +82,7 @@ final class Acceptance: ObservableObject {
     /// The linked issue is the source of imported criteria. A failed refresh
     /// is not equivalent to an issue with no checklist.
     func synchronizeCriteria(for workspace: Workspace) async -> Bool {
-        guard TaskLedger.shared.problem == nil else { return false }
+        guard !TaskLedger.shared.persistenceBlocked else { return false }
         let target = TaskTarget(workspace: workspace)
         guard let issue = target.issue else { return true }
         guard let checkout = workspace.context.checkout else { return false }
@@ -110,7 +110,7 @@ final class Acceptance: ObservableObject {
     /// Recheck at the click, since the agent can change the branch while the
     /// human is looking at the preview. Returns the fresh state for the UI.
     func approve(_ workspace: Workspace, inspectedHead: String?) async -> Readiness {
-        guard TaskLedger.shared.problem == nil else { return .unavailable }
+        guard !TaskLedger.shared.persistenceBlocked else { return .unavailable }
         let context = workspace.context
         guard let repo = context.repo, let pr = context.pr, let checkout = context.checkout else { return .noHead }
         guard let inspectedHead, inspectedHead == context.prHead?.lowercased() else { return .changed }

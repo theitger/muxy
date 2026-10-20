@@ -278,14 +278,20 @@ enum Quorum {
 
     /// quorum's review artifact names the reviewed commit. Babysit may fix
     /// that commit, so its final head comes from the run's trace instead.
-    /// Runs without either artifact must be reviewed again before landing.
+    /// Older quorum releases retain the babysit checkout but do not write a
+    /// trace; its final Git head is the compatible source in that case.
     static func acceptedHead(kind: QuorumStatus.Kind, in directory: String?) -> String? {
         guard let directory else { return nil }
-        let file = kind == .babysit ? "/divergence-trace.json" : "/output/findings.json"
-        let field = kind == .babysit ? "final_head" : "head_sha"
-        guard let sha = json(directory + file)?[field] as? String,
-              sha.range(of: "^[0-9a-fA-F]{40}$", options: .regularExpression) != nil else { return nil }
-        return sha.lowercased()
+        if kind == .babysit {
+            if let sha = validSHA(json(directory + "/divergence-trace.json")?["final_head"] as? String) { return sha }
+            return validSHA(Shell.run(WorkState.git, ["rev-parse", "HEAD"], in: directory + "/worktree"))
+        }
+        return validSHA(json(directory + "/output/findings.json")?["head_sha"] as? String)
+    }
+
+    private static func validSHA(_ value: String?) -> String? {
+        guard let value, value.range(of: "^[0-9a-fA-F]{40}$", options: .regularExpression) != nil else { return nil }
+        return value.lowercased()
     }
 
     /// Where muxy keeps the output of the quorum runs it starts.

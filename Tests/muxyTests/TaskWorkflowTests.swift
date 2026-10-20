@@ -89,6 +89,23 @@ final class TaskLedgerTests: XCTestCase {
         XCTAssertNotNil(unavailable.problem)
     }
 
+    func testWriteFailureCanBeRetriedAfterTheParentIsRestored() throws {
+        let folder = try temp()
+        let parent = folder.appendingPathComponent("not-a-directory")
+        try Data().write(to: parent)
+        let ledger = TaskLedger(file: parent.appendingPathComponent("tasks.json"))
+
+        XCTAssertFalse(ledger.update("task") { $0.goal = "saved" })
+        XCTAssertNotNil(ledger.problem)
+        XCTAssertFalse(ledger.persistenceBlocked)
+
+        try FileManager.default.removeItem(at: parent)
+        try FileManager.default.createDirectory(at: parent, withIntermediateDirectories: true)
+        XCTAssertTrue(ledger.update("task") { $0.goal = "saved" })
+        XCTAssertNil(ledger.problem)
+        XCTAssertEqual(TaskLedger(file: parent.appendingPathComponent("tasks.json")).records["task"]?.goal, "saved")
+    }
+
     func testOnlyRecordedUserRequirementsAreAddedToThePrompt() throws {
         let ledger = TaskLedger(file: try temp().appendingPathComponent("tasks.json"))
         let issue = Issue(repo: "o/r", number: 7, title: "Fix login", url: "", state: "OPEN")
@@ -101,6 +118,13 @@ final class TaskLedgerTests: XCTestCase {
 
 @MainActor
 final class LandingRecoveryTests: XCTestCase {
+    private func temp() throws -> URL {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: folder) }
+        return folder
+    }
+
     private func receipt(_ step: Landing.Step) -> LandingReceipt {
         LandingReceipt(root: "/repo", branch: "feat/7", pr: 7, goal: .land, step: step,
                        since: Date(timeIntervalSince1970: 100), started: Date(timeIntervalSince1970: 10), asks: 2,
@@ -154,6 +178,23 @@ final class LandingRecoveryTests: XCTestCase {
         XCTAssertNotNil(journal.problem)
         XCTAssertFalse(journal.put(receipt(.pushing)))
         XCTAssertEqual(try String(contentsOf: file), "not json")
+    }
+
+    func testJournalWriteFailureCanBeRetriedAfterTheParentIsRestored() throws {
+        let folder = try temp()
+        let parent = folder.appendingPathComponent("not-a-directory")
+        try Data().write(to: parent)
+        let journal = LandingJournal(file: parent.appendingPathComponent("landing.json"))
+
+        XCTAssertFalse(journal.put(receipt(.pushing)))
+        XCTAssertNotNil(journal.problem)
+        XCTAssertFalse(journal.persistenceBlocked)
+
+        try FileManager.default.removeItem(at: parent)
+        try FileManager.default.createDirectory(at: parent, withIntermediateDirectories: true)
+        XCTAssertTrue(journal.put(receipt(.pushing)))
+        XCTAssertNil(journal.problem)
+        XCTAssertEqual(LandingJournal(file: parent.appendingPathComponent("landing.json")).receipts.count, 1)
     }
 }
 

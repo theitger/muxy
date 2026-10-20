@@ -30,7 +30,12 @@ final class Queue: ObservableObject {
         /// Since when the agent rests after working.
         var idleSince: Date?
         var askedForPR = false
+        /// Kept so older queue files retain their conservative shared budget.
         var babysits = 0
+        /// Optional to decode queue files written before reviews and repairs
+        /// had independent budgets.
+        var reviews: Int?
+        var repairs: Int?
         /// A plan first, the work after your go-ahead.
         var plan: Bool?
         var dependencies: [String]?
@@ -38,6 +43,9 @@ final class Queue: ObservableObject {
         var awaitingAgent: Bool?
         var awaitedTurns: Int?
         var id: String { "\(issue.repo)#\(issue.number)" }
+
+        var reviewCount: Int { reviews ?? babysits }
+        var repairCount: Int { repairs ?? babysits }
     }
 
     enum Phase: Codable, Equatable {
@@ -168,6 +176,8 @@ final class Queue: ObservableObject {
         items[index].started = Date()
         items[index].acted = nil
         items[index].babysits = 0
+        items[index].reviews = nil
+        items[index].repairs = nil
         items[index].askedForPR = false
         items[index].awaitingAgent = nil
         items[index].awaitedTurns = nil
@@ -462,7 +472,11 @@ final class Queue: ObservableObject {
                 return
             }
         case .babysit:
-            item.babysits += 1
+            switch facts.step {
+            case .review: item.reviews = item.reviewCount + 1
+            case .fix: item.repairs = item.repairCount + 1
+            default: break
+            }
             item.acted = now
             items[index] = item
             guard save() else { return }
@@ -521,11 +535,11 @@ final class Queue: ObservableObject {
             return item.askedForPR ? .finish(.needsYou(L("No pull request was opened."))) : .askForPR
         case .review:
             guard settled else { return .wait }
-            return facts.quorumInstalled && item.babysits < (item.limits ?? AutomationLimits()).reviewAttempts
+            return facts.quorumInstalled && item.reviewCount < (item.limits ?? AutomationLimits()).reviewAttempts
                 ? .babysit : facts.quorumInstalled ? .finish(.needsYou(L("Review attempt limit reached."))) : .finish(.ready)
         case let .fix(why):
             guard settled else { return .wait }
-            return item.babysits < (item.limits ?? AutomationLimits()).repairAttempts && facts.quorumInstalled ? .babysit : .finish(.needsYou(why))
+            return item.repairCount < (item.limits ?? AutomationLimits()).repairAttempts && facts.quorumInstalled ? .babysit : .finish(.needsYou(why))
         case .wait:
             // The turn ended a while ago without anything to show for it
             // (a PR, which quorum or CI may be busy with, is something).

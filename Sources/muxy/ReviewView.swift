@@ -437,7 +437,7 @@ struct ReviewView: View {
                 if accepting { ProgressView().controlSize(.small) }
                 else { Text(L("Approve implementation")) }
             }
-            .disabled(taskLedger.problem != nil || Landing.shared.step(for: model.workspace)?.isActive == true || !criteriaSynchronized || synchronizingCriteria || !taskLedger.record(for: TaskTarget(workspace: model.workspace)).satisfied(at: model.workspace.context.prHead) || model.readiness.head == nil || accepting || !feedback.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || screenshot != nil || !model.comments.isEmpty)
+            .disabled(taskLedger.persistenceBlocked || Landing.shared.step(for: model.workspace)?.isActive == true || !criteriaSynchronized || synchronizingCriteria || !taskLedger.record(for: TaskTarget(workspace: model.workspace)).satisfied(at: model.workspace.context.prHead) || model.readiness.head == nil || accepting || !feedback.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || screenshot != nil || !model.comments.isEmpty)
             .buttonStyle(.borderedProminent)
             .frame(maxWidth: .infinity)
             Text(Landing.shared.withQuorum

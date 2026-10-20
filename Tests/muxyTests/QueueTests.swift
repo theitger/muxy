@@ -62,6 +62,17 @@ final class QueueTests: XCTestCase {
         XCTAssertEqual(Queue.decide(limited, facts: facts(.fix("Fix CI"), hasPR: true), now: now), .finish(.needsYou("Fix CI")))
     }
 
+    func testReviewAttemptsDoNotConsumeRepairAttempts() {
+        var limited = item()
+        limited.limits = AutomationLimits(hours: 8, reviews: 1, repairs: 1)
+        limited.reviews = 1
+        limited.repairs = 0
+
+        XCTAssertEqual(Queue.decide(limited, facts: facts(.review, hasPR: true), now: now),
+                       .finish(.needsYou(L("Review attempt limit reached."))))
+        XCTAssertEqual(Queue.decide(limited, facts: facts(.fix("Fix CI"), hasPR: true), now: now), .babysit)
+    }
+
     func testFailedDeliveryDoesNotAwaitATurn() {
         var waiting = item()
         waiting.awaitingAgent = true

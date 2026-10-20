@@ -93,7 +93,7 @@ final class Landing: ObservableObject {
     private var autoMerges: [Workspace.ID: Bool] = [:]
 
     func resume() {
-        guard journal.problem == nil else { return }
+        guard !journal.persistenceBlocked else { return }
         if journal.receipts.values.contains(where: { $0.step.isActive }) { startTimer() }
     }
 
@@ -140,7 +140,7 @@ final class Landing: ObservableObject {
     /// A deliberate retry acknowledges the uncertain earlier handoff.
     func allowRetry(root: String, branch: String) -> Bool {
         let key = WorkItem.key(root: root, branch: branch)
-        guard var receipt = journal.receipts[key] else { return journal.problem == nil }
+        guard var receipt = journal.receipts[key] else { return !journal.persistenceBlocked }
         guard !receipt.step.isActive else { return false }
         receipt.requiresInspection = false
         guard journal.put(receipt) else { return false }
@@ -178,7 +178,9 @@ final class Landing: ObservableObject {
     private func begin(_ workspace: Workspace, goal: Goal) {
         // One run per session at a time.
         guard canLand(workspace), steps[workspace.id]?.isActive != true else { return }
-        if let problem = journal.problem ?? Queue.shared.problem ?? TaskLedger.shared.problem {
+        if let problem = (journal.persistenceBlocked ? journal.problem : nil)
+            ?? Queue.shared.problem
+            ?? (TaskLedger.shared.persistenceBlocked ? TaskLedger.shared.problem : nil) {
             Store.shared.window(of: workspace)?.show(problem, seconds: 6)
             return
         }
@@ -259,7 +261,7 @@ final class Landing: ObservableObject {
     /// Still the landing that started this step, not cancelled meanwhile.
     private func current(_ workspace: Workspace, _ run: Int?) -> Bool {
         runs[workspace.id] == run && steps[workspace.id]?.isActive == true
-            && journal.problem == nil && Queue.shared.problem == nil && TaskLedger.shared.problem == nil
+            && !journal.persistenceBlocked && Queue.shared.problem == nil && !TaskLedger.shared.persistenceBlocked
     }
 
     /// quorum works on this run: the review goal, or landing with it.
@@ -587,7 +589,8 @@ final class Landing: ObservableObject {
 
     /// Steps that wait on others: quorum's verdict, GitHub's merge.
     private func tick() {
-        if let problem = Queue.shared.problem ?? TaskLedger.shared.problem {
+        if let problem = Queue.shared.problem
+            ?? (TaskLedger.shared.persistenceBlocked ? TaskLedger.shared.problem : nil) {
             for workspace in Store.shared.workspaces where steps[workspace.id]?.isActive == true {
                 runs[workspace.id, default: 0] += 1
                 set(.failed(problem), for: workspace)

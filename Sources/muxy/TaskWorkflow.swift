@@ -150,12 +150,20 @@ final class TaskLedger: ObservableObject {
     @Published private(set) var records: [String: TaskRecord] = [:]
     @Published private(set) var problem: String?
     private let file: URL
+    /// A file we could not decode must not be replaced. A failed write may
+    /// succeed later, so it remains retryable.
+    private var canSave = true
+
+    var persistenceBlocked: Bool { !canSave }
 
     init(file: URL = URL(fileURLWithPath: StateDirectory.path + "/tasks.json")) {
         self.file = file
         guard FileManager.default.fileExists(atPath: file.path) else { return }
         do { records = try JSONDecoder().decode([String: TaskRecord].self, from: Data(contentsOf: file)) }
-        catch { problem = L("Task notes could not be loaded: %@", error.localizedDescription) }
+        catch {
+            canSave = false
+            problem = L("Task notes could not be loaded: %@", error.localizedDescription)
+        }
     }
 
     func record(for target: TaskTarget) -> TaskRecord { records[target.id] ?? TaskRecord() }
@@ -163,7 +171,7 @@ final class TaskLedger: ObservableObject {
     @discardableResult
     func update(_ id: String, _ change: (inout TaskRecord) -> Void) -> Bool {
         // Never overwrite a file we failed to decode.
-        guard problem == nil else { return false }
+        guard canSave else { return false }
         var next = records
         var record = next[id] ?? TaskRecord()
         change(&record)
@@ -173,6 +181,7 @@ final class TaskLedger: ObservableObject {
             try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
             try JSONEncoder().encode(next).write(to: file, options: .atomic)
             records = next
+            problem = nil
             return true
         } catch {
             problem = L("Task notes could not be saved: %@", error.localizedDescription)
