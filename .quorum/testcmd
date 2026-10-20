@@ -1,0 +1,1 @@
+bash Scripts/fetch-ghostty.sh && bash Scripts/fetch-sparkle.sh && swift test

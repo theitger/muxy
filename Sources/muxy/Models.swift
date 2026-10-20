@@ -20,6 +20,13 @@ enum AgentKind: String, CaseIterable, Identifiable, Codable {
     case claude
     case codex
 
+    static let defaultKey = "defaultAgent"
+
+    static func preferred(in defaults: UserDefaults = .standard) -> AgentKind {
+        let value = defaults.string(forKey: defaultKey) ?? defaults.string(forKey: "newSessionAgent")
+        return value.flatMap(Self.init(rawValue:)) ?? .claude
+    }
+
     var id: String { rawValue }
 
     var name: String {

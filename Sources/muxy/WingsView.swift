@@ -107,10 +107,11 @@ extension Workspace {
             kind: featured?.kind,
             proof: Proofs.shared.result(for: context.checkout)?.verdict,
             proving: Proofs.shared.isRunning(context.checkout),
-            collisions: Radar.shared.collisions(for: context.checkout).map {
-                $0.withBase ? $0.other : Radar.shared.title(of: $0.other)
+            collisions: Radar.shared.collisions(for: context.checkout).filter { !$0.withBase }.map {
+                Radar.shared.title(of: $0.other)
             },
-            quorum: QuorumWatch.shared.status(for: self)?.summary,
+            baseConflict: Radar.shared.collisions(for: context.checkout).first(where: \.withBase)?.baseName,
+            quorum: QuorumWatch.shared.status(for: self)?.summary(for: context.prHead),
             quorumRunning: QuorumWatch.shared.status(for: self)?.running == true,
             landing: Landing.shared.step(for: self).flatMap { $0.isActive ? $0.text : nil }
         )

@@ -184,11 +184,19 @@ private struct TerminalPane: View {
 }
 
 private struct AgentsPane: View {
+    @AppStorage(AgentKind.defaultKey) private var defaultAgent = AgentKind.preferred().rawValue
     @AppStorage("skipPermissions") private var skipPermissions = true
     @AppStorage("restoreSessions") private var restoreSessions = true
     @AppStorage(KeepAlive.key) private var keepSessions = false
 
     var body: some View {
+        SettingCard {
+            SettingRow(L("Default agent"), detail: L("Used for new tasks and sessions. Choosing another agent for one task does not change this default.")) {
+                Picker(L("Default agent"), selection: $defaultAgent) {
+                    ForEach(AgentKind.allCases) { Text($0.name).tag($0.rawValue) }
+                }.labelsHidden().frame(width: 140)
+            }
+        }
         SettingCard { SettingBlock { HookSettings() } }
         SettingCard {
             SettingRow(L("Skip permission prompts"), detail: L("New sessions start Claude with --dangerously-skip-permissions and Codex with --dangerously-bypass-approvals-and-sandbox.")) {
@@ -235,7 +243,6 @@ private struct ClaudeLimitsRow: View {
 
 private struct WorkflowPane: View {
     @AppStorage(Proofs.autoKey) private var proofAfterTurn = true
-    @AppStorage(Flow.autoReviewKey) private var reviewWhenPROpens = false
     @AppStorage(Landing.quorumKey) private var landWithQuorum = true
     @AppStorage(Queue.parallelKey) private var queueParallel = Queue.defaultParallel
 
@@ -244,12 +251,8 @@ private struct WorkflowPane: View {
             SettingRow(L("Check after every turn"), detail: L("muxy runs the repository's checks ([check] in .wtconfig) on the agent's work when a turn ends, and tells you when they fail. Checks with auto = false only run on request and when landing.")) {
                 Toggle("", isOn: $proofAfterTurn).labelsHidden().toggleStyle(.offOn)
             }
-            SettingRow(L("Review as soon as a pull request opens"), detail: L("Off: muxy suggests the review and you start it. On: quorum reviews and fixes every new pull request of a session right away.")) {
-                Toggle("", isOn: $reviewWhenPROpens).labelsHidden().toggleStyle(.offOn)
-                    .disabled(!Quorum.isInstalled)
-            }
             SettingRow(L("Land with quorum"), detail: Quorum.isInstalled
-                ? L("Landing hands the pushed pull request to quorum's review loop before it merges, unless quorum already passed it.")
+                ? L("After you accept the implementation, muxy runs quorum before merging the pull request.")
                 : L("quorum isn't installed: landing merges once checks pass.")) {
                 Toggle("", isOn: $landWithQuorum).labelsHidden().toggleStyle(.offOn)
                     .disabled(!Quorum.isInstalled)

@@ -44,7 +44,7 @@ enum RemoteState {
             } else if let verdict = Proofs.shared.result(for: checkout)?.verdict, verdict == .passed || verdict == .failed {
                 item["proof"] = verdict.rawValue
             }
-            let collisions = Radar.shared.collisions(for: checkout).map { $0.withBase ? $0.other : Radar.shared.title(of: $0.other) }
+            let collisions = Radar.shared.collisions(for: checkout).map(Radar.shared.describe)
             if !collisions.isEmpty { item["collisions"] = collisions }
             if let review = QuorumWatch.shared.status(for: workspace) {
                 item["quorum"] = ["summary": review.summary, "running": review.running, "clean": review.succeeded]
@@ -87,6 +87,7 @@ enum RemoteState {
         case .answer: "answer"
         case .approvePlan: "approvePlan"
         case .openPR: "openPR"
+        case .accept: "accept"
         case .review: "review"
         case .fix: "fix"
         case .land: "land"

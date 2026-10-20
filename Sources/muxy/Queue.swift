@@ -33,6 +33,10 @@ final class Queue: ObservableObject {
         var babysits = 0
         /// A plan first, the work after your go-ahead.
         var plan: Bool?
+        var dependencies: [String]?
+        var limits: AutomationLimits?
+        var awaitingAgent: Bool?
+        var awaitedTurns: Int?
         var id: String { "\(issue.repo)#\(issue.number)" }
     }
 
@@ -64,20 +68,143 @@ final class Queue: ObservableObject {
     @Published private(set) var held: String?
 
     private var timer: Timer?
-    private static let storeKey = "queue"
-    private static let runningKey = "queueRunning"
+    private struct Saved: Codable {
+        var items: [Item]
+        var running: Bool
+        var merged: Set<String>?
+    }
+    private let file: URL
+    @Published private(set) var problem: String?
+    @Published private(set) var merged: Set<String> = []
 
-    private init() {
-        if let data = UserDefaults.standard.data(forKey: Self.storeKey),
-           let saved = try? JSONDecoder().decode([Item].self, from: data) {
+    init(file: URL = URL(fileURLWithPath: StateDirectory.path + "/queue.json"), restoreLegacy: Bool = Paths.isApp) {
+        self.file = file
+        if FileManager.default.fileExists(atPath: file.path) {
+            do {
+                let saved = try JSONDecoder().decode(Saved.self, from: Data(contentsOf: file))
+                guard Set(saved.items.map(\.id)).count == saved.items.count else {
+                    throw DecodingError.dataCorrupted(.init(codingPath: [], debugDescription: "Duplicate queue task identifiers"))
+                }
+                items = saved.items
+                running = saved.running && items.contains { !$0.phase.isFinished }
+                merged = saved.merged ?? []
+            } catch { problem = L("The queue could not be restored: %@", error.localizedDescription) }
+        } else if restoreLegacy, let data = UserDefaults.standard.data(forKey: "queue"),
+                  let saved = try? JSONDecoder().decode([Item].self, from: data) {
             items = saved
+            running = UserDefaults.standard.bool(forKey: "queueRunning")
         }
-        running = UserDefaults.standard.bool(forKey: Self.runningKey) && items.contains { !$0.phase.isFinished }
     }
 
-    /// After launch: an interrupted run goes on.
+    /// Monitor active work even when new starts were paused before quitting.
     func resume() {
-        if running { begin() }
+        if Self.shouldMonitor(running: running, items: items) { begin() }
+    }
+
+    nonisolated static func shouldMonitor(running: Bool, items: [Item]) -> Bool {
+        running || items.contains(where: { $0.phase.isActive || $0.phase == .planReady })
+    }
+
+    var dependencyGraph: [String: [String]] {
+        Dictionary(uniqueKeysWithValues: items.map { ($0.id, $0.dependencies ?? []) })
+    }
+
+    func configure(_ item: Item, dependencies: [String], limits: AutomationLimits) -> String? {
+        guard let index = items.firstIndex(where: { $0.id == item.id }) else { return L("Task not found.") }
+        guard !items[index].phase.isActive else { return L("Pause this task before changing its dependencies or limits.") }
+        if let error = TaskDependencies.validate(id: item.id, dependencies: dependencies, graph: dependencyGraph) { return error }
+        items[index].dependencies = Array(Set(dependencies)).sorted()
+        items[index].limits = limits
+        return save() ? nil : problem
+    }
+
+    func waiting(for item: Item) -> [String] {
+        TaskDependencies.waiting(item.dependencies ?? [], merged: merged)
+    }
+
+    func reason(for item: Item) -> String? {
+        let dependencies = waiting(for: item)
+        if !dependencies.isEmpty { return L("Waiting for merge: %@", dependencies.joined(separator: ", ")) }
+        if let limit = Usage.shared.exhausted(item.agent) {
+            return limit.resets.map { L("Plan limit resets at %@", $0.formatted(date: .omitted, time: .shortened)) }
+                ?? L("The agent's plan limit is used up.")
+        }
+        return nil
+    }
+
+    func item(for workspace: Workspace) -> Item? {
+        let issues = workspace.sessions.compactMap(\.issue)
+        return items.first { item in issues.contains { $0.repo.lowercased() == item.issue.repo.lowercased() && $0.number == item.issue.number } }
+    }
+
+    func landingBlocker(for workspace: Workspace) -> String? {
+        guard let item = item(for: workspace), !waiting(for: item).isEmpty else { return nil }
+        return reason(for: item)
+    }
+
+    func pause(_ item: Item) {
+        guard let index = items.firstIndex(where: { $0.id == item.id }) else { return }
+        items[index].phase = .needsYou(L("Automation paused."))
+        guard save() else { return }
+        if let workspace = HubModel.shared.session(for: item.issue) { Landing.shared.cancel(workspace) }
+    }
+
+    /// Explicit continuation starts a fresh budget, retaining the same checkout.
+    func retry(_ item: Item) {
+        guard let index = items.firstIndex(where: { $0.id == item.id }), !items[index].phase.isActive else { return }
+        let existing = HubModel.shared.session(for: item.issue)
+        let archived = WorkLedger.shared.items.values.first {
+            $0.issue?.repo.lowercased() == item.issue.repo.lowercased() && $0.issue?.number == item.issue.number && $0.isOpen
+        }
+        if let root = existing?.context.root ?? archived?.root,
+           let branch = existing?.context.branch ?? archived?.branch,
+           !Landing.shared.allowRetry(root: root, branch: branch) { return }
+        items[index].phase = existing != nil || archived != nil ? .running : .queued
+        items[index].started = Date()
+        items[index].acted = nil
+        items[index].babysits = 0
+        items[index].askedForPR = false
+        items[index].awaitingAgent = nil
+        items[index].awaitedTurns = nil
+        items[index].idleSince = nil
+        running = true
+        guard save() else { return }
+        if existing == nil, let archived, let window = Store.shared.activeWindow ?? Store.shared.windows.first {
+            WorkLedger.shared.resume(archived, in: window)
+        }
+        begin()
+    }
+
+    /// A human decision hands the same task back to its existing workflow.
+    /// Save this transition before delivering input; start observing afterwards.
+    @discardableResult
+    func followDecision(in workspace: Workspace, awaitingAgent: Bool) -> Bool {
+        guard let queued = item(for: workspace), let index = items.firstIndex(where: { $0.id == queued.id }) else { return true }
+        let wasActive = items[index].phase.isActive
+        items[index].phase = .running
+        items[index].acted = Date()
+        if !wasActive { items[index].started = Date() }
+        items[index].idleSince = nil
+        items[index].awaitingAgent = awaitingAgent
+        items[index].awaitedTurns = workspace.agentTab?.turnsEnded ?? 0
+        return save()
+    }
+
+    enum Followup: Equatable { case waiting, started, unconfirmed }
+
+    nonisolated static func followup(_ item: Item, agent: AgentState, turns: Int, now: Date) -> Followup {
+        if agent == .working || turns > (item.awaitedTurns ?? 0) { return .started }
+        return item.acted.map { now.timeIntervalSince($0) < settle } ?? false ? .waiting : .unconfirmed
+    }
+
+    private func recordMerges() {
+        for item in items {
+            if let workspace = HubModel.shared.session(for: item.issue), workspace.context.pr != nil,
+               workspace.context.prState == .merged { merged.insert(item.id); continue }
+            if WorkLedger.shared.items.values.contains(where: {
+                $0.issue?.repo.lowercased() == item.issue.repo.lowercased() && $0.issue?.number == item.issue.number && $0.prState == "merged"
+            }) { merged.insert(item.id) }
+        }
     }
 
     var parallel: Int {
@@ -90,8 +217,9 @@ final class Queue: ObservableObject {
     }
 
     func add(_ issue: Issue, agent: AgentKind, plan: Bool = false) {
-        guard !contains(issue) else { return }
+        guard issue.isOpen, !contains(issue) else { return }
         var item = Item(issue: issue, agent: agent)
+        item.limits = TaskLedger.shared.record(for: TaskTarget(issue: issue)).limits
         item.plan = plan ? true : nil
         items.append(item)
         save()
@@ -99,6 +227,8 @@ final class Queue: ObservableObject {
     }
 
     func remove(_ item: Item) {
+        guard !item.phase.isActive,
+              !items.contains(where: { ($0.dependencies ?? []).contains(item.id) && !merged.contains(item.id) }) else { return }
         items.removeAll { $0.id == item.id }
         save()
     }
@@ -112,19 +242,23 @@ final class Queue: ObservableObject {
         items[index].phase = .running
         items[index].acted = Date()
         items[index].idleSince = nil
+        items[index].started = Date()
+        items[index].awaitingAgent = true
+        items[index].awaitedTurns = workspace.agentTab?.turnsEnded ?? 0
         save()
         begin()
     }
 
     func clearFinished() {
-        items.removeAll { $0.phase.isFinished }
+        let required = Set(items.flatMap { $0.dependencies ?? [] }).subtracting(merged)
+        items.removeAll { $0.phase.isFinished && !required.contains($0.id) }
         save()
     }
 
     func start() {
         guard items.contains(where: { $0.phase == .queued }) else { return }
         running = true
-        save()
+        guard save() else { return }
         begin()
     }
 
@@ -158,22 +292,24 @@ final class Queue: ObservableObject {
     func tick() {
         // Right after launch: sessions are coming back and the hub doesn't
         // know the checkouts yet, so nothing would be found.
-        guard HubModel.shared.updated != nil else { return }
+        guard HubModel.shared.updated != nil, problem == nil else { return }
+        recordMerges()
         let now = Date()
         for index in items.indices where items[index].phase.isActive {
-            advance(&items[index], now: now)
+            advance(at: index, now: now)
         }
         // An agent whose plan is (nearly) used up gets nothing new until it frees.
         held = nil
         while running, items.filter({ $0.phase.isActive }).count < parallel,
-              let next = items.firstIndex(where: { $0.phase == .queued && Usage.shared.exhausted($0.agent) == nil }) {
-            launch(&items[next], now: now)
+              let next = items.firstIndex(where: { $0.phase == .queued && waiting(for: $0).isEmpty && Usage.shared.exhausted($0.agent) == nil }) {
+            guard launch(at: next, now: now) else { break }
         }
         if running, let waiting = items.first(where: { $0.phase == .queued }),
            let window = Usage.shared.exhausted(waiting.agent) {
             held = window.resets.map { L("%@'s limit is used up until %@", waiting.agent.name, $0.formatted(date: .omitted, time: .shortened)) }
                 ?? L("%@'s limit is used up", waiting.agent.name)
         }
+        if running, held == nil, let waiting = items.first(where: { $0.phase == .queued }) { held = reason(for: waiting) }
         if !items.contains(where: { $0.phase == .queued }) { running = false }
         // Plans waiting for you: approved in the session too, they go on.
         for index in items.indices where items[index].phase == .planReady {
@@ -181,6 +317,7 @@ final class Queue: ObservableObject {
             if !workspace.sessions.contains(where: \.planning) {
                 items[index].phase = .running
                 items[index].acted = now
+                items[index].started = now
                 items[index].idleSince = nil
             }
         }
@@ -188,20 +325,45 @@ final class Queue: ObservableObject {
         save()
     }
 
-    private func launch(_ item: inout Item, now: Date) {
-        guard let window = Store.shared.activeWindow ?? Store.shared.windows.first else { return }
+    @discardableResult
+    private func launch(at index: Int, now: Date) -> Bool {
+        guard let window = Store.shared.activeWindow ?? Store.shared.windows.first else { return false }
+        var item = items[index]
+        if HubModel.shared.session(for: item.issue) != nil {
+            item.phase = .running
+            item.started = item.started ?? now
+            items[index] = item
+            return save()
+        }
+        // A launch intent was saved, but its session disappeared across a crash.
+        // It must be inspected before starting another agent for the same issue.
+        if item.acted != nil {
+            item.phase = .needsYou(L("The previous launch could not be confirmed. Inspect the task before retrying."))
+            items[index] = item
+            return save()
+        }
         guard HubModel.shared.checkout(of: item.issue.repo) != nil else {
-            item.phase = .failed(L("%@ isn't cloned on this Mac", item.issue.repo))
-            return
+            items[index].phase = .failed(L("%@ isn't cloned on this Mac", item.issue.repo))
+            return save()
         }
         item.phase = .running
         item.started = now
         item.acted = now
+        items[index] = item
+        guard save() else { return false }
         HubModel.shared.start(item.issue, agents: [item.agent], in: window, hideHub: false, unattended: true,
-                              plan: item.plan == true)
+                              plan: item.plan == true) { [weak self] id in
+            guard id == nil, let self, let index = self.items.firstIndex(where: { $0.id == item.id }),
+                  self.items[index].started == now, self.items[index].phase == .running else { return }
+            self.items[index].phase = .needsYou(L("The task could not start. Inspect its checkout and base, then retry."))
+            self.save()
+        }
+        return true
     }
 
-    private func advance(_ item: inout Item, now: Date) {
+    private func advance(at index: Int, now: Date) {
+        var item = items[index]
+        defer { items[index] = item }
         guard let workspace = HubModel.shared.session(for: item.issue) else {
             // Launching takes a moment (the worktree, its setup).
             if item.sawWork {
@@ -211,19 +373,42 @@ final class Queue: ObservableObject {
             }
             return
         }
+        if Landing.shared.requiresInspection(workspace) {
+            item.phase = .needsYou(L("The previous operation needs inspection before continuing."))
+            return
+        }
         // Its worktree is still being made: the folder (and so the branch
         // and its PR) isn't the session's own yet.
         guard !workspace.sessions.contains(where: { $0.preparing != nil }) else { return }
+        if workspace.context.pr != nil, workspace.context.prState == .merged {
+            item.phase = .ready
+            return
+        }
+        if item.awaitingAgent == true {
+            switch Self.followup(item, agent: workspace.agent, turns: workspace.agentTab?.turnsEnded ?? 0, now: now) {
+            case .waiting: return
+            case .unconfirmed:
+                item.phase = .needsYou(L("The agent did not confirm the follow-up. Inspect the conversation before sending it again."))
+                return
+            case .started:
+                item.awaitingAgent = nil
+                item.sawWork = true
+            }
+        }
         if workspace.agent == .working {
             item.sawWork = true
             item.idleSince = nil
         } else if item.sawWork, workspace.agent == .idle, item.idleSince == nil {
             item.idleSince = now
         }
+        // Limits pause further requests, but the task's own clock still runs.
+        let timedOut = item.started.map { now.timeIntervalSince($0) > (item.limits ?? AutomationLimits()).seconds } ?? false
+        if Usage.shared.exhausted(item.agent) != nil, !timedOut { return }
         let facts = Facts(
             step: Flow.next(for: workspace), agent: workspace.agent, idleSince: item.idleSince,
             hasPR: workspace.context.pr != nil, quorumInstalled: Quorum.isInstalled,
-            merged: workspace.context.pr != nil && workspace.context.prState != .open
+            merged: workspace.context.pr != nil && workspace.context.prState == .merged,
+            closed: workspace.context.pr != nil && workspace.context.prState == .closed
         )
         let decision = Self.decide(item, facts: facts, now: now)
         switch decision {
@@ -231,15 +416,28 @@ final class Queue: ObservableObject {
             break
         case let .finish(phase):
             item.phase = phase
+            if case .needsYou = phase, let started = item.started,
+               now.timeIntervalSince(started) > (item.limits ?? AutomationLimits()).seconds {
+                items[index] = item
+                guard save() else { return }
+                Landing.shared.cancel(workspace)
+                if let agent = workspace.agentTab, agent.agent == .working {
+                    _ = RemoteState.press("ctrl-c", in: agent)
+                }
+            }
         case .askForPR:
             item.askedForPR = true
             item.acted = now
+            items[index] = item
+            guard save() else { return }
             if let window = Store.shared.window(of: workspace) {
                 Flow.take(.openPR, in: workspace, window: window)
             }
         case .babysit:
             item.babysits += 1
             item.acted = now
+            items[index] = item
+            guard save() else { return }
             // The same way as the hub's step: the branch made ready, then quorum.
             Landing.shared.review(workspace)
         }
@@ -255,6 +453,7 @@ final class Queue: ObservableObject {
         var hasPR: Bool
         var quorumInstalled: Bool
         var merged: Bool
+        var closed = false
     }
 
     enum Decision: Equatable {
@@ -274,14 +473,17 @@ final class Queue: ObservableObject {
 
     nonisolated static func decide(_ item: Item, facts: Facts, now: Date) -> Decision {
         if facts.merged { return .finish(.ready) }
-        if let started = item.started, now.timeIntervalSince(started) > maxRun {
-            return .finish(.needsYou(L("Still not done after %d hours.", Int(maxRun / 3600))))
+        if facts.closed { return .finish(.needsYou(L("The pull request was closed without merging."))) }
+        if let started = item.started, now.timeIntervalSince(started) > (item.limits ?? AutomationLimits()).seconds {
+            return .finish(.needsYou(L("Still not done after %d hours.", Int((item.limits ?? AutomationLimits()).seconds / 3600))))
         }
         if facts.agent == .failed { return .finish(.needsYou(L("The agent stopped on an error."))) }
         let settled = item.acted.map { now.timeIntervalSince($0) > settle } ?? true
         switch facts.step {
         case .approvePlan:
             return .finish(.planReady)
+        case .accept:
+            return .finish(.needsYou(L("Inspect and accept the implementation.")))
         case .answer:
             return .finish(.needsYou(L("The agent asks you something.")))
         case .land, .landing:
@@ -294,10 +496,11 @@ final class Queue: ObservableObject {
             return item.askedForPR ? .finish(.needsYou(L("No pull request was opened."))) : .askForPR
         case .review:
             guard settled else { return .wait }
-            return facts.quorumInstalled ? .babysit : .finish(.ready)
+            return facts.quorumInstalled && item.babysits < (item.limits ?? AutomationLimits()).reviewAttempts
+                ? .babysit : facts.quorumInstalled ? .finish(.needsYou(L("Review attempt limit reached."))) : .finish(.ready)
         case let .fix(why):
             guard settled else { return .wait }
-            return item.babysits < maxBabysits && facts.quorumInstalled ? .babysit : .finish(.needsYou(why))
+            return item.babysits < (item.limits ?? AutomationLimits()).reviewAttempts && facts.quorumInstalled ? .babysit : .finish(.needsYou(why))
         case .wait:
             // The turn ended a while ago without anything to show for it
             // (a PR, which quorum or CI may be busy with, is something).
@@ -310,10 +513,17 @@ final class Queue: ObservableObject {
         }
     }
 
-    private func save() {
-        if let data = try? JSONEncoder().encode(items) {
-            UserDefaults.standard.set(data, forKey: Self.storeKey)
+    @discardableResult
+    private func save() -> Bool {
+        guard problem == nil else { return false }
+        do {
+            try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try JSONEncoder().encode(Saved(items: items, running: running, merged: merged)).write(to: file, options: .atomic)
+            return true
+        } catch {
+            problem = L("The queue could not be saved: %@", error.localizedDescription)
+            running = false
+            return false
         }
-        UserDefaults.standard.set(running, forKey: Self.runningKey)
     }
 }

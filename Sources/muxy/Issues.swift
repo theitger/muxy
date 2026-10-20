@@ -85,16 +85,17 @@ enum Issues {
 
     static let fields = "number,title,body,url,labels,state"
 
-    static func view(_ number: Int, repo: String?, in directory: String) -> Lookup {
+    static func view(_ number: Int, repo: String?, in directory: String, fresh: Bool = false) -> Lookup {
         let key = "\(repo ?? directory)#\(number)"
-        if let cached = cache.issue(key) { return .found(cached) }
+        if !fresh, let cached = cache.issue(key) { return .found(cached) }
         guard let gh = Shell.find("gh") else { return .unavailable(L("gh is not installed.")) }
         var args = ["issue", "view", String(number), "--json", fields]
         if let repo { args += ["--repo", repo] }
         let result = Shell.execute(gh, args, in: directory, timeout: 15)
         guard result.status == 0 else { return failure(result.error) }
         guard let json = try? JSONSerialization.jsonObject(with: Data(result.output.utf8)) as? [String: Any],
-              let issue = issue(from: json, repo: repo)
+              let issue = issue(from: json, repo: repo), issue.number == number,
+              ["OPEN", "CLOSED"].contains(json["state"] as? String ?? "")
         else { return .unavailable(L("gh gave an answer muxy can't read.")) }
         // `gh issue view` shows pull requests too.
         if issue.url.contains("/pull/") { return .pullRequest }
@@ -201,7 +202,7 @@ enum Issues {
     /// nobody answers. A template without `{plan}` or `{unattended}` gets
     /// them at its end when they apply: plan first and the queue need them.
     static func prompt(for issue: Issue, note: String = "", localRepo: String? = nil, template: String? = nil,
-                       implement: Bool = false, plan: Bool = false, unattended: Bool = false) -> String {
+                       agent: AgentKind? = .claude, implement: Bool = false, plan: Bool = false, unattended: Bool = false) -> String {
         let reference = localRepo?.lowercased() == issue.repo.lowercased() ? "#\(issue.number)" : "\(issue.repo)#\(issue.number)"
         var body = (issue.body ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         // The prompt travels in an environment variable: keep it sane.
@@ -211,7 +212,7 @@ enum Issues {
             "{labels}": issue.labels.isEmpty ? "" : "Labels: " + issue.labels.joined(separator: ", "),
             "{body}": body, "{note}": note.isEmpty ? "" : "Note: " + note,
             "{number}": String(issue.number), "{repo}": issue.repo,
-            "{implement}": implement ? "/implement " : "",
+            "{implement}": agent == .claude && implement ? "/implement " : "",
             "{plan}": plan ? Flow.planNote : "",
             "{unattended}": unattended ? Queue.unattendedNote : ""
         ]

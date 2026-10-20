@@ -27,12 +27,18 @@ struct HubView: View {
         VStack(spacing: 0) {
             header
             Rectangle().fill(Theme.hairline).frame(height: 1).padding(.horizontal, 14)
-            if page == "board" {
+            if page == "board", window.reviewRun == nil, window.taskTarget == nil {
                 filterBar
                 Rectangle().fill(Theme.hairline).frame(height: 1).padding(.horizontal, 14)
             }
-            if page == "worktrees" {
+            if let target = window.taskTarget {
+                TaskPage(target: target, window: window).id(target.id)
+            } else if let run = window.reviewRun {
+                QuorumRunPage(status: run) { window.reviewRun = nil }
+            } else if page == "worktrees" {
                 WorktreesPage(window: window)
+            } else if page == "attention" {
+                DecisionsPage(window: window)
             } else if page == "reviews" {
                 ReviewsPage(window: window)
             } else {
@@ -44,7 +50,11 @@ struct HubView: View {
             hub.refresh()
             if page == "worktrees" { inventory.scan() }
         }
-        .onExitCommand { window.showHub = false }
+        .onExitCommand {
+            if window.taskTarget != nil { window.taskTarget = nil }
+            else if window.reviewRun != nil { window.reviewRun = nil }
+            else { window.showHub = false }
+        }
     }
 
     private var header: some View {
@@ -53,8 +63,12 @@ struct HubView: View {
                 Color.clear.frame(width: 66)
                 IconButton(symbol: "sidebar.left", help: L("Sidebar (⌘B)")) { store.toggleSidebar() }
             }
-            Segments(selection: $page, options: [("board", L("Board")), ("reviews", L("Reviews")), ("worktrees", L("Worktrees"))])
-            .onChange(of: page) { if page == "worktrees" { inventory.scan() } }
+            Segments(selection: $page, options: [("board", L("Board")), ("attention", L("Needs you")), ("reviews", L("Reviews")), ("worktrees", L("Worktrees"))])
+            .onChange(of: page) {
+                window.taskTarget = nil
+                if page != "reviews" { window.reviewRun = nil }
+                if page == "worktrees" { inventory.scan() }
+            }
             Spacer()
             account
             IconButton(symbol: "arrow.clockwise", help: L("Refresh")) {
@@ -137,6 +151,7 @@ struct HubView: View {
                         }
                         ForEach(group.issues, id: \.self) { issue in
                             IssueCard(issue: issue, local: hub.checkout(of: issue.repo) != nil, showsRepo: groups.count <= 1,
+                                      inspect: { window.openTask(TaskTarget(issue: issue)) },
                                       queue: { queue.add(issue, agent: $0, plan: $1) },
                                       plan: { hub.start(issue, agents: [$0], in: window, plan: true) }) { agents in
                                 hub.start(issue, agents: agents, in: window)
@@ -373,10 +388,11 @@ private struct IssueCard: View {
     let issue: Issue
     let local: Bool
     var showsRepo = true
+    let inspect: () -> Void
     let queue: (AgentKind, Bool) -> Void
     let plan: (AgentKind) -> Void
     let start: ([AgentKind]) -> Void
-    @AppStorage("newSessionAgent") private var preferred = AgentKind.claude.rawValue
+    @AppStorage(AgentKind.defaultKey) private var preferred = AgentKind.preferred().rawValue
 
     var body: some View {
         VStack(alignment: .leading, spacing: 7) {
@@ -399,10 +415,11 @@ private struct IssueCard: View {
                 .buttonStyle(.plain)
                 .help(L("Open on GitHub"))
             }
-            Text(issue.title)
-                .font(.system(size: 12.5, weight: .medium))
-                .foregroundStyle(Theme.textPrimary)
-                .fixedSize(horizontal: false, vertical: true)
+            Button(action: inspect) {
+                Text(issue.title).font(.system(size: 12.5, weight: .medium)).foregroundStyle(Theme.textPrimary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
+            }.buttonStyle(.plain)
             if !issue.labels.isEmpty {
                 HStack(spacing: 4) {
                     ForEach(issue.labels.prefix(3), id: \.self) { label in
@@ -499,10 +516,7 @@ private struct QueueSection: View {
             VStack(alignment: .leading, spacing: 0) {
                 ForEach(queue.items) { item in
                     QueueRow(item: item, remove: { queue.remove(item) }, open: {
-                        if let workspace = HubModel.shared.session(for: item.issue) {
-                            window.showHub = false
-                            Store.shared.select(workspace)
-                        }
+                        window.openTask(TaskTarget(issue: item.issue))
                     })
                     if item.id != queue.items.last?.id {
                         Rectangle().fill(Theme.hairline).frame(height: 1)
@@ -537,11 +551,11 @@ private struct QueueRow: View {
         HStack(alignment: .firstTextBaseline, spacing: 6) {
             AgentGlyph(kind: item.agent, size: 11)
             VStack(alignment: .leading, spacing: 1) {
-                Text(item.issue.title)
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(Theme.textPrimary)
-                    .lineLimit(2)
-                Text("#" + String(item.issue.number) + " · " + status.text)
+                Button(action: open) {
+                    Text(item.issue.title).font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(Theme.textPrimary).lineLimit(2)
+                }.buttonStyle(.plain)
+                Text("#" + String(item.issue.number) + " · " + (Queue.shared.reason(for: item) ?? status.text))
                     .font(.system(size: 10.5))
                     .foregroundStyle(status.color)
                     .lineLimit(2)
@@ -587,8 +601,9 @@ private struct PullCard: View {
     /// Its agent's conversation picked up again, when there is one.
     var resume: (() -> Void)?
     let open: (AgentKind?) -> Void
-    @AppStorage("newSessionAgent") private var preferred = AgentKind.claude.rawValue
+    @AppStorage(AgentKind.defaultKey) private var preferred = AgentKind.preferred().rawValue
     @ObservedObject private var quorum = QuorumWatch.shared
+    @ObservedObject private var acceptance = Acceptance.shared
     @State private var starting = false
     /// Why quorum couldn't start, until the next try.
     @State private var problem: String?
@@ -598,7 +613,9 @@ private struct PullCard: View {
     /// What quorum can do for it, as for a session: review and fix, or
     /// again after a run that stopped.
     private var quorumStep: NextStep? {
-        guard local, !starting, let step = Flow.quorumStep(status, installed: Quorum.isInstalled) else { return nil }
+        guard local, !starting else { return nil }
+        if !acceptance.covers(repo: pull.repo, pr: pull.number, head: pull.head) { return .accept }
+        guard let step = Flow.quorumStep(status, installed: Quorum.isInstalled, head: pull.head) else { return nil }
         if case .reviewing = step { return nil }
         return step
     }
@@ -615,7 +632,10 @@ private struct PullCard: View {
                 }
                 if pull.draft { Badge(text: L("Draft"), tone: Theme.neutral) }
                 Spacer()
-                if let item, !item.evidence.isEmpty { EvidenceButton(item: item) }
+                if let item {
+                    SmallButton(title: L("Task")) { (Store.shared.activeWindow ?? Store.shared.windows.first)?.openTask(TaskTarget(work: item)) }
+                    if !item.evidence.isEmpty { EvidenceButton(item: item) }
+                }
                 Button {
                     if let url = URL(string: pull.url) { NSWorkspace.shared.open(url) }
                 } label: {
@@ -635,12 +655,15 @@ private struct PullCard: View {
             if let status {
                 HStack(spacing: 6) {
                     if status.running { ProgressView().controlSize(.mini).frame(width: 12) }
-                    Text(status.summary)
+                    Text(status.summary(for: pull.head))
                         .font(.system(size: 11))
                         .foregroundStyle(status.running ? Theme.blue.strong
-                            : status.succeeded ? Theme.greenTone.strong : status.interrupted ? Theme.textDim : Theme.orange.strong)
+                            : status.covers(pull.head) ? Theme.greenTone.strong : status.interrupted ? Theme.textDim : Theme.orange.strong)
                         .lineLimit(1)
                     Spacer(minLength: 4)
+                    if status.runDirectory != nil {
+                        QuorumDetailsButton(status: status)
+                    }
                     if let log = Quorum.latestLog(pr: pull.number) {
                         Button(L("Log")) {
                             let directory = pull.branch.flatMap { branch in
@@ -666,7 +689,10 @@ private struct PullCard: View {
                         .font(.system(size: 11)).foregroundStyle(Theme.orange.strong)
                         .fixedSize(horizontal: false, vertical: true)
                 }
-                SmallButton(title: step.title) { startQuorum(branch: branch, root: root) }
+                SmallButton(title: step.title) {
+                    if step == .accept { open(nil) }
+                    else { startQuorum(branch: branch, root: root) }
+                }
             }
             HStack(spacing: 6) {
                 let agent = AgentKind(rawValue: preferred) ?? .claude
@@ -909,7 +935,8 @@ private struct SessionCard: View {
                 }
             }
             Spacer(minLength: 4)
-            SmallButton(title: L("Open")) { open() }
+            SmallButton(title: L("Task")) { window.openTask(TaskTarget(workspace: workspace)) }
+            SmallButton(title: L("Terminal")) { open() }
             if context.checkout != nil, next != .answer {
                 SmallButton(title: L("Changes")) { window.openReview(workspace, scope: .branch) }
             }
@@ -960,12 +987,13 @@ struct Signals: View {
                     }
                 }
                 ForEach(Array(collisions.enumerated()), id: \.offset) { _, collision in
-                    Badge(text: collision.withBase ? L("conflicts with base") : L("collides: %@", radar.title(of: collision.other)),
-                          tone: Theme.orange, symbol: "arrow.triangle.merge")
+                    Badge(text: radar.describe(collision), tone: collision.withBase ? Theme.neutral : Theme.orange,
+                          symbol: collision.withBase ? "arrow.down.to.line" : "arrow.triangle.merge")
                         .help(collision.files.joined(separator: "\n"))
                 }
                 if let status {
-                    Badge(text: status.summary, tone: status.running ? Theme.blue : (status.isClean ? Theme.greenTone : Theme.orange),
+                    Badge(text: status.summary(for: workspace.context.prHead),
+                          tone: status.running ? Theme.blue : (status.covers(workspace.context.prHead) ? Theme.greenTone : Theme.orange),
                           symbol: "person.3.fill")
                 }
             }
@@ -1182,33 +1210,61 @@ private struct WorktreeRow: View {
 
 // MARK: Reviews
 
-/// Everything quorum did and does: running first, then the newest; each
-/// with its findings, its report and the next step.
+/// Open PRs first; completed work is available for thirty days.
 private struct ReviewsPage: View {
     @ObservedObject var window: WindowModel
     @ObservedObject private var quorum = QuorumWatch.shared
     @ObservedObject private var hub = HubModel.shared
+    @State private var lookup = ReviewHistory.Lookup()
+    @State private var checking = true
+    @State private var showCompleted = false
 
     var body: some View {
-        let list = quorum.byKey.values.sorted { ($0.running ? 0 : 1, -$0.date.timeIntervalSince1970) < ($1.running ? 0 : 1, -$1.date.timeIntervalSince1970) }
-        if !Quorum.isInstalled {
-            VStack(spacing: 10) {
-                Text(L("quorum isn't installed.")).font(.system(size: 13, weight: .medium)).foregroundStyle(Theme.textBody)
-                Text(L("Settings → Review with quorum installs it.")).font(.system(size: 12)).foregroundStyle(Theme.textDim)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else if list.isEmpty {
-            Text(L("No reviews yet.")).font(.system(size: 12.5)).foregroundStyle(Theme.textDim)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else {
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 6) {
-                    ForEach(list.prefix(80), id: \.key) { status in
+        let runs = Array(quorum.byKey.values)
+        let groups = ReviewHistory.group(runs, states: lookup.states)
+        let request = ReviewHistory.Request(keys: runs.map(\.key).sorted(), refreshed: hub.updated)
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 6) {
+                if checking {
+                    HStack(spacing: 8) {
+                        ProgressView().controlSize(.mini)
+                        Text(L("Checking pull requests …"))
+                    }
+                    .font(.system(size: 12)).foregroundStyle(Theme.textDim)
+                } else if lookup.incomplete {
+                    Text(L("Some pull request states could not be checked. Those runs remain visible."))
+                        .font(.system(size: 12)).foregroundStyle(Theme.textDim)
+                }
+                if groups.active.isEmpty, !checking {
+                    Text(L("No reviews for open pull requests."))
+                        .font(.system(size: 12.5)).foregroundStyle(Theme.textDim)
+                        .padding(.vertical, 16)
+                }
+                if !checking {
+                    ForEach(groups.active, id: \.key) { status in
                         ReviewRunRow(status: status, local: hub.checkout(of: status.repo), window: window)
                     }
                 }
-                .padding(14)
+                if !groups.completed.isEmpty {
+                    DisclosureGroup(isExpanded: $showCompleted) {
+                        ForEach(groups.completed, id: \.key) { status in
+                            ReviewRunRow(status: status, local: hub.checkout(of: status.repo), window: window)
+                        }
+                    } label: {
+                        Text(L("Completed · last 30 days") + " (\(groups.completed.count))")
+                            .font(.system(size: 12)).foregroundStyle(Theme.textDim)
+                    }
+                    .padding(.top, 12)
+                }
             }
+            .padding(14)
+        }
+        .task(id: request) {
+            checking = true
+            let result = await Task.detached(priority: .utility) { ReviewHistory.load(keys: request.keys) }.value
+            guard !Task.isCancelled else { return }
+            lookup = result
+            checking = false
         }
     }
 }
@@ -1221,37 +1277,45 @@ private struct ReviewRunRow: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            Group {
-                if status.running {
-                    ProgressView().controlSize(.small)
-                } else {
-                    Icon(status.succeeded ? "checkmark.circle" : (status.isClean && status.outcome == nil ? "circle.dotted" : "xmark.circle"), size: 13)
-                        .foregroundStyle(status.succeeded ? Theme.greenTone.strong : (status.outcome == "failed" ? Theme.redTone.strong : Theme.textDim))
-                }
-            }
-            .frame(width: 20)
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 6) {
-                    Text((status.repo.split(separator: "/").last.map(String.init) ?? status.repo) + " #" + String(status.number ?? 0))
-                        .font(.system(size: 11.5, weight: .medium)).foregroundStyle(Theme.textDim)
-                    Badge(text: status.kind == .babysit ? "babysit" : "review")
-                    if status.open > 0 {
-                        Badge(text: status.open == 1 ? L("1 finding open") : L("%d findings open", status.open), tone: Theme.orange)
+            Button { window.openQuorumRun(status) } label: {
+                HStack(spacing: 10) {
+                    Group {
+                        if status.running {
+                            ProgressView().controlSize(.small)
+                        } else {
+                            Icon(status.succeeded ? "checkmark.circle" : (status.isClean && status.outcome == nil ? "circle.dotted" : "xmark.circle"), size: 13)
+                                .foregroundStyle(status.succeeded ? Theme.greenTone.strong : (status.outcome == "failed" ? Theme.redTone.strong : Theme.textDim))
+                        }
                     }
+                    .frame(width: 20)
+                    VStack(alignment: .leading, spacing: 2) {
+                        HStack(spacing: 6) {
+                            Text((status.repo.split(separator: "/").last.map(String.init) ?? status.repo) + (status.number.map { " #\($0)" } ?? ""))
+                                .font(.system(size: 11.5, weight: .medium)).foregroundStyle(Theme.textDim)
+                            Badge(text: status.kind == .babysit ? "babysit" : "review")
+                            if status.open > 0 {
+                                Badge(text: status.open == 1 ? L("1 finding open") : L("%d findings open", status.open), tone: Theme.orange)
+                            }
+                        }
+                        Text(status.title ?? status.summary)
+                            .font(.system(size: 12.5, weight: .medium))
+                            .foregroundStyle(Theme.textPrimary)
+                            .lineLimit(1)
+                        if let reason = status.reason, !status.running, !status.succeeded {
+                            Text(reason).font(.system(size: 11)).foregroundStyle(Theme.textDim).lineLimit(1).truncationMode(.middle)
+                        } else {
+                            Text(status.summary).font(.system(size: 11)).foregroundStyle(Theme.textDim).lineLimit(1)
+                        }
+                    }
+                    Spacer(minLength: 8)
+                    Text(WorktreeRow.ago(Date().timeIntervalSince(status.date)))
+                        .font(.system(size: 11)).monospacedDigit().foregroundStyle(Theme.textFaint)
+                    Icon("chevron.right", size: 10).foregroundStyle(Theme.textDim)
                 }
-                Text(status.title ?? status.summary)
-                    .font(.system(size: 12.5, weight: .medium))
-                    .foregroundStyle(Theme.textPrimary)
-                    .lineLimit(1)
-                if let reason = status.reason, !status.running, !status.succeeded {
-                    Text(reason).font(.system(size: 11)).foregroundStyle(Theme.textDim).lineLimit(1).truncationMode(.middle)
-                } else {
-                    Text(status.summary).font(.system(size: 11)).foregroundStyle(Theme.textDim).lineLimit(1)
-                }
+                .contentShape(Rectangle())
             }
-            Spacer(minLength: 8)
-            Text(WorktreeRow.ago(Date().timeIntervalSince(status.date)))
-                .font(.system(size: 11)).monospacedDigit().foregroundStyle(Theme.textFaint)
+            .buttonStyle(.plain)
+            .help(L("Every review and fix of this run"))
             HStack(spacing: 4) {
                 if let report = status.report {
                     SmallButton(title: L("Report")) { NSWorkspace.shared.open(URL(fileURLWithPath: report)) }

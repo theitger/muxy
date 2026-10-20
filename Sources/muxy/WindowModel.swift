@@ -40,6 +40,35 @@ final class WindowModel: ObservableObject, Identifiable {
         withAnimation(Theme.ease) { review = model }
     }
 
+    func openAcceptance(_ workspace: Workspace? = nil) {
+        guard let workspace = workspace ?? selectedWorkspace,
+              workspace.context.checkout != nil, workspace.context.root != nil else {
+            show(L("Not a git checkout: nothing to review"))
+            return
+        }
+        openTask(TaskTarget(workspace: workspace), section: "implementation")
+    }
+
+    @Published var taskTarget: TaskTarget?
+    @Published var taskSection = "overview"
+
+    func openTask(_ target: TaskTarget, section: String = "overview") {
+        review = nil
+        reviewRun = nil
+        taskTarget = target
+        taskSection = section
+        showHub = true
+    }
+
+    @Published var reviewRun: QuorumStatus?
+
+    func openQuorumRun(_ status: QuorumStatus) {
+        taskTarget = nil
+        reviewRun = status
+        UserDefaults.standard.set("reviews", forKey: "hubPage")
+        showHub = true
+    }
+
     func closeReview() {
         withAnimation(Theme.ease) { review = nil }
         focusTerminal()

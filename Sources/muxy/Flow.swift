@@ -1,9 +1,8 @@
 import Foundation
 
 /// The one thing a session needs next, from working to merged. muxy
-/// suggests it; you take it with one click. Nothing here runs by itself:
-/// a PR, a review, a landing all start when you say so (except a review
-/// when you turned on starting quorum as soon as a PR opens).
+/// suggests it; you take it with one click. Human acceptance comes before
+/// quorum and landing for a session's pull request.
 enum NextStep: Equatable {
     /// Nothing to do but wait; the words say for what.
     case wait(String)
@@ -13,6 +12,8 @@ enum NextStep: Equatable {
     case approvePlan
     /// Work is there, no pull request yet.
     case openPR
+    /// Inspect the implementation in the preview and diff, then approve it.
+    case accept
     /// A pull request nobody reviewed yet: quorum's babysit reviews it,
     /// fixes what it finds and waits for CI, as you run it yourself.
     case review
@@ -33,6 +34,7 @@ enum NextStep: Equatable {
         case .answer: L("Answer the agent")
         case .approvePlan: L("Approve the plan")
         case .openPR: L("Open a pull request")
+        case .accept: L("Inspect and accept")
         case .review: L("Review and fix with quorum")
         case let .fix(why): why
         case .land: L("Land")
@@ -46,7 +48,7 @@ enum NextStep: Equatable {
     var stage: Stage {
         switch self {
         case .wait, .answer, .approvePlan, .openPR: .working
-        case .review, .fix, .reviewing: .review
+        case .accept, .review, .fix, .reviewing: .review
         case .land, .landing: .ready
         case .none: .none
         }
@@ -57,9 +59,6 @@ enum NextStep: Equatable {
 
 @MainActor
 enum Flow {
-    /// Start quorum (review and fix) as soon as a session's pull request opens.
-    static let autoReviewKey = "reviewWhenPROpens"
-
     static func next(for workspace: Workspace) -> NextStep {
         let context = workspace.context
         guard context.repo != nil else { return .none }
@@ -77,9 +76,10 @@ enum Flow {
         }
         _ = pr
         guard context.prState == .open else { return .none }
+        if !Acceptance.shared.covers(workspace) { return .accept }
         let quorumInstalled = Quorum.isInstalled
         let review = QuorumWatch.shared.status(for: workspace)
-        if let step = quorumStep(review, installed: quorumInstalled) { return step }
+        if let step = quorumStep(review, installed: quorumInstalled, head: context.prHead) { return step }
         if context.mergeability == .conflicting { return .fix(L("Resolve conflicts")) }
         switch context.checks {
         case .failed: return .fix(L("Fix CI"))
@@ -94,11 +94,11 @@ enum Flow {
     /// reviews first, then fixes: there is no "fix these findings" without
     /// it. A review that only commented (or none yet) leads to it; a
     /// babysit that stopped is run again, its reason on the card.
-    nonisolated static func quorumStep(_ status: QuorumStatus?, installed: Bool) -> NextStep? {
+    nonisolated static func quorumStep(_ status: QuorumStatus?, installed: Bool, head: String?) -> NextStep? {
         if let status, status.running { return .reviewing(status.summary) }
         guard installed else { return nil }
         guard let status else { return .review }
-        if status.succeeded { return nil }
+        if status.covers(head) { return nil }
         return status.kind == .review ? .review : .fix(L("Run quorum again"))
     }
 
@@ -144,7 +144,7 @@ enum Flow {
         case .claude:
             let choices = Inbox.choices(of: session)
             guard let yes = choices.first(where: { $0.label.lowercased().hasPrefix("yes") }) ?? choices.first else { return false }
-            Inbox.choose(yes, in: session)
+            guard Inbox.choose(yes, in: session) else { return false }
         case .codex:
             RemoteState.type("Go ahead: implement the plan.", enter: true, into: session)
         case nil:
@@ -171,6 +171,8 @@ enum Flow {
                 "Commit your work, push the branch and open a pull request\(closes). Fill in the repository's pull request template if it has one.",
                 enter: true, into: agent
             )
+        case .accept:
+            window.openAcceptance(workspace)
         case .review:
             Landing.shared.review(workspace)
         case .fix:
@@ -192,11 +194,4 @@ enum Flow {
         return true
     }
 
-    /// A pull request appeared for a session: reviewed right away, when
-    /// you asked for that.
-    static func pullRequestOpened(in workspace: Workspace) {
-        guard UserDefaults.standard.bool(forKey: autoReviewKey), Quorum.isInstalled,
-              QuorumWatch.shared.status(for: workspace) == nil else { return }
-        Landing.shared.review(workspace)
-    }
 }

@@ -161,11 +161,21 @@ enum Probe {
         let done = DispatchSemaphore(value: 0)
         var web = false
         let task = URLSession.shared.dataTask(with: request) { _, response, _ in
-            web = response is HTTPURLResponse
+            web = response.map(isBrowsable) ?? false
             done.signal()
         }
         task.resume()
         if done.wait(timeout: .now() + 2) == .timedOut { task.cancel() }
         return web
+    }
+
+    /// CFNetwork can turn an SMTP greeting into a synthetic HTTP 200.
+    /// A browsable response needs an actual content type from the server.
+    static func isBrowsable(_ response: URLResponse) -> Bool {
+        guard let response = response as? HTTPURLResponse,
+              let type = response.value(forHTTPHeaderField: "Content-Type")?.lowercased()
+        else { return false }
+        return type.hasPrefix("text/html") || type.hasPrefix("application/xhtml+xml")
+            || type.hasPrefix("text/plain")
     }
 }

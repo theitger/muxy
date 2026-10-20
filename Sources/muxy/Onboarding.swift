@@ -306,7 +306,7 @@ private struct RepositoriesStep: View {
 /// Claude and Codex as your login shell finds them, and the default.
 private struct AgentsStep: View {
     @ObservedObject private var setup = AgentSetup.shared
-    @AppStorage("newSessionAgent") private var agentChoice = AgentKind.claude.rawValue
+    @AppStorage(AgentKind.defaultKey) private var agentChoice = AgentKind.preferred().rawValue
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {

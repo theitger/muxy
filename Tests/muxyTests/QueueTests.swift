@@ -42,6 +42,11 @@ final class QueueTests: XCTestCase {
         XCTAssertEqual(Queue.decide(item(babysits: 1), facts: facts(.land, hasPR: true), now: now), .finish(.ready))
     }
 
+    func testQueueWaitsForHumanAcceptanceBeforeQuorum() {
+        XCTAssertEqual(Queue.decide(item(), facts: facts(.accept, hasPR: true), now: now),
+                       .finish(.needsYou(L("Inspect and accept the implementation."))))
+    }
+
     func testFixLoopGetsTwoChances() {
         XCTAssertEqual(Queue.decide(item(babysits: 1), facts: facts(.fix("Fix CI"), hasPR: true), now: now), .babysit)
         XCTAssertEqual(Queue.decide(item(babysits: 2), facts: facts(.fix("Fix CI"), hasPR: true), now: now), .finish(.needsYou("Fix CI")))

@@ -29,6 +29,16 @@ final class PortsTests: XCTestCase {
         XCTAssertTrue(Ports.inside("/private/tmp/x/app", "/tmp/x"))
     }
 
+    func testOnlyBrowsableHTTPResponsesCountAsWebPreviews() throws {
+        let url = try XCTUnwrap(URL(string: "http://localhost:3000/"))
+        let html = try XCTUnwrap(HTTPURLResponse(url: url, statusCode: 200, httpVersion: "HTTP/1.1", headerFields: ["Content-Type": "text/html; charset=utf-8"]))
+        let smtpGreeting = try XCTUnwrap(HTTPURLResponse(url: url, statusCode: 200, httpVersion: "HTTP/1.1", headerFields: ["Date": "today"]))
+        let api = try XCTUnwrap(HTTPURLResponse(url: url, statusCode: 200, httpVersion: "HTTP/1.1", headerFields: ["Content-Type": "application/json"]))
+        XCTAssertTrue(Probe.isBrowsable(html))
+        XCTAssertFalse(Probe.isBrowsable(smtpGreeting))
+        XCTAssertFalse(Probe.isBrowsable(api))
+    }
+
     /// A real server started with a session's id is found, and found to
     /// speak HTTP; another session gets nothing.
     func testFindsARealServerOfASession() throws {

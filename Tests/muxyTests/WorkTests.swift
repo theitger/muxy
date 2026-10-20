@@ -21,6 +21,25 @@ final class WorkTests: XCTestCase {
         XCTAssertEqual(again.items.values.first?.evidence.count, 1)
     }
 
+    func testCollisionsAreWhatTheRadarSeesNow() {
+        let ledger = WorkLedger()
+        let key = WorkItem.key(root: "/r", branch: "feat/x")
+        let old = Evidence(kind: .collision, date: Date(timeIntervalSince1970: 1), text: "Collides with A in x.go", ok: false, ref: "x.go")
+        ledger.current([old], root: "/r", branch: "feat/x")
+        // Seen again: the same fact, first seen when it was.
+        ledger.current([Evidence(kind: .collision, date: Date(), text: old.text, ok: false, ref: "x.go")], root: "/r", branch: "feat/x")
+        XCTAssertEqual(ledger.items[key]?.evidence, [old])
+        // The other session renamed: one collision, not two.
+        let renamed = Evidence(kind: .collision, date: Date(), text: "Collides with B in x.go", ok: false, ref: "x.go")
+        ledger.current([renamed], root: "/r", branch: "feat/x")
+        XCTAssertEqual(ledger.items[key]?.evidence, [renamed])
+        // Resolved: gone, and the report says so.
+        ledger.current([], root: "/r", branch: "feat/x")
+        let item = try? XCTUnwrap(ledger.items[key])
+        XCTAssertEqual(item?.evidence, [])
+        XCTAssertTrue(item.map(WorkLedger.report)?.contains(L("No collisions with other work")) == true)
+    }
+
     func testDroppedOrEndedWorkIsOffTheBoard() {
         var item = WorkItem(root: "/r", branch: "b", title: "t", created: Date(), touched: Date())
         XCTAssertTrue(item.isOpen)

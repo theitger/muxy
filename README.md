@@ -102,6 +102,9 @@ twice: results are kept per tree. Agents can prove their own work before
 they say they're done: `muxy proof` inside a Muxy terminal waits for the
 checks and exits non-zero when one fails.
 
+For muxy's own pull requests, `.quorum/testcmd` fetches the pinned binary
+frameworks and runs `swift test` on macOS, including in a fresh review worktree.
+
 ## Every turn, and the way back
 
 Muxy keeps the files as they were before and after every turn as hidden
@@ -183,6 +186,22 @@ with quorum's state and a button to review and fix. **Evidence** shows the
 facts and posts them as a comment on the PR: why it can be merged, not a
 diff to read.
 
+## One task from issue to merge
+
+**Task** in the session toolbar, an issue title on the board, or a queue
+entry opens the work's own page. Its overview keeps the goal, the issue,
+acceptance criteria and checks together. **Implementation** opens the app
+preview and code review with feedback beside them; **Reviews** shows quorum's
+steps, and **Activity** keeps feedback, inspected commits and evidence.
+Feedback drafts and task notes survive an app restart. A remembered inspected
+commit can be compared with the next version under **Since last inspection**.
+Criteria imported from issue checkboxes need your confirmation for the exact
+current PR commit; a later commit needs fresh confirmation.
+
+**Needs you** in the hub lists decisions: an agent's question, a plan waiting
+for approval, an implementation to inspect, a failure or a PR ready to land.
+Open the task, answer or inspect it, then move to the next decision.
+
 ## A queue for while you're away
 
 Put issues in line from the hub (**More → Queue for Claude/Codex**) and
@@ -207,6 +226,22 @@ The status bar shows how much of Claude's and Codex's limits is used
 status line, so **Settings → Agents → Claude's limits in muxy** puts a
 small script in front of yours that keeps them for muxy and runs your
 status line as before.
+
+A task's **Queue & limits** page sets prerequisites and its time, review and
+repair limits. Prerequisites release only after their PRs are confirmed merged.
+Cycles and removal of unfinished prerequisites are rejected. Dependent starts
+fetch the current remote base first. Landing requests in the same repository
+run one at a time and check the updated base before the next PR lands.
+
+The queue and landing save their intent before starting an external operation.
+On restart, muxy monitors active work even if new queue starts were paused;
+quorum and GitHub operations are observed rather than blindly started again.
+Unconfirmed launches or agent requests need inspection before another attempt.
+Limits stop further muxy actions; operations already handed to quorum or GitHub
+may continue. **Continue with a new budget** is an explicit new attempt.
+Queue and landing state live in the instance's state directory, separate for
+development and installed builds.
+
 
 ## Sessions that keep running (beta)
 

@@ -17,9 +17,27 @@ enum DebugDriver {
         case "new-session":
             window.showNewSession.toggle()
         case "review":
-            window.openReview(scope: value == "branch" ? .branch : .lastTurn)
+            if value == "accept" { window.openAcceptance() }
+            else { window.openReview(scope: value == "branch" ? .branch : .lastTurn) }
         case "close-review":
             window.closeReview()
+        case "quorum":
+            if let value {
+                guard let status = QuorumWatch.shared.byKey[value] else { return reply(false, "run not found") }
+                window.openQuorumRun(status)
+            } else {
+                window.reviewRun = nil
+            }
+        case "task":
+            if let value, let reference = IssueRef.parse(value), let repo = reference.repo {
+                let issue = HubModel.shared.issues.first { $0.repo.lowercased() == repo.lowercased() && $0.number == reference.number }
+                    ?? Queue.shared.items.first { $0.issue.repo.lowercased() == repo.lowercased() && $0.issue.number == reference.number }?.issue
+                    ?? Issue(repo: repo, number: reference.number, title: "#\(reference.number)", url: "https://github.com/\(repo)/issues/\(reference.number)", state: "OPEN")
+                window.openTask(TaskTarget(issue: issue))
+            } else if let workspace = window.selectedWorkspace { window.openTask(TaskTarget(workspace: workspace)) }
+            else { return reply(false, "no task") }
+        case "task-section":
+            window.taskSection = value ?? "overview"
         case "appearance":
             AppAppearance.apply(value.flatMap(AppAppearance.init) ?? .system)
         case "terminal-colors":
@@ -38,6 +56,15 @@ enum DebugDriver {
                 ws.sessions.map { "[\($0.title)] agentTitle=\($0.agentTitle ?? "nil") cwd=\($0.cwd) root=\(ws.context.root ?? "nil") checkout=\(ws.context.checkout ?? "nil")" }.joined(separator: " | ")
             }.joined(separator: "\n")
             return reply(true, text)
+        case "ports":
+            guard let workspace = window.selectedWorkspace else { return reply(false, "no workspace") }
+            return reply(true, Previews.shared.ports(of: workspace).map { "\($0.port):\($0.isWeb)" }.joined(separator: ", "))
+        case "preview-device":
+            NotificationCenter.default.post(name: Notification.Name("muxy.debug.previewDevice"), object: value)
+        case "review-feedback":
+            NotificationCenter.default.post(name: Notification.Name("muxy.debug.reviewFeedback"), object: value)
+        case "review-surface":
+            NotificationCenter.default.post(name: Notification.Name("muxy.debug.reviewSurface"), object: value)
         case "sidebar":
             store.toggleSidebar()
         case "chrome":
@@ -47,6 +74,9 @@ enum DebugDriver {
             let titlebar = nsWindow.frame.height - nsWindow.contentLayoutRect.height
             return reply(true, "close button center \(fromTop) from top, titlebar \(titlebar), window \(nsWindow.frame.height)")
         case "settings":
+            if let value, SettingsView.Pane(rawValue: value) != nil {
+                UserDefaults.standard.set(value, forKey: "settingsPane")
+            }
             store.openSettings?()
         case "shot-other":
             // The newest window that isn't a session window (Settings).

@@ -22,8 +22,9 @@ import Foundation
 final class Landing: ObservableObject {
     static let shared = Landing()
 
-    enum Step: Equatable {
+    enum Step: Equatable, Codable {
         case preparing(String)
+        case waitingForLanding
         /// The agent was asked to do something; landing resumes after its turn.
         case waitingForAgent(String)
         case proving
@@ -46,6 +47,7 @@ final class Landing: ObservableObject {
         var text: String {
             switch self {
             case let .preparing(text): text
+            case .waitingForLanding: L("Waiting for the previous pull request to merge")
             case let .waitingForAgent(text): text
             case .proving: L("Running the checks")
             case .pushing: L("Pushing")
@@ -65,7 +67,7 @@ final class Landing: ObservableObject {
     }
 
     /// Where a run ends: merged, or quorum's review and fixes.
-    enum Goal { case land, review }
+    enum Goal: String, Codable { case land, review }
 
     @Published private(set) var steps: [Workspace.ID: Step] = [:]
     private(set) var goals: [Workspace.ID: Goal] = [:]
@@ -83,10 +85,82 @@ final class Landing: ObservableObject {
     /// The head that was pushed after the checks passed.
     private var proven: [Workspace.ID: String?] = [:]
 
+    let journal = LandingJournal()
+    private var restored = Set<String>()
+    private var started: [Workspace.ID: Date] = [:]
+    private var reviewAttempts: [Workspace.ID: Int] = [:]
+    private var uncertain = Set<Workspace.ID>()
+    private var autoMerges: [Workspace.ID: Bool] = [:]
+
+    func resume() {
+        guard journal.problem == nil else { return }
+        if journal.receipts.values.contains(where: { $0.step.isActive }) { startTimer() }
+    }
+
+    private func recover() {
+        guard HubModel.shared.updated != nil else { return }
+        for receipt in journal.receipts.values where receipt.step.isActive && !restored.contains(receipt.id) {
+            guard let workspace = Store.shared.workspaces.first(where: {
+                $0.context.root == receipt.root && $0.context.branch == receipt.branch && $0.context.pr == receipt.pr
+            }), !workspace.sessions.contains(where: { $0.preparing != nil }) else { continue }
+            // Quorum's watcher must have had a chance to read its artifacts.
+            restored.insert(receipt.id)
+            runs[workspace.id, default: 0] += 1
+            goals[workspace.id] = receipt.goal
+            steps[workspace.id] = receipt.step
+            stepSince[workspace.id] = receipt.since
+            started[workspace.id] = receipt.started
+            asks[workspace.id] = receipt.asks
+            reviewAttempts[workspace.id] = receipt.reviewAttempts ?? 0
+            autoMerges[workspace.id] = receipt.autoMerges ?? false
+            if receipt.requiresInspection == true { uncertain.insert(workspace.id) }
+            quorumSince[workspace.id] = receipt.quorumSince
+            proven[workspace.id] = receipt.provenHead
+            if workspace.context.prState == .merged { set(.landed, for: workspace); continue }
+            switch receipt.recovery(accepted: Acceptance.shared.covers(workspace), agentWorking: workspace.agent == .working) {
+            case .observe:
+                break
+            case .inspect:
+                uncertain.insert(workspace.id)
+                set(.failed(L("The previous operation needs inspection before continuing.")), for: workspace)
+            case .check:
+                if (receipt.goal == .land || receipt.autoMerges == true), !hasMergeSlot(workspace) { set(.waitingForLanding, for: workspace) }
+                else { advance(workspace) }
+            }
+
+        }
+    }
+
+    func requiresInspection(_ workspace: Workspace) -> Bool {
+        if uncertain.contains(workspace.id) { return true }
+        guard let root = workspace.context.root, let branch = workspace.context.branch else { return false }
+        return journal.receipts[WorkItem.key(root: root, branch: branch)]?.requiresInspection == true
+    }
+
+    /// A deliberate retry acknowledges the uncertain earlier handoff.
+    func allowRetry(root: String, branch: String) -> Bool {
+        let key = WorkItem.key(root: root, branch: branch)
+        guard var receipt = journal.receipts[key] else { return journal.problem == nil }
+        guard !receipt.step.isActive else { return false }
+        receipt.requiresInspection = false
+        guard journal.put(receipt) else { return false }
+        for workspace in Store.shared.workspaces where workspace.context.root == root && workspace.context.branch == branch {
+            uncertain.remove(workspace.id)
+        }
+        return true
+    }
+
+    private func limits(for workspace: Workspace) -> AutomationLimits {
+        Queue.shared.item(for: workspace)?.limits
+            ?? TaskLedger.shared.record(for: TaskTarget(workspace: workspace)).limits
+            ?? AutomationLimits()
+    }
+
     func step(for workspace: Workspace) -> Step? { steps[workspace.id] }
 
     func canLand(_ workspace: Workspace) -> Bool {
         workspace.context.pr != nil && workspace.context.prState == .open && workspace.context.checkout != nil
+            && workspace.context.root != nil && workspace.context.branch != nil
     }
 
     func land(_ workspace: Workspace) {
@@ -104,16 +178,50 @@ final class Landing: ObservableObject {
     private func begin(_ workspace: Workspace, goal: Goal) {
         // One run per session at a time.
         guard canLand(workspace), steps[workspace.id]?.isActive != true else { return }
+        if let problem = journal.problem ?? Queue.shared.problem ?? TaskLedger.shared.problem {
+            Store.shared.window(of: workspace)?.show(problem, seconds: 6)
+            return
+        }
+        guard Acceptance.shared.covers(workspace) else {
+            Store.shared.window(of: workspace)?.openAcceptance(workspace)
+            return
+        }
+        if let reason = Queue.shared.landingBlocker(for: workspace) {
+            set(.failed(reason), for: workspace)
+            return
+        }
         goals[workspace.id] = goal
+        started[workspace.id] = Date()
+        reviewAttempts[workspace.id] = 0
+        autoMerges[workspace.id] = QuorumBehavior.current.merges
+        uncertain.remove(workspace.id)
+        if let root = workspace.context.root, let branch = workspace.context.branch {
+            restored.insert(WorkItem.key(root: root, branch: branch))
+        }
         runs[workspace.id, default: 0] += 1
         asks[workspace.id] = 0
-        advance(workspace)
+        if (goal == .land || autoMerges[workspace.id] == true), !hasMergeSlot(workspace) {
+            set(.waitingForLanding, for: workspace)
+        } else { advance(workspace) }
         startTimer()
+    }
+
+    private func hasMergeSlot(_ workspace: Workspace) -> Bool {
+        guard let root = workspace.context.root else { return false }
+        let candidate = MergeOrder.Entry(id: workspace.id.uuidString, root: root,
+                                         started: started[workspace.id] ?? .distantFuture, waiting: true)
+        let entries = Store.shared.workspaces.compactMap { other -> MergeOrder.Entry? in
+            guard let root = other.context.root, let step = steps[other.id], step.isActive,
+                  goals[other.id] == .land || autoMerges[other.id] == true else { return nil }
+            return MergeOrder.Entry(id: other.id.uuidString, root: root, started: started[other.id] ?? .distantFuture,
+                                    waiting: step == .waitingForLanding)
+        }
+        return MergeOrder.mayStart(candidate, among: entries)
     }
 
     func cancel(_ workspace: Workspace) {
         runs[workspace.id, default: 0] += 1
-        steps[workspace.id] = nil
+        set(.failed(L("Automation paused.")), for: workspace)
         quorumSince[workspace.id] = nil
     }
 
@@ -128,19 +236,40 @@ final class Landing: ObservableObject {
         }
     }
 
-    private func set(_ step: Step, for workspace: Workspace) {
+    @discardableResult
+    private func set(_ step: Step, for workspace: Workspace) -> Bool {
         if steps[workspace.id] != step { stepSince[workspace.id] = Date() }
+        guard let root = workspace.context.root, let branch = workspace.context.branch, let pr = workspace.context.pr else {
+            steps[workspace.id] = step
+            return !step.isActive
+        }
+        let receipt = LandingReceipt(root: root, branch: branch, pr: pr, goal: goal(for: workspace), step: step,
+                                     since: stepSince[workspace.id] ?? Date(), started: started[workspace.id] ?? Date(),
+                                     asks: asks[workspace.id] ?? 0, quorumSince: quorumSince[workspace.id],
+                                     provenHead: proven[workspace.id] ?? nil,
+                                     reviewAttempts: reviewAttempts[workspace.id], requiresInspection: uncertain.contains(workspace.id), autoMerges: autoMerges[workspace.id])
+        guard journal.put(receipt) else {
+            steps[workspace.id] = .failed(journal.problem ?? L("Landing could not be saved."))
+            return false
+        }
         steps[workspace.id] = step
+        return true
     }
 
     /// Still the landing that started this step, not cancelled meanwhile.
     private func current(_ workspace: Workspace, _ run: Int?) -> Bool {
         runs[workspace.id] == run && steps[workspace.id]?.isActive == true
+            && journal.problem == nil && Queue.shared.problem == nil && TaskLedger.shared.problem == nil
     }
 
     /// quorum works on this run: the review goal, or landing with it.
     private func usesQuorum(_ workspace: Workspace) -> Bool {
         goal(for: workspace) == .review ? Quorum.isInstalled : withQuorum
+    }
+
+    /// A clean verdict for this PR is not enough: a later push invalidates it.
+    nonisolated static func reviewCovers(_ status: QuorumStatus?, head: String?) -> Bool {
+        status?.covers(head) == true
     }
 
     // MARK: Steps
@@ -158,7 +287,7 @@ final class Landing: ObservableObject {
             set(.failed(L("The agent asks you something: answer it, then land again")), for: workspace)
             return
         }
-        set(.preparing(L("Looking at the branch")), for: workspace)
+        guard set(.preparing(L("Looking at the branch")), for: workspace) else { return }
         Task.detached(priority: .userInitiated) {
             let state = Self.inspect(checkout: checkout, root: root)
             await MainActor.run {
@@ -210,7 +339,7 @@ final class Landing: ObservableObject {
         }
         // quorum pushed fixes: taken in first, or the push below is refused.
         if state.fromOrigin > 0 {
-            set(.preparing(L("Taking in quorum's fixes")), for: workspace)
+            guard set(.preparing(L("Taking in quorum's fixes")), for: workspace) else { return }
             Task.detached(priority: .userInitiated) {
                 let git = WorkState.git
                 var taken = Shell.execute(git, ["merge", "--ff-only", "--quiet", "FETCH_HEAD"], in: checkout, timeout: 120).status == 0
@@ -245,7 +374,7 @@ final class Landing: ObservableObject {
             return
         }
         if state.behind {
-            set(.preparing(L("Merging %@ in", state.start)), for: workspace)
+            guard set(.preparing(L("Merging %@ in", state.start)), for: workspace) else { return }
             Task.detached(priority: .userInitiated) {
                 let merged = Shell.execute(WorkState.git, ["merge", "--no-edit", "--quiet", state.start], in: checkout, timeout: 300)
                 if merged.status != 0 {
@@ -268,7 +397,7 @@ final class Landing: ObservableObject {
 
     private func prove(_ workspace: Workspace, checkout: String, root: String, pr: Int) {
         let run = runs[workspace.id]
-        set(.proving, for: workspace)
+        guard set(.proving, for: workspace) else { return }
         Task.detached(priority: .userInitiated) {
             let checks = ProofCheck.load(root: root)
             await MainActor.run {
@@ -292,8 +421,8 @@ final class Landing: ObservableObject {
                             return
                         }
                         guard self.mayAsk(workspace) else { return }
+                        guard self.set(.waitingForAgent(L("The agent fixes the failed checks")), for: workspace) else { return }
                         Proofs.sendFailures(result, to: session)
-                        self.set(.waitingForAgent(L("The agent fixes the failed checks")), for: workspace)
                     case .cancelled:
                         self.set(.failed(L("Checks cancelled")), for: workspace)
                     case .passed, .skipped:
@@ -306,28 +435,41 @@ final class Landing: ObservableObject {
 
     private func push(_ workspace: Workspace, checkout: String, pr: Int) {
         let run = runs[workspace.id]
-        set(.pushing, for: workspace)
-        let reviewed = QuorumWatch.shared.status(for: workspace)?.succeeded == true
+        guard set(.pushing, for: workspace) else { return }
+        let reviewStatus = QuorumWatch.shared.status(for: workspace)
         Task.detached(priority: .userInitiated) {
-            // Anything origin doesn't have yet? Without, quorum's last clean
-            // review still holds and isn't repeated.
-            let unpushed = Shell.run(WorkState.git, ["rev-list", "--count", "@{push}..HEAD"], in: checkout).flatMap(Int.init) ?? 1
             let result = Shell.execute(WorkState.git, ["push", "--quiet", "origin", "HEAD"], in: checkout, timeout: 1200)
             let head = Shell.run(WorkState.git, ["rev-parse", "HEAD"], in: checkout)
             await MainActor.run {
                 guard self.current(workspace, run), self.steps[workspace.id] == .pushing else { return }
-                self.proven[workspace.id] = head
                 guard result.status == 0 else {
                     let reason = result.error.split(separator: "\n").last.map(String.init) ?? ""
                     self.set(.failed(L("Push failed: %@", reason)), for: workspace)
                     return
                 }
+                guard let head else {
+                    self.set(.failed(L("Could not read the pushed commit")), for: workspace)
+                    return
+                }
+                guard let repo = workspace.context.repo,
+                      Acceptance.shared.covers(repo: repo, pr: pr, head: head) else {
+                    self.set(.failed(L("The accepted commit changed. Inspect the result again.")), for: workspace)
+                    workspace.primary?.refreshContext()
+                    Store.shared.window(of: workspace)?.openAcceptance(workspace)
+                    return
+                }
+                self.proven[workspace.id] = head
                 // The review goal always asks quorum; landing only when
-                // quorum hasn't passed exactly what is on origin now.
+                // quorum hasn't accepted exactly the commit just pushed.
                 let review = self.goal(for: workspace) == .review
-                if review || (self.withQuorum && !(reviewed && unpushed == 0)) {
+                if review || (self.withQuorum && !Self.reviewCovers(reviewStatus, head: head)) {
+                    guard (self.reviewAttempts[workspace.id] ?? 0) < self.limits(for: workspace).reviewAttempts else {
+                        self.set(.failed(L("Review attempt limit reached.")), for: workspace)
+                        return
+                    }
+                    self.reviewAttempts[workspace.id, default: 0] += 1
                     self.quorumSince[workspace.id] = Date()
-                    self.set(.reviewing, for: workspace)
+                    guard self.set(.reviewing, for: workspace) else { return }
                     QuorumWatch.shared.start(.babysit, in: workspace)
                 } else {
                     self.merge(workspace, checkout: checkout, pr: pr)
@@ -341,7 +483,16 @@ final class Landing: ObservableObject {
         // Pushed after the checks (quorum's fixes): only that head merges,
         // and only quorum's review vouches for it.
         let head = proven[workspace.id] ?? nil
-        set(.merging(L("Handing it to GitHub")), for: workspace)
+        guard let head, !head.isEmpty else {
+            set(.failed(L("The commit to merge could not be verified.")), for: workspace)
+            return
+        }
+        guard Queue.shared.landingBlocker(for: workspace) == nil else {
+            set(.failed(Queue.shared.landingBlocker(for: workspace) ?? L("Waiting for prerequisites to merge.")), for: workspace)
+            return
+        }
+        if !hasMergeSlot(workspace) { set(.waitingForLanding, for: workspace); return }
+        guard set(.merging(L("Handing it to GitHub")), for: workspace) else { return }
         Task.detached(priority: .userInitiated) {
             let outcome = Self.enableMerge(pr: pr, head: head, in: checkout)
             await MainActor.run {
@@ -402,11 +553,29 @@ final class Landing: ObservableObject {
 
     /// Steps that wait on others: quorum's verdict, GitHub's merge.
     private func tick() {
+        if let problem = Queue.shared.problem ?? TaskLedger.shared.problem {
+            for workspace in Store.shared.workspaces where steps[workspace.id]?.isActive == true {
+                runs[workspace.id, default: 0] += 1
+                set(.failed(problem), for: workspace)
+            }
+            return
+        }
+        recover()
         for workspace in Store.shared.workspaces {
             guard let step = steps[workspace.id] else { continue }
             let context = workspace.context
+            let limits = limits(for: workspace)
+            if step.isActive, Date().timeIntervalSince(started[workspace.id] ?? Date()) > limits.seconds {
+                runs[workspace.id, default: 0] += 1
+                set(.failed(L("Task time limit reached. Automation paused.")), for: workspace)
+                continue
+            }
             if context.prState == .merged {
-                set(.landed, for: workspace)
+                if step != .landed {
+                    set(.landed, for: workspace)
+                    for other in Store.shared.workspaces where other.context.root == context.root { other.primary?.refreshContext() }
+                    Radar.shared.poke(after: 0)
+                }
                 continue
             }
             if context.prState == .closed, step.isActive {
@@ -422,19 +591,39 @@ final class Landing: ObservableObject {
                 continue
             }
             switch step {
+            case .waitingForLanding:
+                if hasMergeSlot(workspace), Queue.shared.landingBlocker(for: workspace) == nil {
+                    // Fetch the current base and rerun checks after the preceding merge.
+                    advance(workspace)
+                }
             case .reviewing:
-                guard let status = QuorumWatch.shared.status(for: workspace), !status.running,
-                      status.date > (quorumSince[workspace.id] ?? .distantFuture).addingTimeInterval(-5)
-                else { continue }
+                guard let status = QuorumWatch.shared.status(for: workspace),
+                      status.running || status.date > (quorumSince[workspace.id] ?? .distantFuture).addingTimeInterval(-5) else {
+                    if Date().timeIntervalSince(quorumSince[workspace.id] ?? Date()) > Queue.settle {
+                        uncertain.insert(workspace.id)
+                        set(.failed(L("The quorum launch could not be confirmed. Inspect the run before retrying.")), for: workspace)
+                    }
+                    continue
+                }
+                guard !status.running else { continue }
                 if status.succeeded, let checkout = context.checkout, let pr = context.pr {
                     Self.takeFixes(in: checkout)
-                    if goal(for: workspace) == .review || QuorumBehavior.current.merges {
-                        // Done, or quorum merges it itself (AUTO_MERGE).
-                        set(status.outcome == "merged" ? .landed : .reviewed, for: workspace)
+                    if status.outcome == "merged" {
+                        set(.landed, for: workspace)
+                    } else if autoMerges[workspace.id] == true {
+                        proven[workspace.id] = status.headSHA
+                        set(.merging(L("Waiting for quorum's merge on GitHub")), for: workspace)
+                    } else if goal(for: workspace) == .review {
+                        set(.reviewed, for: workspace)
                     } else {
-                        // quorum pushes its fixes: the head it converged on merges.
-                        proven[workspace.id] = nil
-                        merge(workspace, checkout: checkout, pr: pr)
+                        // quorum may have pushed fixes. Merge only the final
+                        // head recorded by that run; GitHub rejects a later push.
+                        if let head = status.headSHA {
+                            proven[workspace.id] = head
+                            merge(workspace, checkout: checkout, pr: pr)
+                        } else {
+                            set(.failed(L("quorum did not record the final commit")), for: workspace)
+                        }
                     }
                 } else if status.outcome == nil, status.isClean {
                     continue // its verdict isn't in quorum's history yet
@@ -451,7 +640,8 @@ final class Landing: ObservableObject {
                 continue
             }
         }
-        if !steps.values.contains(where: \.isActive) {
+        if !steps.values.contains(where: \.isActive),
+           !journal.receipts.values.contains(where: { $0.step.isActive && !restored.contains($0.id) }) {
             timer?.invalidate()
             timer = nil
         }
@@ -479,11 +669,12 @@ final class Landing: ObservableObject {
     /// Three asks per landing; then it stops and says so.
     private func mayAsk(_ workspace: Workspace) -> Bool {
         let count = (asks[workspace.id] ?? 0) + 1
-        asks[workspace.id] = count
-        if count > 3 {
-            set(.failed(L("Still not ready after three rounds: your call")), for: workspace)
+        let limit = (limits(for: workspace)).repairAttempts
+        if count > limit {
+            set(.failed(L("Repair attempt limit reached. Inspect the task before retrying.")), for: workspace)
             return false
         }
+        asks[workspace.id] = count
         return true
     }
 
@@ -497,7 +688,7 @@ final class Landing: ObservableObject {
             return
         }
         guard mayAsk(workspace) else { return }
+        guard set(.waitingForAgent(step), for: workspace) else { return }
         RemoteState.type(message, enter: true, into: session)
-        set(.waitingForAgent(step), for: workspace)
     }
 }

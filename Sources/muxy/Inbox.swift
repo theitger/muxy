@@ -113,24 +113,46 @@ final class Inbox: ObservableObject {
     }
 
     /// Answers a session without going there: text and Enter, or a choice.
-    static func reply(_ text: String, to session: TerminalSession) {
+    @discardableResult
+    static func reply(_ text: String, to session: TerminalSession) -> Bool {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
-        RemoteState.type(trimmed, enter: true, into: session)
+        guard !trimmed.isEmpty, session.terminalView.currentSurface != nil, followDecision(in: session) else { return false }
+        RemoteState.type(trimmed, enter: false, into: session)
+        let delivered = RemoteState.press("enter", in: session)
+        Queue.shared.resume()
+        return delivered
     }
 
-    /// Moves the agent's cursor to the choice and confirms it, as you
-    /// would with the arrow keys: both agents take that, while a typed
-    /// digit means "pick" to one and "type a digit" to another.
-    static func choose(_ choice: Choice, in session: TerminalSession) {
+    /// Dispatch a choice only while the same prompt is still on screen.
+    @discardableResult
+    static func choose(_ choice: Choice, in session: TerminalSession) -> Bool {
         let current = choices(of: session)
+        guard current.contains(where: { $0.number == choice.number && $0.label == choice.label }),
+              session.terminalView.currentSurface != nil, followDecision(in: session) else { return false }
         for (index, key) in Choices.keys(to: choice, in: current).enumerated() {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.04 * Double(index)) {
-                RemoteState.press(key, in: session)
+                if !RemoteState.press(key, in: session) {
+                    session.needsAttention = true
+                    if let workspace = Store.shared.workspaces.first(where: { $0.sessions.contains { $0 === session } }) {
+                        Store.shared.window(of: workspace)?.show(L("The answer could not be delivered."), seconds: 5)
+                    }
+                }
             }
         }
         session.needsAttention = false
+        Queue.shared.resume()
+        return true
     }
+
+    private static func followDecision(in session: TerminalSession) -> Bool {
+        guard let workspace = Store.shared.workspaces.first(where: { $0.sessions.contains { $0 === session } }) else { return true }
+        guard Queue.shared.followDecision(in: workspace, awaitingAgent: true) else {
+            Store.shared.window(of: workspace)?.show(Queue.shared.problem ?? L("The queue could not be saved."), seconds: 6)
+            return false
+        }
+        return true
+    }
+
 }
 
 /// The pill in the title bar: how many wait on you. A click opens the
@@ -303,8 +325,7 @@ private struct InboxRow: View {
     }
 
     private func send() {
-        Inbox.reply(reply, to: item.session)
-        reply = ""
+        if Inbox.reply(reply, to: item.session) { reply = "" }
     }
 
     private var tone: Color {

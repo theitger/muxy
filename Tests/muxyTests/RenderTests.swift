@@ -27,7 +27,20 @@ final class RenderTests: XCTestCase {
         signals.quorum = "quorum: 2 findings open"
         signals.proof = .passed
         signals.collisions = ["Konten löschen"]
+        let quorumStatus = QuorumStatus(kind: .babysit, key: "render/repo#128", running: false,
+                                        blockers: 1, outcome: "failed", date: Date())
+        let quorumRun = QuorumRun(status: quorumStatus, steps: [
+            .init(kind: .review, number: 1, date: Date(), blockers: 1, critical: 1,
+                  findings: [.init(severity: .blocker, location: "Sources/auth/Session.swift:128",
+                                   text: "The expired cookie survives a failed refresh. Clear it before redirecting to login."),
+                             .init(severity: .critical, location: "Tests/auth/SessionTests.swift:42",
+                                   text: "The failure path needs a regression test with an expired session.")],
+                  reviewersDone: 3, reviewers: 3),
+            .init(kind: .fix, number: 1, date: Date(), commits: ["abc123 Clear expired session cookies"]),
+            .init(kind: .end, date: Date(), ok: false)
+        ])
         let views: [(String, AnyView)] = [
+            ("quorum-details", AnyView(QuorumRunView(key: quorumStatus.key, initialRun: quorumRun).frame(width: 264))),
             ("panel", AnyView(ResultPanel(result: full, building: false, hasAgent: true))),
             ("quorum-settings", AnyView(QuorumSettings().frame(width: 420))),
             ("settings-general", AnyView(SettingsView.page(.general).frame(width: 560))),

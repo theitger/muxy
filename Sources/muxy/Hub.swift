@@ -35,6 +35,8 @@ final class HubModel: ObservableObject {
         var updated: Date?
         /// Its branch, known for repositories cloned here; nil for a fork's.
         var branch: String?
+        /// Its current PR head, when `gh pr list` could read it.
+        var head: String?
         var id: String { "\(repo)#\(number)" }
     }
 
@@ -201,7 +203,7 @@ final class HubModel: ObservableObject {
         for repo in Set(pulls.map { $0.repo.lowercased() }).intersection(cloned) {
             let listed = Shell.execute(gh, [
                 "pr", "list", "-R", repo, "--author", "@me", "--state", "open", "--limit", "100",
-                "--json", "number,headRefName,isCrossRepository"
+                "--json", "number,headRefName,headRefOid,isCrossRepository"
             ], in: Paths.home, timeout: 30)
             guard listed.status == 0,
                   let rows = try? JSONSerialization.jsonObject(with: Data(listed.output.utf8)) as? [[String: Any]] else { continue }
@@ -209,6 +211,7 @@ final class HubModel: ObservableObject {
                 guard let number = row["number"] as? Int, let branch = row["headRefName"] as? String,
                       let index = pulls.firstIndex(where: { $0.number == number && $0.repo.lowercased() == repo }) else { continue }
                 pulls[index].branch = branch
+                pulls[index].head = row["headRefOid"] as? String
             }
         }
         return pulls
@@ -279,10 +282,33 @@ final class HubModel: ObservableObject {
             return
         }
         if hideHub { window.showHub = false }
+        let needsFreshBase = Queue.shared.items.first { $0.issue.repo.lowercased() == issue.repo.lowercased() && $0.issue.number == issue.number }
+            .map { !($0.dependencies ?? []).isEmpty } ?? false
         Task.detached(priority: .userInitiated) {
+            if needsFreshBase, let problem = TaskBase.refresh(in: root) {
+                await MainActor.run { window.show(problem, seconds: 6); then?(nil) }
+                return
+            }
             // The body travels into the prompt; the search left it out.
-            let full: Issue = if case let .found(found) = Issues.view(issue.number, repo: issue.repo, in: root) { found } else { issue }
+            let fetched = Issues.view(issue.number, repo: issue.repo, in: root, fresh: true)
+            guard case let .found(full) = fetched else {
+                await MainActor.run {
+                    window.show(L("The issue could not be refreshed. Try starting again when GitHub is available."), seconds: 6)
+                    then?(nil)
+                }
+                return
+            }
             await MainActor.run {
+                guard full.isOpen else {
+                    window.show(L("This issue is closed."), seconds: 5)
+                    then?(nil)
+                    return
+                }
+                guard TaskLedger.shared.update(TaskTarget(issue: full).id, { $0.synchronize(full, previousTitle: issue.title) }) else {
+                    window.show(TaskLedger.shared.problem ?? L("Task notes could not be saved."), seconds: 6)
+                    then?(nil)
+                    return
+                }
                 let before = Set(Store.shared.workspaces.map(\.id))
                 FanOut.launch(issue: full, root: root, agents: agents, unattended: unattended, background: !hideHub,
                               plan: plan, in: window)
@@ -320,9 +346,10 @@ enum FanOut {
         for agent in agents {
             // Per agent: /implement for Claude where the repository has it,
             // the plan request for Codex (Claude plans in its own mode).
-            let prompt = Issues.prompt(for: issue, localRepo: Issues.repo(of: root),
-                                       implement: agent == .claude && implement,
+            let basePrompt = Issues.prompt(for: issue, localRepo: Issues.repo(of: root),
+                                       agent: agent, implement: implement,
                                        plan: plan && agent == .codex, unattended: unattended)
+            let prompt = [basePrompt, TaskLedger.shared.instructions(for: issue)].filter { !$0.isEmpty }.joined(separator: "\n\n")
             var spec = SessionSpec(
                 directory: root, agent: agent, prompt: prompt,
                 worktree: true, branch: agents.count > 1 ? "\(base)-\(agent.rawValue)" : base

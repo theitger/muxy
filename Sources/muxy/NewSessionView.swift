@@ -10,7 +10,7 @@ struct NewSessionView: View {
     @ObservedObject var store: Store
     @ObservedObject var window: WindowModel
 
-    @AppStorage("newSessionAgent") private var agentChoice = AgentKind.claude.rawValue
+    @State private var agentChoice = AgentKind.preferred().rawValue
     @AppStorage("newSessionWorktree") private var useWorktree = true
     @State private var prompt = ""
     @State private var repos: [Repos.Repo] = []
@@ -423,7 +423,7 @@ struct NewSessionView: View {
             directory: target, agent: agent,
             prompt: resolved.map {
                 Issues.prompt(for: $0.issue, note: $0.note, localRepo: issues.targetRepo,
-                              implement: agent == .claude && Issues.implementSkill(in: target))
+                              agent: agent, implement: Issues.implementSkill(in: target))
             } ?? prompt,
             worktree: worktree, branch: typedBranch ?? issueBranch
         )

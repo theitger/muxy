@@ -177,6 +177,10 @@ final class CommandCenter {
                 guard Landing.shared.canLand(workspace) else {
                     return reply(Reply(ok: false, output: "nothing to land: the session has no open pull request"))
                 }
+                guard Acceptance.shared.covers(workspace) else {
+                    Store.shared.window(of: workspace)?.openAcceptance(workspace)
+                    return reply(Reply(ok: false, output: "inspect and accept the implementation in muxy first"))
+                }
                 Landing.shared.land(workspace)
                 reply(Reply(ok: true, output: "landing \(workspace.title)"))
             }
@@ -292,7 +296,7 @@ final class CommandCenter {
             return reply(Reply(ok: false, output: "no such folder: \(directory)"))
         }
         let defaults = UserDefaults.standard
-        var choice = agent ?? defaults.string(forKey: "newSessionAgent") ?? AgentKind.claude.rawValue
+        var choice = agent ?? AgentKind.preferred(in: defaults).rawValue
         // The panel's last choice was both agents: one, unless asked for both.
         if agent == nil, choice == NewSessionView.both { choice = AgentKind.claude.rawValue }
         guard choice == "none" || choice == "shell" || choice == NewSessionView.both || AgentKind(rawValue: choice) != nil else {
@@ -371,7 +375,7 @@ extension Store {
             let note = IssueRef.parse(ref)?.note ?? ""
             let extra = [note, spec.prompt].filter { !$0.isEmpty }.joined(separator: "\n\n")
             spec.prompt = Issues.prompt(for: found, note: extra, localRepo: Issues.repo(of: spec.directory),
-                                        implement: spec.agent == .claude && Issues.implementSkill(in: spec.directory))
+                                        agent: spec.agent, implement: Issues.implementSkill(in: spec.directory))
             spec.issue = found
             // Named after the issue, not by the model.
             if let branch = spec.branch, BranchNamer.isPlaceholder(branch) {

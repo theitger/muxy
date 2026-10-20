@@ -97,6 +97,50 @@ final class QuorumTests: XCTestCase {
         XCTAssertEqual(status.report, "/x/final.md")
     }
 
+    func testOnlyARecordedCommitCanCoverALanding() throws {
+        let dir = try folder()
+        let reviewed = String(repeating: "a", count: 40)
+        let changed = String(repeating: "b", count: 40)
+        try "{\"head_sha\":\"\(reviewed)\"}"
+            .write(toFile: dir + "/output/findings.json", atomically: true, encoding: .utf8)
+        var status = QuorumStatus(kind: .review, key: "o/r#7", running: false,
+                                  outcome: "ok", date: Date(), runDirectory: dir)
+        status.headSHA = Quorum.acceptedHead(kind: .review, in: dir)
+        XCTAssertTrue(Landing.reviewCovers(status, head: reviewed))
+        XCTAssertFalse(Landing.reviewCovers(status, head: changed), "a pushed commit after review needs a new run")
+        XCTAssertEqual(status.summary(for: changed), L("quorum: review outdated"))
+        XCTAssertFalse(Landing.reviewCovers(status, head: nil))
+        status.headSHA = nil
+        XCTAssertFalse(Landing.reviewCovers(status, head: reviewed), "missing artifacts fail closed")
+
+        try "{\"final_head\":\"\(changed)\"}"
+            .write(toFile: dir + "/divergence-trace.json", atomically: true, encoding: .utf8)
+        XCTAssertEqual(Quorum.acceptedHead(kind: .babysit, in: dir), changed,
+                       "babysit can fix the reviewed commit before it converges")
+        try #"{"final_head":"not-a-commit"}"#
+            .write(toFile: dir + "/divergence-trace.json", atomically: true, encoding: .utf8)
+        XCTAssertNil(Quorum.acceptedHead(kind: .babysit, in: dir))
+    }
+
+    func testFinishedHistoryCarriesTheAcceptedHeadIntoLanding() throws {
+        let dir = try folder()
+        let old = String(repeating: "a", count: 40)
+        let final = String(repeating: "b", count: 40)
+        try "{\"final_head\":\"\(final)\",\"rounds\":[{\"reviewed_sha\":\"\(old)\"}]}"
+            .write(toFile: dir + "/divergence-trace.json", atomically: true, encoding: .utf8)
+        let history = dir + "/history.jsonl"
+        let record: [String: Any] = [
+            "key": "o/r#7", "kind": "babysit", "outcome": "converged", "run_dir": dir,
+            "ended_at": "2026-10-20T07:00:00Z"
+        ]
+        let data = try JSONSerialization.data(withJSONObject: record)
+        try (String(decoding: data, as: UTF8.self) + "\n").write(toFile: history, atomically: true, encoding: .utf8)
+        let status = try XCTUnwrap(Quorum.finished(at: history).first)
+        XCTAssertEqual(status.headSHA, final)
+        XCTAssertTrue(Landing.reviewCovers(status, head: final))
+        XCTAssertFalse(Landing.reviewCovers(status, head: old), "the initial reviewed SHA is not the final accepted head")
+    }
+
     func testADeadRunWithoutOutputIsNothing() throws {
         let dir = try folder()
         try #"{"repo":"o/r","number":7}"#.write(toFile: dir + "/target.json", atomically: true, encoding: .utf8)
@@ -117,7 +161,7 @@ final class QuorumTests: XCTestCase {
         XCTAssertEqual(status.open, 0, "what it found so far doesn't count")
         XCTAssertFalse(status.succeeded)
         XCTAssertEqual(status.summary, L("quorum stopped: %@", L("interrupted")))
-        XCTAssertEqual(Flow.quorumStep(status, installed: true), .fix(L("Run quorum again")))
+        XCTAssertEqual(Flow.quorumStep(status, installed: true, head: nil), .fix(L("Run quorum again")))
     }
 }
 
@@ -187,6 +231,31 @@ final class RadarTests: XCTestCase {
         XCTAssertTrue(forA.contains { $0.other == b && $0.files == ["shared.txt"] })
         XCTAssertTrue(forA.contains { $0.withBase && $0.other == "origin/main" })
         XCTAssertTrue(found[b]?.contains { $0.other == a } == true)
+    }
+
+    /// A session that merged the base in carries the base's files: an older
+    /// session's conflict with those is its conflict with the base, never a
+    /// collision with the session that only kept up.
+    func testTheBaseMergedInIsNotACollision() throws {
+        let repo = try TempRepo()
+        try repo.write("shared.txt", "one\ntwo\nthree\n")
+        try repo.commit("Shared")
+        try repo.addOrigin()
+        let stale = try repo.addWorktree("stale", branch: "stale")
+        let current = try repo.addWorktree("current", branch: "current")
+        let idle = try repo.addWorktree("idle", branch: "idle")
+        try repo.write("shared.txt", "one\nSTALE\nthree\n", in: stale)
+        try repo.write("shared.txt", "one\nMAIN\nthree\n")
+        try repo.commit("Main moves")
+        try repo.git("push", "--quiet", "origin", "main")
+        try repo.git("fetch", "--quiet", "origin")
+        try repo.write("own.txt", "mine\n", in: current)
+        try repo.commit("Own work", in: current)
+        try repo.git("merge", "--quiet", "--no-edit", "origin/main", in: current)
+        let found = Radar.scan(root: repo.root, checkouts: [stale, current, idle], memo: Radar.Memo())
+        XCTAssertEqual(found[stale], [Collision(other: "origin/main", withBase: true, files: ["shared.txt"])])
+        XCTAssertNil(found[current])
+        XCTAssertNil(found[idle], "a session with nothing of its own collides with nothing")
     }
 
     func testQuietWhenWorkDoesNotOverlap() throws {
@@ -366,32 +435,38 @@ final class QuorumFlowTests: XCTestCase {
     }
 
     func testDraftsGetTheGoAheadOnlyWhenTheConfigDoesntGiveIt() {
-        XCTAssertEqual(Quorum.command(.babysit, pr: 7, draft: true, behavior: QuorumBehavior([:])), "quorum babysit --draft 7")
-        XCTAssertEqual(Quorum.command(.babysit, pr: 7, draft: true, behavior: QuorumBehavior(["BABYSIT_DRAFTS": "1"])), "quorum babysit 7")
-        XCTAssertEqual(Quorum.command(.babysit, pr: 7, draft: false, behavior: QuorumBehavior([:])), "quorum babysit 7")
+        XCTAssertEqual(Quorum.command(.babysit, pr: 7, draft: true, behavior: QuorumBehavior([:])), "quorum babysit --draft --divergence-scan 7")
+        XCTAssertEqual(Quorum.command(.babysit, pr: 7, draft: true, behavior: QuorumBehavior(["BABYSIT_DRAFTS": "1"])), "quorum babysit --divergence-scan 7")
+        XCTAssertEqual(Quorum.command(.babysit, pr: 7, draft: false, behavior: QuorumBehavior([:])), "quorum babysit --divergence-scan 7")
         XCTAssertEqual(Quorum.command(.review, pr: 7, draft: true, behavior: QuorumBehavior([:])), "quorum review 7")
     }
 
     func testStepsMatchWhatQuorumDoes() {
+        let head = String(repeating: "a", count: 40)
+        let newer = String(repeating: "b", count: 40)
         // Nothing yet: review and fix, one loop.
-        XCTAssertEqual(Flow.quorumStep(nil, installed: true), .review)
-        XCTAssertNil(Flow.quorumStep(nil, installed: false))
+        XCTAssertEqual(Flow.quorumStep(nil, installed: true, head: head), .review)
+        XCTAssertNil(Flow.quorumStep(nil, installed: false, head: head))
         // A review that only commented its 4 findings: babysit, not "fix 4".
         let commented = QuorumStatus(kind: .review, key: "o/r#1", running: false, critical: 4, outcome: "ok", date: Date())
-        XCTAssertEqual(Flow.quorumStep(commented, installed: true), .review)
+        XCTAssertEqual(Flow.quorumStep(commented, installed: true, head: head), .review)
         // A babysit that stopped: again, with its reason on the card.
         var stopped = QuorumStatus(kind: .babysit, key: "o/r#1", running: false, outcome: "failed", date: Date())
         stopped.reason = "review did not converge after 12 review rounds"
-        XCTAssertEqual(Flow.quorumStep(stopped, installed: true), .fix(L("Run quorum again")))
+        XCTAssertEqual(Flow.quorumStep(stopped, installed: true, head: head), .fix(L("Run quorum again")))
         XCTAssertEqual(stopped.summary, L("quorum stopped: %@", L("not clean after %d rounds", 12)))
         // Converged: nothing for quorum to do.
-        let clean = QuorumStatus(kind: .babysit, key: "o/r#1", running: false, blockers: 2, outcome: "converged", date: Date())
-        XCTAssertNil(Flow.quorumStep(clean, installed: true))
+        var clean = QuorumStatus(kind: .babysit, key: "o/r#1", running: false, blockers: 2, outcome: "converged", date: Date())
+        clean.headSHA = head
+        XCTAssertNil(Flow.quorumStep(clean, installed: true, head: head))
+        XCTAssertEqual(Flow.quorumStep(clean, installed: true, head: newer), .fix(L("Run quorum again")))
+        XCTAssertEqual(clean.summary(for: newer), L("quorum: review outdated"))
+        XCTAssertEqual(Flow.quorumStep(clean, installed: true, head: nil), .fix(L("Run quorum again")))
         // Running: shown in the review column with its round and phase.
         var running = QuorumStatus(kind: .babysit, key: "o/r#1", running: true, phase: "fix", round: 2, date: Date())
         running.maxRounds = 12
         XCTAssertEqual(running.summary, "quorum: " + L("round %d of %d", 2, 12) + " · " + L("fixes"))
-        XCTAssertEqual(Flow.quorumStep(running, installed: true)?.stage, .review)
+        XCTAssertEqual(Flow.quorumStep(running, installed: true, head: newer)?.stage, .review)
     }
 }
 
