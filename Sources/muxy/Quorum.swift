@@ -317,7 +317,7 @@ enum Quorum {
     /// commits are pushed, a branch behind origin is moved up; uncommitted
     /// changes or a branch that went both ways are yours. nil: ready, or
     /// the reason it isn't. Blocking.
-    nonisolated static func prepare(branch: String, root: String) -> String? {
+    nonisolated static func prepare(branch: String, root: String, accepted: String? = nil) -> String? {
         let git = "/usr/bin/git"
         let checkout = HubModel.worktree(of: branch, root: root)
         if let checkout, !(Shell.run(git, ["status", "--porcelain"], in: checkout) ?? "").isEmpty {
@@ -326,8 +326,15 @@ enum Quorum {
         guard Shell.execute(git, ["fetch", "--quiet", "origin", "refs/heads/\(branch)"], in: root, timeout: 60).status == 0,
               let remote = Shell.run(git, ["rev-parse", "FETCH_HEAD"], in: root)
         else { return L("Couldn't fetch %@ from GitHub.", branch) }
+        guard accepted.map({ remote.lowercased() == $0.lowercased() }) ?? true else {
+            return L("The accepted commit changed. Inspect the result again.")
+        }
         guard Shell.execute(git, ["rev-parse", "--verify", "--quiet", "refs/heads/\(branch)"], in: root).status == 0 else {
             return nil // only on origin: babysit works from there
+        }
+        guard let local = Shell.run(git, ["rev-parse", "refs/heads/\(branch)"], in: root),
+              accepted.map({ local.lowercased() == $0.lowercased() }) ?? true else {
+            return L("The accepted commit changed. Inspect the result again.")
         }
         let ahead = Shell.run(git, ["rev-list", "--count", "\(remote)..refs/heads/\(branch)"], in: root).flatMap(Int.init) ?? 0
         let behind = Shell.run(git, ["rev-list", "--count", "refs/heads/\(branch)..\(remote)"], in: root).flatMap(Int.init) ?? 0

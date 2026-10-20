@@ -735,8 +735,13 @@ private struct PullCard: View {
         starting = true
         problem = nil
         let number = pull.number, repo = pull.repo
+        guard let accepted = Acceptance.shared.acceptedHead(repo: repo, pr: number) else {
+            problem = Acceptance.Readiness.changed.message
+            starting = false
+            return
+        }
         Task.detached(priority: .userInitiated) {
-            let blocked = Quorum.prepare(branch: branch, root: root)
+            let blocked = Quorum.prepare(branch: branch, root: root, accepted: accepted)
             let live = blocked == nil ? Git.pullRequest(in: root, number: number) : .unknown
             await MainActor.run {
                 if let blocked {

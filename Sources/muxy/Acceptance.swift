@@ -138,6 +138,17 @@ final class Acceptance: ObservableObject {
             Self.readiness(checkout: checkout, expected: expected)
         }.value
         guard case let .ready(finalHead) = finalState else { return finalState }
+        let finalLive = await Task.detached(priority: .userInitiated) {
+            Git.pullRequest(in: checkout)
+        }.value
+        switch finalLive {
+        case let .found(pull) where pull.number == pr && pull.state == .open && pull.head?.lowercased() == finalHead:
+            break
+        case .unknown:
+            return .unavailable
+        default:
+            return .changed
+        }
         guard finalHead == head, workspace.context.repo == repo, workspace.context.pr == pr,
               workspace.context.prHead?.lowercased() == finalHead else { return .changed }
         heads[Self.key(repo: repo, pr: pr)] = finalHead

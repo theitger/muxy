@@ -574,6 +574,17 @@ final class QuorumPrepareTests: XCTestCase {
         XCTAssertEqual(try originHead(repo), try repo.head(in: checkout))
     }
 
+    func testUnacceptedHeadIsNeverPushedDuringPreparation() throws {
+        let repo = try TempRepo()
+        let (checkout, _) = try setUp(repo)
+        let accepted = try repo.head(in: checkout)
+        try repo.write("b.txt", "unaccepted\n", in: checkout)
+        try repo.commit("Unaccepted", in: checkout)
+
+        XCTAssertNotNil(Quorum.prepare(branch: "feature", root: repo.root, accepted: accepted))
+        XCTAssertEqual(try originHead(repo), accepted)
+    }
+
     func testABranchBehindOriginIsMovedUp() throws {
         let repo = try TempRepo()
         let (checkout, other) = try setUp(repo)
