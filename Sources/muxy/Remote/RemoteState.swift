@@ -168,10 +168,13 @@ enum RemoteState {
 
     /// Typed text goes in like a paste (as Ghostty does for drops); Enter
     /// and special keys as real key events.
-    static func type(_ text: String, enter: Bool, into session: TerminalSession) {
-        if !text.isEmpty { session.terminalView.sendText(text) }
-        if enter { press("enter", in: session) }
+    @discardableResult
+    static func type(_ text: String, enter: Bool, into session: TerminalSession) -> Bool {
+        guard let surface = session.terminalView.currentSurface else { return false }
+        guard text.isEmpty || surface.sendText(text) else { return false }
+        guard !enter || press("enter", in: session) else { return false }
         markSeen(session)
+        return true
     }
 
     /// A key the phone pressed: (macOS key code, Ghostty mods, text,

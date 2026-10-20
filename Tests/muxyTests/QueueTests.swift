@@ -47,9 +47,19 @@ final class QueueTests: XCTestCase {
                        .finish(.needsYou(L("Inspect and accept the implementation."))))
     }
 
-    func testFixLoopGetsTwoChances() {
+    func testFixLoopUsesDefaultRepairLimit() {
         XCTAssertEqual(Queue.decide(item(babysits: 1), facts: facts(.fix("Fix CI"), hasPR: true), now: now), .babysit)
-        XCTAssertEqual(Queue.decide(item(babysits: 2), facts: facts(.fix("Fix CI"), hasPR: true), now: now), .finish(.needsYou("Fix CI")))
+        XCTAssertEqual(Queue.decide(item(babysits: 2), facts: facts(.fix("Fix CI"), hasPR: true), now: now), .babysit)
+        XCTAssertEqual(Queue.decide(item(babysits: 3), facts: facts(.fix("Fix CI"), hasPR: true), now: now), .finish(.needsYou("Fix CI")))
+    }
+
+    func testFixLoopUsesRepairLimit() {
+        var limited = item(babysits: 1)
+        limited.limits = AutomationLimits(hours: 8, reviews: 1, repairs: 2)
+        XCTAssertEqual(Queue.decide(limited, facts: facts(.fix("Fix CI"), hasPR: true), now: now), .babysit)
+
+        limited.babysits = 2
+        XCTAssertEqual(Queue.decide(limited, facts: facts(.fix("Fix CI"), hasPR: true), now: now), .finish(.needsYou("Fix CI")))
     }
 
     func testWithoutQuorumAPullRequestIsReady() {

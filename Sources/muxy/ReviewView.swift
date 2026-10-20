@@ -170,14 +170,9 @@ final class ReviewModel: ObservableObject {
             record.inspectedAt = Date()
         }) else { return false }
         guard Queue.shared.followDecision(in: workspace, awaitingAgent: true) else { return false }
-        guard TaskLedger.shared.update(target.id, { record in
-            record.commitFeedback(receipt)
-            record.draft = ""
-        }) else { return false }
-        inspectionBaseline = readiness.head ?? inspectionBaseline
-        if case .sinceInspection = scope, let inspectionBaseline { scope = .sinceInspection(inspectionBaseline) }
+        let delivered: Bool
         if let session = existing {
-            RemoteState.type(message, enter: true, into: session)
+            delivered = RemoteState.type(message, enter: true, into: session)
         } else {
             // A PR opened from the hub may have only a shell tab. Start the
             // preferred agent in this checkout with the feedback as its first
@@ -195,10 +190,18 @@ final class ReviewModel: ObservableObject {
             session.skipsPermissions = skipPermissions
             session.issue = workspace.sessions.compactMap(\.issue).first
             session.agent = .idle
+            guard BackgroundStart.start(session) else { return false }
             Store.shared.add(session, to: workspace)
-            BackgroundStart.start(session)
             Store.shared.sessionsChanged()
+            delivered = true
         }
+        guard delivered else { return false }
+        guard TaskLedger.shared.update(target.id, { record in
+            record.commitFeedback(receipt)
+            record.draft = ""
+        }) else { return false }
+        inspectionBaseline = readiness.head ?? inspectionBaseline
+        if case .sinceInspection = scope, let inspectionBaseline { scope = .sinceInspection(inspectionBaseline) }
         comments = []
         Queue.shared.resume()
         return true

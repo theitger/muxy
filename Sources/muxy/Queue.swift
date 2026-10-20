@@ -468,9 +468,6 @@ final class Queue: ObservableObject {
     nonisolated static let settle: TimeInterval = 90
     /// However long agent and quorum take, after this it's yours.
     nonisolated static let maxRun: TimeInterval = 8 * 3600
-    /// quorum's fix loop gets two chances, then it's yours.
-    nonisolated static let maxBabysits = 2
-
     nonisolated static func decide(_ item: Item, facts: Facts, now: Date) -> Decision {
         if facts.merged { return .finish(.ready) }
         if facts.closed { return .finish(.needsYou(L("The pull request was closed without merging."))) }
@@ -500,7 +497,7 @@ final class Queue: ObservableObject {
                 ? .babysit : facts.quorumInstalled ? .finish(.needsYou(L("Review attempt limit reached."))) : .finish(.ready)
         case let .fix(why):
             guard settled else { return .wait }
-            return item.babysits < (item.limits ?? AutomationLimits()).reviewAttempts && facts.quorumInstalled ? .babysit : .finish(.needsYou(why))
+            return item.babysits < (item.limits ?? AutomationLimits()).repairAttempts && facts.quorumInstalled ? .babysit : .finish(.needsYou(why))
         case .wait:
             // The turn ended a while ago without anything to show for it
             // (a PR, which quorum or CI may be busy with, is something).

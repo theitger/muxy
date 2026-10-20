@@ -21,9 +21,10 @@ enum BackgroundStart {
     /// be shown at.
     static var size = NSSize(width: 1000, height: 700)
 
-    static func start(_ session: TerminalSession) {
+    @discardableResult
+    static func start(_ session: TerminalSession) -> Bool {
         let view = session.terminalView
-        guard view.window == nil, view.currentSurface == nil, let content = window.contentView else { return }
+        guard view.window == nil, view.currentSurface == nil, let content = window.contentView else { return false }
         view.translatesAutoresizingMaskIntoConstraints = true
         view.frame = NSRect(origin: .zero, size: size)
         content.addSubview(view)
@@ -33,5 +34,6 @@ enum BackgroundStart {
             view.setSurfaceVisible(false)
             view.removeFromSuperview()
         }
+        return true
     }
 }
