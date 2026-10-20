@@ -86,13 +86,15 @@ final class QuorumTests: XCTestCase {
 
     func testReadsAFinishedReview() throws {
         let dir = try folder()
+        let reviewed = String(repeating: "a", count: 40)
         try #"{"repo":"o/r","number":7}"#.write(toFile: dir + "/target.json", atomically: true, encoding: .utf8)
-        try #"{"blockers":0,"critical":0,"suggestions":2,"comment_file":"/x/final.md"}"#
+        try #"{"head_sha":"\#(reviewed)","blockers":0,"critical":0,"suggestions":2,"comment_file":"/x/final.md"}"#
             .write(toFile: dir + "/output/findings.json", atomically: true, encoding: .utf8)
         try "999999".write(toFile: dir + "/run.pid", atomically: true, encoding: .utf8)
         let status = try XCTUnwrap(Quorum.run(in: dir, kind: .review, modified: Date()))
         XCTAssertFalse(status.running)
         XCTAssertTrue(status.isClean)
+        XCTAssertEqual(status.headSHA, reviewed)
         XCTAssertEqual(status.suggestions, 2)
         XCTAssertEqual(status.report, "/x/final.md")
     }

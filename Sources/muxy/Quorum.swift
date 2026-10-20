@@ -226,6 +226,9 @@ enum Quorum {
             found.suggestions = findings["suggestions"] as? Int ?? 0
             found.report = findings["comment_file"] as? String
         }
+        if !found.running {
+            found.headSHA = acceptedHead(kind: kind, in: dir)
+        }
         // Without a process and without findings it died early: history says how.
         if !found.running, json(dir + "/output/findings.json") == nil, json(dir + "/progress.json") == nil { return nil }
         // Gone without a result (quit, crash, killed): what it had found
