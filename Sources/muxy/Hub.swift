@@ -232,12 +232,14 @@ final class HubModel: ObservableObject {
 
     /// A pull request of yours becomes a session again: in the worktree
     /// that has its branch, else in a new one on it (fetched when only
-    /// GitHub has it). `agent` nil opens a terminal.
-    func open(_ pull: OwnPull, agent: AgentKind?, in window: WindowModel) {
+    /// GitHub has it). `agent` nil opens a terminal; inspection opens the
+    /// prepared branch's task page instead.
+    func open(_ pull: OwnPull, agent: AgentKind?, in window: WindowModel, inspect: Bool = false) {
         guard let root = checkout(of: pull.repo), let branch = pull.branch else {
             if let url = URL(string: pull.url) { NSWorkspace.shared.open(url) }
             return
         }
+        let issue = WorkLedger.shared.items[WorkItem.key(root: root, branch: branch)]?.issue
         window.showHub = false
         Task.detached(priority: .userInitiated) {
             let git = "/usr/bin/git"
@@ -257,10 +259,13 @@ final class HubModel: ObservableObject {
                     window.show(problem)
                     return
                 }
-                Store.shared.launch(
-                    SessionSpec(directory: existing ?? root, agent: agent, branch: existing == nil ? branch : nil),
-                    in: window
-                )
+                var spec = SessionSpec(directory: existing ?? root, agent: agent, branch: existing == nil ? branch : nil)
+                spec.issue = issue
+                Store.shared.launch(spec, in: window)
+                if inspect {
+                    let target = issue.map(TaskTarget.init(issue:)) ?? TaskTarget(root: root, branch: branch, title: pull.title)
+                    window.openTask(target, section: "implementation")
+                }
             }
         }
     }

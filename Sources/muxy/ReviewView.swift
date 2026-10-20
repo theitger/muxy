@@ -242,6 +242,9 @@ struct ReviewView: View {
     @State private var screenshot: URL?
     @State private var accepting = false
     @State private var feedbackProblem: String?
+    @State private var criteriaProblem: String?
+    @State private var synchronizingCriteria = false
+    @State private var criteriaSynchronized = false
     @State private var acceptanceBrowser = WKWebView(frame: .zero)
     @State private var previewDevice: AcceptanceDevice = .desktop
     @State private var previewLandscape = false
@@ -282,6 +285,10 @@ struct ReviewView: View {
                !Previews.shared.ports(of: model.workspace).contains(where: \.isWeb) {
                 surface = .code
             }
+        }
+        .task(id: model.purpose == .acceptance ? model.workspace.context.prHead : nil) {
+            guard model.purpose == .acceptance else { return }
+            await synchronizeCriteria()
         }
         .onChange(of: model.scope) { model.load() }
         .onChange(of: model.workspace.context.prHead) { model.load() }
@@ -327,7 +334,7 @@ struct ReviewView: View {
                 Text(L("Code changes")).tag(AcceptanceSurface.code)
             }
             .labelsHidden().pickerStyle(.segmented).fixedSize()
-            IconButton(symbol: "arrow.clockwise", help: L("Reload"), action: model.load)
+            IconButton(symbol: "arrow.clockwise", help: L("Reload"), action: reloadAcceptance)
             if !embedded { IconButton(symbol: "xmark", help: L("Close (esc)"), action: close) }
         }
         .padding(.horizontal, 14)
@@ -369,7 +376,14 @@ struct ReviewView: View {
                 Text(model.readiness.message)
                     .font(.system(size: 11.5)).foregroundStyle(Theme.textMuted)
             }
-            if let problem = feedbackProblem ?? taskLedger.problem {
+            if synchronizingCriteria {
+                HStack(spacing: 6) {
+                    ProgressView().controlSize(.mini)
+                    Text(L("Refreshing acceptance criteria …"))
+                }
+                .font(.system(size: 11.5)).foregroundStyle(Theme.textMuted)
+            }
+            if let problem = criteriaProblem ?? feedbackProblem ?? taskLedger.problem {
                 Text(problem).font(.system(size: 11.5)).foregroundStyle(Theme.textMuted)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -407,7 +421,7 @@ struct ReviewView: View {
                 if accepting { ProgressView().controlSize(.small) }
                 else { Text(L("Approve implementation")) }
             }
-            .disabled(taskLedger.problem != nil || Landing.shared.step(for: model.workspace)?.isActive == true || !taskLedger.record(for: TaskTarget(workspace: model.workspace)).satisfied(at: model.workspace.context.prHead) || model.readiness.head == nil || accepting || !feedback.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !model.comments.isEmpty)
+            .disabled(taskLedger.problem != nil || Landing.shared.step(for: model.workspace)?.isActive == true || !criteriaSynchronized || synchronizingCriteria || !taskLedger.record(for: TaskTarget(workspace: model.workspace)).satisfied(at: model.workspace.context.prHead) || model.readiness.head == nil || accepting || !feedback.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !model.comments.isEmpty)
             .buttonStyle(.borderedProminent)
             .frame(maxWidth: .infinity)
             Text(Landing.shared.withQuorum
@@ -470,6 +484,24 @@ struct ReviewView: View {
             Landing.shared.land(model.workspace)
             Queue.shared.resume()
         }
+    }
+
+    private func synchronizeCriteria() async {
+        criteriaSynchronized = false
+        synchronizingCriteria = true
+        criteriaProblem = nil
+        let synchronized = await Acceptance.shared.synchronizeCriteria(for: model.workspace)
+        guard !Task.isCancelled else { return }
+        synchronizingCriteria = false
+        criteriaSynchronized = synchronized
+        if !synchronized {
+            criteriaProblem = L("Could not refresh the linked issue's acceptance criteria. Try reloading.")
+        }
+    }
+
+    private func reloadAcceptance() {
+        model.load()
+        Task { await synchronizeCriteria() }
     }
 
     private var header: some View {

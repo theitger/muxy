@@ -609,6 +609,8 @@ enum German {
         "The previously inspected commit is no longer available.": "Der zuletzt geprüfte Commit ist nicht mehr verfügbar.",
         "Since last inspection": "Seit der letzten Prüfung",
         "Check the acceptance criteria for this commit before approving.": "Prüfe die Abnahmekriterien für diesen Commit, bevor du ihn freigibst.",
+        "Could not refresh the linked issue's acceptance criteria. Try reloading.": "Die Abnahmekriterien des verknüpften Issues konnten nicht aktualisiert werden. Bitte neu laden.",
+        "Refreshing acceptance criteria …": "Abnahmekriterien werden aktualisiert …",
         "Dependent tasks need a remote base in the worktree recipe.": "Abhängige Aufgaben brauchen einen Remote-Branch als Basis im Worktree-Rezept.",
         "The latest base could not be fetched. The dependent task was not started.": "Die aktuelle Basis konnte nicht abgerufen werden. Die abhängige Aufgabe wurde nicht gestartet.",
         "The task could not start. Inspect its checkout and base, then retry.": "Die Aufgabe konnte nicht starten. Prüfe ihren Checkout und die Basis, dann versuche es erneut.",

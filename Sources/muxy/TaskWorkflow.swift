@@ -26,6 +26,12 @@ struct TaskTarget: Equatable, Identifiable {
         title = issue.title
     }
 
+    init(root: String, branch: String, title: String) {
+        self.root = root
+        self.branch = branch
+        self.title = title
+    }
+
     @MainActor init(workspace: Workspace) {
         issue = workspace.sessions.compactMap(\.issue).first
         root = workspace.context.root

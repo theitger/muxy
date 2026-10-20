@@ -14,6 +14,7 @@ final class Acceptance: ObservableObject {
         case changed
         case uncommitted
         case unavailable
+        case criteriaUnavailable
         case criteriaPending
 
         var head: String? {
@@ -29,6 +30,7 @@ final class Acceptance: ObservableObject {
             case .changed: L("The local commit differs from the pull request. Refresh and inspect it again.")
             case .uncommitted: L("Commit the remaining changes before accepting this result.")
             case .unavailable: L("Could not verify the commit. Try reloading.")
+            case .criteriaUnavailable: L("Could not refresh the linked issue's acceptance criteria. Try reloading.")
             case .criteriaPending: L("Check the acceptance criteria for this commit before approving.")
             }
         }
@@ -61,6 +63,22 @@ final class Acceptance: ObservableObject {
 
     func acceptedHead(repo: String, pr: Int) -> String? {
         heads[Self.key(repo: repo, pr: pr)]
+    }
+
+    /// The linked issue is the source of imported criteria. A failed refresh
+    /// is not equivalent to an issue with no checklist.
+    func synchronizeCriteria(for workspace: Workspace) async -> Bool {
+        guard TaskLedger.shared.problem == nil else { return false }
+        let target = TaskTarget(workspace: workspace)
+        guard let issue = target.issue else { return true }
+        guard let checkout = workspace.context.checkout else { return false }
+        let fresh = await Task.detached(priority: .userInitiated) {
+            Issues.view(issue.number, repo: issue.repo, in: checkout, fresh: true)
+        }.value
+        guard case let .found(value) = fresh else { return false }
+        return TaskLedger.shared.update(target.id) {
+            $0.synchronize(value, previousTitle: issue.title)
+        }
     }
 
     /// Check both GitHub's PR head and the local working tree. The approval
@@ -100,6 +118,7 @@ final class Acceptance: ObservableObject {
         guard case let .ready(head) = state else { return state }
         guard workspace.context.repo == repo, workspace.context.pr == pr,
               workspace.context.prHead?.lowercased() == head else { return .changed }
+        guard await synchronizeCriteria(for: workspace) else { return .criteriaUnavailable }
         guard TaskLedger.shared.record(for: TaskTarget(workspace: workspace)).satisfied(at: head) else { return .criteriaPending }
         heads[Self.key(repo: repo, pr: pr)] = head
         defaults.set(heads, forKey: Self.storageKey)

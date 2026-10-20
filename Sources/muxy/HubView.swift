@@ -193,7 +193,8 @@ struct HubView: View {
                         ForEach(pulls) { pull in
                             let item = workItem(for: pull)
                             PullCard(pull: pull, local: hub.checkout(of: pull.repo) != nil, item: item,
-                                     resume: item?.conversation == nil ? nil : { work.resume(item!, in: window) }) { agent in
+                                     resume: item?.conversation == nil ? nil : { work.resume(item!, in: window) },
+                                     inspect: { hub.open(pull, agent: nil, in: window, inspect: true) }) { agent in
                                 hub.open(pull, agent: agent, in: window)
                             }
                         }
@@ -600,6 +601,7 @@ private struct PullCard: View {
     var item: WorkItem?
     /// Its agent's conversation picked up again, when there is one.
     var resume: (() -> Void)?
+    let inspect: () -> Void
     let open: (AgentKind?) -> Void
     @AppStorage(AgentKind.defaultKey) private var preferred = AgentKind.preferred().rawValue
     @ObservedObject private var quorum = QuorumWatch.shared
@@ -690,7 +692,7 @@ private struct PullCard: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 SmallButton(title: step.title) {
-                    if step == .accept { open(nil) }
+                    if step == .accept { inspect() }
                     else { startQuorum(branch: branch, root: root) }
                 }
             }
