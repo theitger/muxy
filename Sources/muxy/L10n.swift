@@ -728,6 +728,7 @@ enum German {
         "Push failed: %@": "Push fehlgeschlagen: %@",
         "Could not read the pushed commit": "Der gepushte Commit konnte nicht gelesen werden",
         "quorum did not record the final commit": "quorum hat den finalen Commit nicht erfasst",
+        "quorum merged a review-only run.": "quorum hat einen reinen Review-Lauf gemergt.",
         "Handing it to GitHub": "Übergebe an GitHub",
         "Merges when GitHub allows it": "Merged, sobald GitHub es zulässt",
         "GitHub won't merge yet: %@": "GitHub merged noch nicht: %@",

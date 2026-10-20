@@ -445,11 +445,16 @@ final class QuorumFlowTests: XCTestCase {
     }
 
     func testDraftsGetTheGoAheadOnlyWhenTheConfigDoesntGiveIt() {
-        XCTAssertEqual(Quorum.command(.babysit, pr: 7, draft: true, behavior: QuorumBehavior([:]), installed: QuorumCompat.tested), "quorum babysit --draft --divergence-scan 7")
-        XCTAssertEqual(Quorum.command(.babysit, pr: 7, draft: true, behavior: QuorumBehavior(["BABYSIT_DRAFTS": "1"]), installed: QuorumCompat.tested), "quorum babysit --divergence-scan 7")
-        XCTAssertEqual(Quorum.command(.babysit, pr: 7, draft: false, behavior: QuorumBehavior([:]), installed: QuorumCompat.tested), "quorum babysit --divergence-scan 7")
-        XCTAssertEqual(Quorum.command(.babysit, pr: 7, draft: false, behavior: QuorumBehavior([:]), installed: "1.9.9"), "quorum babysit 7")
-        XCTAssertEqual(Quorum.command(.review, pr: 7, draft: true, behavior: QuorumBehavior([:]), installed: QuorumCompat.tested), "quorum review 7")
+        XCTAssertEqual(Quorum.command(.babysit, pr: 7, draft: true, allowAutoMerge: true, behavior: QuorumBehavior([:]), installed: QuorumCompat.tested), "quorum babysit --draft --divergence-scan 7")
+        XCTAssertEqual(Quorum.command(.babysit, pr: 7, draft: true, allowAutoMerge: true, behavior: QuorumBehavior(["BABYSIT_DRAFTS": "1"]), installed: QuorumCompat.tested), "quorum babysit --divergence-scan 7")
+        XCTAssertEqual(Quorum.command(.babysit, pr: 7, draft: false, allowAutoMerge: true, behavior: QuorumBehavior([:]), installed: QuorumCompat.tested), "quorum babysit --divergence-scan 7")
+        XCTAssertEqual(Quorum.command(.babysit, pr: 7, draft: false, allowAutoMerge: true, behavior: QuorumBehavior([:]), installed: "1.9.9"), "quorum babysit 7")
+        let reviewOnly = Quorum.command(.babysit, pr: 7, allowAutoMerge: false, behavior: QuorumBehavior([:]), installed: QuorumCompat.tested)
+        XCTAssertTrue(reviewOnly.contains("AUTO_MERGE=0"))
+        XCTAssertTrue(reviewOnly.contains("QUORUM_CONFIG=\"$temporary\" quorum babysit --divergence-scan 7"))
+        let manualReview = Quorum.command(.review, pr: 7, behavior: QuorumBehavior([:]), installed: QuorumCompat.tested)
+        XCTAssertTrue(manualReview.contains("AUTO_MERGE=0"))
+        XCTAssertEqual(Quorum.command(.review, pr: 7, draft: true, allowAutoMerge: true, behavior: QuorumBehavior([:]), installed: QuorumCompat.tested), "quorum review 7")
     }
 
     func testStepsMatchWhatQuorumDoes() {

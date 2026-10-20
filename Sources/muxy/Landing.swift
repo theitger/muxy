@@ -112,7 +112,7 @@ final class Landing: ObservableObject {
             started[workspace.id] = receipt.started
             asks[workspace.id] = receipt.asks
             reviewAttempts[workspace.id] = receipt.reviewAttempts ?? 0
-            autoMerges[workspace.id] = receipt.autoMerges ?? false
+            autoMerges[workspace.id] = receipt.goal == .land && receipt.autoMerges == true
             if receipt.requiresInspection == true { uncertain.insert(workspace.id) }
             quorumSince[workspace.id] = receipt.quorumSince
             proven[workspace.id] = receipt.provenHead
@@ -124,7 +124,7 @@ final class Landing: ObservableObject {
                 uncertain.insert(workspace.id)
                 set(.failed(L("The previous operation needs inspection before continuing.")), for: workspace)
             case .check:
-                if (receipt.goal == .land || receipt.autoMerges == true), !hasMergeSlot(workspace) { set(.waitingForLanding, for: workspace) }
+                if receipt.goal == .land, !hasMergeSlot(workspace) { set(.waitingForLanding, for: workspace) }
                 else { advance(workspace) }
             }
 
@@ -195,14 +195,14 @@ final class Landing: ObservableObject {
         goals[workspace.id] = goal
         started[workspace.id] = Date()
         reviewAttempts[workspace.id] = 0
-        autoMerges[workspace.id] = QuorumBehavior.current.merges
+        autoMerges[workspace.id] = goal == .land && QuorumBehavior.current.merges
         uncertain.remove(workspace.id)
         if let root = workspace.context.root, let branch = workspace.context.branch {
             restored.insert(WorkItem.key(root: root, branch: branch))
         }
         runs[workspace.id, default: 0] += 1
         asks[workspace.id] = 0
-        if (goal == .land || autoMerges[workspace.id] == true), !hasMergeSlot(workspace) {
+        if goal == .land, !hasMergeSlot(workspace) {
             set(.waitingForLanding, for: workspace)
         } else { advance(workspace) }
         startTimer()
@@ -214,7 +214,7 @@ final class Landing: ObservableObject {
                                          started: started[workspace.id] ?? .distantFuture, waiting: true)
         let entries = Store.shared.workspaces.compactMap { other -> MergeOrder.Entry? in
             guard let root = other.context.root, let step = steps[other.id], step.isActive,
-                  goals[other.id] == .land || autoMerges[other.id] == true else { return nil }
+                  goals[other.id] == .land else { return nil }
             return MergeOrder.Entry(id: other.id.uuidString, root: root, started: started[other.id] ?? .distantFuture,
                                     waiting: step == .waitingForLanding)
         }
@@ -499,7 +499,7 @@ final class Landing: ObservableObject {
                     self.reviewAttempts[workspace.id, default: 0] += 1
                     self.quorumSince[workspace.id] = Date()
                     guard self.set(.reviewing, for: workspace) else { return }
-                    QuorumWatch.shared.start(.babysit, in: workspace)
+                    QuorumWatch.shared.start(.babysit, in: workspace, allowAutoMerge: self.goal(for: workspace) == .land)
                 } else {
                     self.merge(workspace, checkout: checkout, pr: pr)
                 }
@@ -515,6 +515,10 @@ final class Landing: ObservableObject {
     }
 
     private func merge(_ workspace: Workspace, checkout: String, pr: Int) {
+        guard goal(for: workspace) == .land else {
+            set(.reviewed, for: workspace)
+            return
+        }
         let run = runs[workspace.id]
         // Pushed after the checks (quorum's fixes): only that head merges,
         // and only quorum's review vouches for it.
@@ -649,13 +653,17 @@ final class Landing: ObservableObject {
                         continue
                     }
                     Self.takeFixes(in: checkout)
-                    if status.outcome == "merged" {
+                    if goal(for: workspace) == .review {
+                        if status.outcome == "merged" {
+                            set(.failed(L("quorum merged a review-only run.")), for: workspace)
+                        } else {
+                            set(.reviewed, for: workspace)
+                        }
+                    } else if status.outcome == "merged" {
                         set(.landed, for: workspace)
                     } else if autoMerges[workspace.id] == true {
                         proven[workspace.id] = status.headSHA
                         set(.merging(L("Waiting for quorum's merge on GitHub")), for: workspace)
-                    } else if goal(for: workspace) == .review {
-                        set(.reviewed, for: workspace)
                     } else {
                         // quorum may have pushed fixes. Merge only the final
                         // head recorded by that run; GitHub rejects a later push.

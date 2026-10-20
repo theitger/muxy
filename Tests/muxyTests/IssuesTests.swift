@@ -2,6 +2,14 @@ import XCTest
 @testable import muxy
 
 final class IssuesTests: XCTestCase {
+    func testNewSessionIssuePromptIncludesSavedTaskInstructions() {
+        let issue = Issue(repo: "o/r", number: 9, title: "Crash on start", url: "", state: "OPEN")
+        let prompt = NewSessionView.issuePrompt(for: issue, note: "", localRepo: "o/r", agent: .codex,
+                                                implement: false, instructions: "User's task goal:\nPreserve the recovery flow")
+        XCTAssertTrue(prompt.contains("Crash on start"))
+        XCTAssertTrue(prompt.contains("Preserve the recovery flow"))
+    }
+
     func testReferences() {
         XCTAssertEqual(IssueRef.parse("#123"), IssueRef(repo: nil, number: 123))
         XCTAssertEqual(IssueRef.parse("  42 "), IssueRef(repo: nil, number: 42))

@@ -422,8 +422,9 @@ struct NewSessionView: View {
         var spec = SessionSpec(
             directory: target, agent: agent,
             prompt: resolved.map {
-                Issues.prompt(for: $0.issue, note: $0.note, localRepo: issues.targetRepo,
-                              agent: agent, implement: Issues.implementSkill(in: target))
+                Self.issuePrompt(for: $0.issue, note: $0.note, localRepo: issues.targetRepo,
+                                 agent: agent, implement: Issues.implementSkill(in: target),
+                                 instructions: TaskLedger.shared.instructions(for: $0.issue))
             } ?? prompt,
             worktree: worktree, branch: typedBranch ?? issueBranch
         )
@@ -432,6 +433,12 @@ struct NewSessionView: View {
         spec.issue = resolved?.issue
         store.launch(spec, in: window)
         window.showNewSession = false
+    }
+
+    static func issuePrompt(for issue: Issue, note: String, localRepo: String?, agent: AgentKind?,
+                            implement: Bool, instructions: String) -> String {
+        [Issues.prompt(for: issue, note: note, localRepo: localRepo, agent: agent, implement: implement), instructions]
+            .filter { !$0.isEmpty }.joined(separator: "\n\n")
     }
 }
 

@@ -383,8 +383,9 @@ enum Quorum {
     /// `follow`: the folder whose new session shows the run live, in the
     /// background (as it showed when it ran in a tab).
     @MainActor
-    static func start(_ kind: QuorumStatus.Kind, pr: Int, draft: Bool, root: String, follow: String? = nil) -> Bool {
-        guard let log = launch(command(kind, pr: pr, draft: draft), in: root, name: "\(kind.rawValue)-\(pr)") else { return false }
+    static func start(_ kind: QuorumStatus.Kind, pr: Int, draft: Bool, root: String,
+                      allowAutoMerge: Bool = false, follow: String? = nil) -> Bool {
+        guard let log = launch(command(kind, pr: pr, draft: draft, allowAutoMerge: allowAutoMerge), in: root, name: "\(kind.rawValue)-\(pr)") else { return false }
         if let follow { showLog(log, in: follow, focus: false) }
         QuorumWatch.shared.start(always: true)
         DispatchQueue.main.asyncAfter(deadline: .now() + 3) { QuorumWatch.shared.refresh() }
@@ -414,9 +415,10 @@ enum Quorum {
 
     /// Starts quorum for a PR and shows its output in a tab of the session.
     @MainActor
-    static func run(_ kind: QuorumStatus.Kind, pr: Int, draft: Bool = false, in workspace: Workspace) {
+    static func run(_ kind: QuorumStatus.Kind, pr: Int, draft: Bool = false,
+                    allowAutoMerge: Bool = false, in workspace: Workspace) {
         let directory = workspace.context.checkout ?? workspace.directory
-        guard let log = launch(command(kind, pr: pr, draft: draft), in: directory, name: "\(kind.rawValue)-\(pr)") else {
+        guard let log = launch(command(kind, pr: pr, draft: draft, allowAutoMerge: allowAutoMerge), in: directory, name: "\(kind.rawValue)-\(pr)") else {
             Store.shared.window(of: workspace)?.show(L("quorum didn't start."))
             return
         }
@@ -430,13 +432,25 @@ enum Quorum {
     /// The shell line that hands a PR to quorum. `draft`: a babysit on a
     /// draft PR, which quorum refuses without `--draft` unless the config
     /// allows drafts; your click is that go-ahead.
-    static func command(_ kind: QuorumStatus.Kind, pr: Int, draft: Bool = false,
+    static func command(_ kind: QuorumStatus.Kind, pr: Int, draft: Bool = false, allowAutoMerge: Bool = false,
                         behavior: QuorumBehavior = .current, installed: String? = QuorumCompat.installed()) -> String {
         let flag = kind == .babysit && draft && !behavior.babysitsDrafts ? " --draft" : ""
         // The trace records the final head after fixes, so Land can reuse a
         // clean run only for the exact commit it checked.
         let trace = kind == .babysit && QuorumCompat.supportsDivergenceScan(installed) ? " --divergence-scan" : ""
-        return "quorum \(kind.rawValue)\(flag)\(trace) \(pr)"
+        let command = "quorum \(kind.rawValue)\(flag)\(trace) \(pr)"
+        guard !allowAutoMerge else { return command }
+        // quorum reads AUTO_MERGE from its config file, rather than the
+        // process environment. Give review-only runs a disposable copy.
+        return """
+        config="${QUORUM_CONFIG:-$HOME/.config/quorum/config}"
+        temporary="$(mktemp /tmp/muxy-quorum.XXXXXX)" || exit
+        trap 'rm -f "$temporary"' EXIT
+        if [ -f "$config" ] && ! cp "$config" "$temporary"; then exit 1; fi
+        printf '\\nAUTO_MERGE=0\\n' >> "$temporary" || exit 1
+        QUORUM_CONFIG="$temporary" \(command)
+        exit $?
+        """
     }
 
     private static func pid(in dir: String) -> pid_t? {
@@ -516,13 +530,13 @@ final class QuorumWatch: ObservableObject {
     }
 
     /// quorum in a new tab of the session, where you can watch it.
-    func start(_ kind: QuorumStatus.Kind, in workspace: Workspace) {
+    func start(_ kind: QuorumStatus.Kind, in workspace: Workspace, allowAutoMerge: Bool = false) {
         guard let pr = workspace.context.pr else { return }
         guard Acceptance.shared.covers(workspace) else {
             Store.shared.window(of: workspace)?.openAcceptance(workspace)
             return
         }
-        Quorum.run(kind, pr: pr, draft: workspace.context.isDraft, in: workspace)
+        Quorum.run(kind, pr: pr, draft: workspace.context.isDraft, allowAutoMerge: allowAutoMerge, in: workspace)
         start(always: true)
         DispatchQueue.main.asyncAfter(deadline: .now() + 3) { self.refresh() }
     }
