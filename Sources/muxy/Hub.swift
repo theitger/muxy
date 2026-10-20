@@ -272,7 +272,7 @@ final class HubModel: ObservableObject {
     /// From the hub it starts in the background: you stay there and can
     /// start the next one.
     func start(_ issue: Issue, agents: [AgentKind], in window: WindowModel, hideHub: Bool = false,
-               unattended: Bool = false, then: ((String?) -> Void)? = nil) {
+               unattended: Bool = false, plan: Bool = false, then: ((String?) -> Void)? = nil) {
         guard let root = checkout(of: issue.repo) else {
             window.show(L("%@ isn't cloned on this Mac", issue.repo))
             then?(nil)
@@ -284,7 +284,8 @@ final class HubModel: ObservableObject {
             let full: Issue = if case let .found(found) = Issues.view(issue.number, repo: issue.repo, in: root) { found } else { issue }
             await MainActor.run {
                 let before = Set(Store.shared.workspaces.map(\.id))
-                FanOut.launch(issue: full, root: root, agents: agents, unattended: unattended, background: !hideHub, in: window)
+                FanOut.launch(issue: full, root: root, agents: agents, unattended: unattended, background: !hideHub,
+                              plan: plan, in: window)
                 if !hideHub, !unattended {
                     window.show(L("%@ starts on #%d", agents.map(\.name).joined(separator: " & "), issue.number))
                 }
@@ -312,7 +313,7 @@ final class HubModel: ObservableObject {
 @MainActor
 enum FanOut {
     static func launch(issue: Issue, root: String, agents: [AgentKind], unattended: Bool = false,
-                       background: Bool = false, in window: WindowModel) {
+                       background: Bool = false, plan: Bool = false, in window: WindowModel) {
         let base = Issues.branchName(for: issue)
         let group = agents.count > 1 ? UUID().uuidString : nil
         var prompt = Issues.prompt(for: issue, localRepo: Issues.repo(of: root))
@@ -329,6 +330,7 @@ enum FanOut {
             spec.issue = issue
             spec.variantGroup = group
             spec.background = background || unattended
+            spec.plan = plan
             if unattended { spec.skipPermissions = true }
             Store.shared.launch(spec, in: window)
         }

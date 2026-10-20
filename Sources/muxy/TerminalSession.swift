@@ -29,7 +29,9 @@ final class TerminalSession: NSObject, ObservableObject, Identifiable {
         )
     }()
 
-    let id = UUID()
+    let id: UUID
+    /// Its program runs under muxyd and outlives muxy (see KeepAlive).
+    let kept: Bool
     let terminalView: TerminalView
     /// The container currently showing this terminal (see TerminalHostView).
     weak var host: NSView?
@@ -56,6 +58,10 @@ final class TerminalSession: NSObject, ObservableObject, Identifiable {
     var skipsPermissions = false
     /// The GitHub issue this tab was started on (see Issues).
     var issue: Issue?
+    /// Asked for a plan first: its next step is your go-ahead.
+    @Published var planning = false
+    /// Turns that ended since it started (Codex plans in its first).
+    var turnsEnded = 0
     /// One of several agents on the same task (see FanOut).
     var variantGroup: String?
     /// Something happened here while you were looking elsewhere — the
@@ -102,7 +108,11 @@ final class TerminalSession: NSObject, ObservableObject, Identifiable {
 
     /// `command` runs instead of a bare shell (an agent, followed by your
     /// shell when it exits); `environment` reaches every process in the tab.
-    init(directory: String, command: String? = nil, environment: [String: String] = [:], preparing: String? = nil) {
+    /// `id`: the same as before for a session muxyd still runs.
+    init(directory: String, command: String? = nil, environment: [String: String] = [:], preparing: String? = nil,
+         id: UUID = UUID(), kept: Bool = KeepAlive.enabled) {
+        self.id = id
+        self.kept = kept && KeepAlive.binary != nil
         cwd = directory
         title = Paths.folderName(directory)
         context = .plain(directory)
@@ -133,7 +143,7 @@ final class TerminalSession: NSObject, ObservableObject, Identifiable {
             envVars: environment.merging(
                 ["MUXY": "1", "MUXY_SESSION": id.uuidString].merging(StateDirectory.environment) { a, _ in a }
             ) { _, ours in ours },
-            command: command
+            command: kept ? KeepAlive.wrap(command, id: id, directory: directory) ?? command : command
         )
         terminalView.controller = Self.controller
         refreshContext()
@@ -159,6 +169,8 @@ final class TerminalSession: NSObject, ObservableObject, Identifiable {
     /// Dropping the session releases the surface, which tears down the
     /// child process; hiding first stops any in-flight rendering.
     func terminate() {
+        // Closed on purpose: its kept program ends too.
+        if kept { KeepAlive.kill(id) }
         terminalView.setSurfaceVisible(false)
         terminalView.removeFromSuperview()
     }

@@ -14,6 +14,10 @@ struct SavedSessions: Codable, Equatable {
         var issue: Issue?
         /// Its fan-out, when it was one of several agents on a task.
         var variantGroup: String?
+        /// Still waiting for the go-ahead on its plan.
+        var planning: Bool?
+        /// Its session under muxyd, still running when muxy comes back.
+        var kept: String?
     }
 
     struct Workspace: Codable, Equatable {
@@ -61,6 +65,8 @@ extension SavedSessions.Tab {
         directory = session.cwd
         issue = session.issue?.saved
         variantGroup = session.variantGroup
+        planning = session.planning ? true : nil
+        kept = session.kept ? session.id.uuidString : nil
         if session.agent != .none, let kind = session.kind {
             agent = kind.rawValue
             conversation = session.agentSessionID
@@ -76,8 +82,10 @@ extension SavedSessions.Tab {
         guard FileManager.default.fileExists(atPath: directory, isDirectory: &isDir), isDir.boolValue else {
             return nil
         }
+        // Under muxyd: the same id finds it again (its hooks report under it).
+        let keptID = KeepAlive.enabled ? kept.flatMap(UUID.init(uuidString:)) : nil
         guard let kind = agent.flatMap(AgentKind.init(rawValue:)) else {
-            let shell = TerminalSession(directory: directory)
+            let shell = keptID.map { TerminalSession(directory: directory, id: $0, kept: true) } ?? TerminalSession(directory: directory)
             shell.issue = issue
             shell.variantGroup = variantGroup
             return shell
@@ -85,7 +93,9 @@ extension SavedSessions.Tab {
         let skip = skipPermissions ?? false
         let session = TerminalSession(
             directory: directory,
-            command: Launcher.shellCommand(running: kind.command(.resume(id: conversation), skipPermissions: skip))
+            command: Launcher.shellCommand(running: kind.command(.resume(id: conversation), skipPermissions: skip,
+                                                                  plan: planning == true)),
+            id: keptID ?? UUID()
         )
         session.kind = kind
         session.agent = .idle
@@ -93,6 +103,7 @@ extension SavedSessions.Tab {
         session.skipsPermissions = skip
         session.issue = issue
         session.variantGroup = variantGroup
+        session.planning = planning == true
         return session
     }
 }

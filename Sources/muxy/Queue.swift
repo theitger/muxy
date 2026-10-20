@@ -31,6 +31,8 @@ final class Queue: ObservableObject {
         var idleSince: Date?
         var askedForPR = false
         var babysits = 0
+        /// A plan first, the work after your go-ahead.
+        var plan: Bool?
         var id: String { "\(issue.repo)#\(issue.number)" }
     }
 
@@ -43,12 +45,14 @@ final class Queue: ObservableObject {
         /// Stopped on something only you can do; the words say what.
         case needsYou(String)
         case failed(String)
+        /// Its plan waits for your go-ahead; it holds no slot meanwhile.
+        case planReady
 
         var isActive: Bool { self == .running }
         var isFinished: Bool {
             switch self {
             case .ready, .needsYou, .failed: true
-            case .queued, .running: false
+            case .queued, .running, .planReady: false
             }
         }
     }
@@ -56,6 +60,8 @@ final class Queue: ObservableObject {
     @Published private(set) var items: [Item] = []
     /// Started and not stopped: queued items start as slots free up.
     @Published private(set) var running = false
+    /// Why queued items wait although a slot is free: a used-up limit.
+    @Published private(set) var held: String?
 
     private var timer: Timer?
     private static let storeKey = "queue"
@@ -83,9 +89,11 @@ final class Queue: ObservableObject {
         items.contains { $0.issue.number == issue.number && $0.issue.repo.lowercased() == issue.repo.lowercased() }
     }
 
-    func add(_ issue: Issue, agent: AgentKind) {
+    func add(_ issue: Issue, agent: AgentKind, plan: Bool = false) {
         guard !contains(issue) else { return }
-        items.append(Item(issue: issue, agent: agent))
+        var item = Item(issue: issue, agent: agent)
+        item.plan = plan ? true : nil
+        items.append(item)
         save()
         if running { tick() }
     }
@@ -93,6 +101,19 @@ final class Queue: ObservableObject {
     func remove(_ item: Item) {
         items.removeAll { $0.id == item.id }
         save()
+    }
+
+    /// Your go-ahead for a plan, from the queue's list.
+    func approve(_ item: Item) {
+        guard let index = items.firstIndex(where: { $0.id == item.id }),
+              let workspace = HubModel.shared.session(for: item.issue),
+              let planner = workspace.sessions.first(where: \.planning),
+              Flow.approvePlan(in: planner) else { return }
+        items[index].phase = .running
+        items[index].acted = Date()
+        items[index].idleSince = nil
+        save()
+        begin()
     }
 
     func clearFinished() {
@@ -142,12 +163,28 @@ final class Queue: ObservableObject {
         for index in items.indices where items[index].phase.isActive {
             advance(&items[index], now: now)
         }
+        // An agent whose plan is (nearly) used up gets nothing new until it frees.
+        held = nil
         while running, items.filter({ $0.phase.isActive }).count < parallel,
-              let next = items.firstIndex(where: { $0.phase == .queued }) {
+              let next = items.firstIndex(where: { $0.phase == .queued && Usage.shared.exhausted($0.agent) == nil }) {
             launch(&items[next], now: now)
         }
+        if running, let waiting = items.first(where: { $0.phase == .queued }),
+           let window = Usage.shared.exhausted(waiting.agent) {
+            held = window.resets.map { L("%@'s limit is used up until %@", waiting.agent.name, $0.formatted(date: .omitted, time: .shortened)) }
+                ?? L("%@'s limit is used up", waiting.agent.name)
+        }
         if !items.contains(where: { $0.phase == .queued }) { running = false }
-        if !running, !items.contains(where: { $0.phase.isActive }) { end() }
+        // Plans waiting for you: approved in the session too, they go on.
+        for index in items.indices where items[index].phase == .planReady {
+            guard let workspace = HubModel.shared.session(for: items[index].issue) else { continue }
+            if !workspace.sessions.contains(where: \.planning) {
+                items[index].phase = .running
+                items[index].acted = now
+                items[index].idleSince = nil
+            }
+        }
+        if !running, !items.contains(where: { $0.phase.isActive || $0.phase == .planReady }) { end() }
         save()
     }
 
@@ -160,7 +197,8 @@ final class Queue: ObservableObject {
         item.phase = .running
         item.started = now
         item.acted = now
-        HubModel.shared.start(item.issue, agents: [item.agent], in: window, hideHub: false, unattended: true)
+        HubModel.shared.start(item.issue, agents: [item.agent], in: window, hideHub: false, unattended: true,
+                              plan: item.plan == true)
     }
 
     private func advance(_ item: inout Item, now: Date) {
@@ -242,6 +280,8 @@ final class Queue: ObservableObject {
         if facts.agent == .failed { return .finish(.needsYou(L("The agent stopped on an error."))) }
         let settled = item.acted.map { now.timeIntervalSince($0) > settle } ?? true
         switch facts.step {
+        case .approvePlan:
+            return .finish(.planReady)
         case .answer:
             return .finish(.needsYou(L("The agent asks you something.")))
         case .land, .landing:

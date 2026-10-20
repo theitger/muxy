@@ -186,6 +186,7 @@ private struct TerminalPane: View {
 private struct AgentsPane: View {
     @AppStorage("skipPermissions") private var skipPermissions = true
     @AppStorage("restoreSessions") private var restoreSessions = true
+    @AppStorage(KeepAlive.key) private var keepSessions = false
 
     var body: some View {
         SettingCard { SettingBlock { HookSettings() } }
@@ -196,8 +197,39 @@ private struct AgentsPane: View {
             SettingRow(L("Restore sessions"), detail: L("After a quit, a crash or an update, every session comes back: agents with their conversation, shells in their folder.")) {
                 Toggle("", isOn: $restoreSessions).labelsHidden().toggleStyle(.offOn)
             }
+            SettingRow(L("Sessions keep running when muxy quits (beta)"), detail: KeepAlive.binary == nil
+                ? L("This build has no muxyd.")
+                : L("New tabs run their program under muxyd, a small background process: quitting, updating or a crash of muxy doesn't stop an agent mid-turn, and the tab finds it again on the next launch. Closing a tab still ends it.")) {
+                Toggle("", isOn: $keepSessions).labelsHidden().toggleStyle(.offOn)
+                    .disabled(KeepAlive.binary == nil)
+            }
         }
         SettingCard { SettingBlock { PromptSettings() } }
+        SettingCard { ClaudeLimitsRow() }
+    }
+}
+
+/// Claude's usage limits in muxy: a script in front of the status line.
+private struct ClaudeLimitsRow: View {
+    @State private var on = ClaudeStatusTap.isInstalled()
+    @State private var problem: String?
+
+    var body: some View {
+        SettingRow(L("Claude's limits in muxy"), detail: problem ?? L("Claude Code tells only its status line how much of your plan is used. On: a small script in front of your status line keeps that for muxy and runs your status line as before. Off: your status line as it was. Codex's limits need nothing.")) {
+            Toggle("", isOn: Binding(get: { on }, set: { set($0) }))
+                .labelsHidden().toggleStyle(.offOn)
+                .disabled(!Paths.isApp)
+        }
+    }
+
+    private func set(_ wanted: Bool) {
+        do {
+            if wanted { try ClaudeStatusTap.install() } else { try ClaudeStatusTap.uninstall() }
+            problem = nil
+        } catch {
+            problem = (error as? HookInstaller.Failure)?.message ?? error.localizedDescription
+        }
+        on = ClaudeStatusTap.isInstalled()
     }
 }
 

@@ -1,0 +1,17 @@
+[package]
+name = "muxyd"
+version = "0.1.0"
+edition = "2021"
+description = "Keeps muxy's terminal sessions running while muxy itself quits, updates or crashes."
+license = "MIT"
+publish = false
+
+[dependencies]
+libc = "0.2"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"

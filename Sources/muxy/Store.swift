@@ -59,6 +59,8 @@ final class Store: ObservableObject {
         Radar.shared.start()
         HubModel.shared.start()
         Queue.shared.resume()
+        WorkLedger.shared.start()
+        Usage.shared.start()
         // Restored sessions: what was proven on their files before.
         DispatchQueue.main.asyncAfter(deadline: .now() + 4) {
             Proofs.shared.recall(self.workspaces.compactMap(\.context.checkout))
@@ -473,6 +475,25 @@ final class Store: ObservableObject {
         workspaces.contains { $0 !== workspace && $0.context.checkout == workspace.context.checkout }
     }
 
+    /// One tab's program for another, in the same place, without asking:
+    /// a planning agent that goes on with its permissions skipped.
+    func replace(_ old: TerminalSession, with new: TerminalSession, in workspace: Workspace) {
+        guard let index = workspace.sessions.firstIndex(where: { $0 === old }) else { return }
+        new.onAttentionChange = { [weak self] in self?.updateBadge() }
+        new.onContextChange = { [weak self] in self?.objectWillChange.send() }
+        let selected = workspace.selectedSessionID == old.id
+        old.terminate()
+        // The old program's last writes (a conversation file) come first.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+            guard let index = workspace.sessions.firstIndex(where: { $0 === old }) else { return }
+            workspace.sessions[index] = new
+            if selected { workspace.selectedSessionID = new.id }
+            if self.window(of: workspace)?.selectedWorkspaceID != workspace.id { BackgroundStart.start(new) }
+            self.sessionsChanged()
+        }
+        _ = index
+    }
+
     func close(_ session: TerminalSession, in workspace: Workspace) {
         if workspace.sessions.count <= 1 {
             requestCloseWorkspace(workspace)
@@ -502,7 +523,8 @@ final class Store: ObservableObject {
     /// ⌘Q — one keystroke must never silently kill every agent.
     /// Always asks while any session is open — every agent ends with it.
     func shouldQuit() -> Bool {
-        guard !workspaces.isEmpty else {
+        // Nothing ends when every tab runs under muxyd: quit as is.
+        guard !workspaces.isEmpty, !workspaces.flatMap(\.sessions).allSatisfy(\.kept) else {
             saveSessions()
             return true
         }
@@ -689,7 +711,8 @@ final class Store: ObservableObject {
                 session.markAttentionIfBackground(reason: L("hit an error"))
             default:
                 session.agent = .idle
-                session.markAttentionIfBackground(reason: L("is done"))
+                session.turnsEnded += 1
+                session.markAttentionIfBackground(reason: session.planning ? L("has a plan for you") : L("is done"))
                 Results.shared.turnEnded(in: session)
                 Landing.shared.turnEnded(in: workspace)
                 // A turn often ends with a push: don't wait for the poll.
@@ -817,10 +840,10 @@ final class Store: ObservableObject {
             directory: spec.directory,
             command: spec.agent.map {
                 Launcher.shellCommand(running: $0.command(
-                    .new(prompt: !prompt.isEmpty, id: conversation), skipPermissions: skipPermissions
+                    .new(prompt: !prompt.isEmpty, id: conversation), skipPermissions: skipPermissions, plan: spec.plan
                 ))
             },
-            environment: prompt.isEmpty ? [:] : ["MUXY_PROMPT": prompt],
+            environment: prompt.isEmpty ? [:] : ["MUXY_PROMPT": spec.plan && spec.agent == .codex ? prompt + "\n\n" + Flow.planNote : prompt],
             preparing: spec.branch == nil ? nil : L("Creating worktree …")
         )
         session.kind = spec.agent
@@ -828,6 +851,7 @@ final class Store: ObservableObject {
         session.skipsPermissions = spec.agent != nil && skipPermissions
         session.issue = spec.issue
         session.variantGroup = spec.variantGroup
+        session.planning = spec.plan && spec.agent != nil
         if spec.agent != nil { session.agent = .idle }
         let workspace = makeWorkspace(directory: spec.directory, in: window, session: session)
         if spec.background {

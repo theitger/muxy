@@ -9,6 +9,8 @@ enum NextStep: Equatable {
     case wait(String)
     /// The agent asks you something.
     case answer
+    /// The agent's plan waits for your go-ahead.
+    case approvePlan
     /// Work is there, no pull request yet.
     case openPR
     /// A pull request nobody reviewed yet: quorum's babysit reviews it,
@@ -29,6 +31,7 @@ enum NextStep: Equatable {
         switch self {
         case let .wait(text): text
         case .answer: L("Answer the agent")
+        case .approvePlan: L("Approve the plan")
         case .openPR: L("Open a pull request")
         case .review: L("Review and fix with quorum")
         case let .fix(why): why
@@ -42,7 +45,7 @@ enum NextStep: Equatable {
     /// The board's column for it.
     var stage: Stage {
         switch self {
-        case .wait, .answer, .openPR: .working
+        case .wait, .answer, .approvePlan, .openPR: .working
         case .review, .fix, .reviewing: .review
         case .land, .landing: .ready
         case .none: .none
@@ -64,6 +67,7 @@ enum Flow {
             if step == .landed { return .none }
             return Landing.shared.goal(for: workspace) == .review ? .reviewing(step.text) : .landing(step.text)
         }
+        if let planner = workspace.sessions.first(where: \.planning), Self.planReady(planner) { return .approvePlan }
         if workspace.agent == .blocked { return .answer }
         if workspace.agent == .working { return .wait(L("Working")) }
         guard let pr = context.pr else {
@@ -98,10 +102,65 @@ enum Flow {
         return status.kind == .review ? .review : .fix(L("Run quorum again"))
     }
 
+    /// Asked of Codex, which has no plan mode of its own.
+    nonisolated static let planNote = """
+    First make a plan: read what you need, then write the plan (what you'll change, where, how you'll test it) and stop. Change no files until I say go.
+    """
+
+    /// The plan is there: Claude asks to leave its plan mode, Codex
+    /// ended the turn it was asked to plan in.
+    static func planReady(_ session: TerminalSession) -> Bool {
+        switch session.kind {
+        case .claude: session.agent == .blocked
+        case .codex: session.agent == .idle && session.turnsEnded > 0
+        case nil: false
+        }
+    }
+
+    /// The go-ahead: Claude's own "yes" (the first, which goes on without
+    /// asking when permissions are skipped), Codex told to go.
+    static func approvePlan(in session: TerminalSession) -> Bool {
+        // Started without skipped permissions so the plan would wait: the
+        // same conversation goes on with them, told to go.
+        if session.kind == .claude, session.skipsPermissions, let id = session.agentSessionID,
+           let workspace = Store.shared.workspaces.first(where: { $0.sessions.contains { $0 === session } }) {
+            let go = TerminalSession(
+                directory: session.cwd,
+                command: Launcher.shellCommand(running: AgentKind.claude.command(
+                    .resume(id: id), skipPermissions: true, resumePrompt: true
+                )),
+                environment: ["MUXY_PROMPT": "The plan is approved: implement it."]
+            )
+            go.kind = .claude
+            go.agentSessionID = id
+            go.skipsPermissions = true
+            go.issue = session.issue
+            go.variantGroup = session.variantGroup
+            go.agent = .working
+            Store.shared.replace(session, with: go, in: workspace)
+            return true
+        }
+        switch session.kind {
+        case .claude:
+            let choices = Inbox.choices(of: session)
+            guard let yes = choices.first(where: { $0.label.lowercased().hasPrefix("yes") }) ?? choices.first else { return false }
+            Inbox.choose(yes, in: session)
+        case .codex:
+            RemoteState.type("Go ahead: implement the plan.", enter: true, into: session)
+        case nil:
+            return false
+        }
+        session.planning = false
+        return true
+    }
+
     /// Takes the step. Returns false when it can't (no agent to ask).
     @discardableResult
     static func take(_ step: NextStep, in workspace: Workspace, window: WindowModel) -> Bool {
         switch step {
+        case .approvePlan:
+            guard let planner = workspace.sessions.first(where: \.planning) else { return false }
+            return approvePlan(in: planner)
         case .answer:
             window.showHub = false
             Store.shared.select(workspace, session: workspace.sessions.first { $0.agent == .blocked })

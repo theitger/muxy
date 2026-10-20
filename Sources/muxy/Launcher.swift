@@ -18,6 +18,8 @@ struct SessionSpec {
     var skipPermissions: Bool?
     /// Started without taking the stage or the window's focus.
     var background = false
+    /// A plan first, the work after your go-ahead.
+    var plan = false
 }
 
 extension SessionSpec {

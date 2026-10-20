@@ -11,6 +11,7 @@ struct StatusBar: View {
     @ObservedObject private var quorum = QuorumWatch.shared
     @ObservedObject private var landing = Landing.shared
     @ObservedObject private var hub = HubModel.shared
+    @ObservedObject private var usage = Usage.shared
 
     var body: some View {
         // Session states change without the store noticing: look each second.
@@ -40,6 +41,8 @@ struct StatusBar: View {
             fact("person.3", running, "quorum", tone: running > 0 ? Theme.blue.strong : nil)
             fact("airplane", landings, L("landing"), tone: landings > 0 ? Theme.blue.strong : nil)
             Spacer(minLength: 8)
+            limits("Claude", usage.claude)
+            limits("Codex", usage.codex)
             if let login = hub.account.login {
                 Text("gh:" + login).foregroundStyle(Theme.textFaint)
             }
@@ -84,4 +87,27 @@ struct StatusBar: View {
             .foregroundStyle(tone ?? Theme.textMuted)
         }
     }
+
+    /// An agent's limits: how much of each window is used, red when it
+    /// is nearly gone, when it frees up on hover.
+    @ViewBuilder
+    private func limits(_ agent: String, _ windows: [UsageWindow]) -> some View {
+        if !windows.isEmpty {
+            HStack(spacing: 4) {
+                Text(agent).foregroundStyle(Theme.textFaint)
+                ForEach(windows, id: \.name) { window in
+                    Text("\(window.name) \(Int(window.used.rounded()))%")
+                        .foregroundStyle(window.used >= Usage.ceiling ? Theme.redTone.strong
+                            : window.used >= 80 ? Theme.orange.strong : Theme.textDim)
+                        .monospacedDigit()
+                }
+            }
+            .help(windows.map { window in
+                window.resets.map { L("%@: %d%% used, resets %@", window.name, Int(window.used.rounded()),
+                                      $0.formatted(date: .abbreviated, time: .shortened)) }
+                    ?? L("%@: %d%% used", window.name, Int(window.used.rounded()))
+            }.joined(separator: "\n"))
+        }
+    }
+
 }

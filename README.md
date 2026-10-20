@@ -171,6 +171,51 @@ whether it can go without losing anything. **Remove finished** takes all of
 those at once. Containers a worktree shares with the main checkout (the
 same Compose project name) are never stopped with it.
 
+## Work that outlives its sessions
+
+Every branch you work on is kept as a piece of work with its checkout,
+issue, pull request, agent conversation and **evidence**: which checks
+passed on which files, what quorum found and fixed, what it collided with,
+what was pushed and when it merged. Close a session and the work stays on
+the board, paused, until **Continue** picks up the same conversation in the
+same checkout. Your open pull requests without a session show up too,
+with quorum's state and a button to review and fix. **Evidence** shows the
+facts and posts them as a comment on the PR: why it can be merged, not a
+diff to read.
+
+## A queue for while you're away
+
+Put issues in line from the hub (**More → Queue for Claude/Codex**) and
+start it: a few at a time, each in its own worktree without permission
+prompts, through the checks, the pull request and quorum's fix loop up to
+ready to land. Landing stays your click. Anything that needs you (a
+question, a failure, two quorum runs that didn't converge, eight hours)
+says why. The queue keeps the Mac awake and holds new starts while an
+agent's plan limit is used up.
+
+## Plan first
+
+**More → Plan first with Claude** starts Claude in its plan mode (Codex
+is asked for a plan); the card, the queue and the phone offer **Approve
+the plan**, and the agent goes ahead. Queued with a plan, issues plan
+overnight without holding a slot and wait for your go-ahead in the morning.
+
+## Your plans' limits
+
+The status bar shows how much of Claude's and Codex's limits is used
+(5 hours, week). Codex's come from its session files; Claude tells only its
+status line, so **Settings → Agents → Claude's limits in muxy** puts a
+small script in front of yours that keeps them for muxy and runs your
+status line as before.
+
+## Sessions that keep running (beta)
+
+With **Settings → Agents → Sessions keep running when muxy quits**, new
+tabs run their program under `muxyd`, a small Rust daemon. Quitting,
+updating or a crash of muxy ends only the tab's client; an agent goes on
+mid-turn, and the next launch attaches the tab to it again with what it
+printed meanwhile. Closing a tab still ends it.
+
 ## On your phone
 
 <picture>
