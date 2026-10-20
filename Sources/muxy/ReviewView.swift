@@ -162,13 +162,13 @@ final class ReviewModel: ObservableObject {
             repo: workspace.context.repo, pr: workspace.context.pr, newChat: existing == nil
         ) else { return false }
         let target = TaskTarget(workspace: workspace)
+        guard Queue.shared.followDecision(in: workspace, awaitingAgent: true) else { return false }
         guard TaskLedger.shared.update(target.id, { record in
             record.feedback.append(TaskFeedback(text: message, head: workspace.context.prHead, screenshot: screenshot?.path))
             record.draft = feedback
             record.lastInspectedHead = readiness.head ?? record.lastInspectedHead
             record.inspectedAt = Date()
         }) else { return false }
-        guard Queue.shared.followDecision(in: workspace, awaitingAgent: true) else { return false }
         inspectionBaseline = readiness.head ?? inspectionBaseline
         if case .sinceInspection = scope, let inspectionBaseline { scope = .sinceInspection(inspectionBaseline) }
         if let session = existing {
