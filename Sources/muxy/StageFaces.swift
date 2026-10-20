@@ -24,8 +24,10 @@ struct WingFace {
     /// muxy's own checks: running, or how they came out.
     var proof: ProofResult.Outcome?
     var proving = false
-    /// Sessions (or the base) it would conflict with.
+    /// Other sessions changing the same lines.
     var collisions: [String] = []
+    /// The base it lands on, when merging that in would conflict.
+    var baseConflict: String?
     /// quorum on its PR, as a short line.
     var quorum: String?
     var quorumRunning = false
@@ -179,7 +181,10 @@ struct WingCardFace: View {
             chips.append(Fact(text: L("proven"), symbol: "checkmark.shield.fill", tone: Theme.greenTone))
         }
         for other in face.collisions.prefix(2) {
-            chips.append(Fact(text: L("collides: %@", other), symbol: "arrow.triangle.merge", tone: Theme.orange))
+            chips.append(Fact(text: L("collides with %@", other), symbol: "arrow.triangle.merge", tone: Theme.orange))
+        }
+        if let base = face.baseConflict {
+            chips.append(Fact(text: L("conflicts with %@", base), symbol: "arrow.down.to.line", tone: Theme.neutral))
         }
         if let quorum = face.quorum {
             chips.append(Fact(text: quorum, symbol: "person.3", tone: face.quorumRunning ? Theme.blue : Theme.neutral))
@@ -405,6 +410,9 @@ struct FaceSignals: View {
             }
             if !face.collisions.isEmpty {
                 word(L("collides"), Theme.orange.strong, L("Collides with %@", face.collisions.joined(separator: ", ")))
+            }
+            if let base = face.baseConflict {
+                word(L("conflicts with %@", base), Theme.textMuted, L("Merging %@ in would conflict", base))
             }
             if face.quorumRunning {
                 word("quorum", Theme.blue.strong, face.quorum ?? "")

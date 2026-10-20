@@ -44,7 +44,7 @@ enum RemoteState {
             } else if let verdict = Proofs.shared.result(for: checkout)?.verdict, verdict == .passed || verdict == .failed {
                 item["proof"] = verdict.rawValue
             }
-            let collisions = Radar.shared.collisions(for: checkout).map { $0.withBase ? $0.other : Radar.shared.title(of: $0.other) }
+            let collisions = Radar.shared.collisions(for: checkout).map(Radar.shared.describe)
             if !collisions.isEmpty { item["collisions"] = collisions }
             if let review = QuorumWatch.shared.status(for: workspace) {
                 item["quorum"] = ["summary": review.summary, "running": review.running, "clean": review.succeeded]
@@ -87,6 +87,7 @@ enum RemoteState {
         case .answer: "answer"
         case .approvePlan: "approvePlan"
         case .openPR: "openPR"
+        case .accept: "accept"
         case .review: "review"
         case .fix: "fix"
         case .land: "land"
@@ -167,10 +168,13 @@ enum RemoteState {
 
     /// Typed text goes in like a paste (as Ghostty does for drops); Enter
     /// and special keys as real key events.
-    static func type(_ text: String, enter: Bool, into session: TerminalSession) {
-        if !text.isEmpty { session.terminalView.sendText(text) }
-        if enter { press("enter", in: session) }
+    @discardableResult
+    static func type(_ text: String, enter: Bool, into session: TerminalSession) -> Bool {
+        guard let surface = session.terminalView.currentSurface else { return false }
+        guard text.isEmpty || surface.sendText(text) else { return false }
+        guard !enter || press("enter", in: session) else { return false }
         markSeen(session)
+        return true
     }
 
     /// A key the phone pressed: (macOS key code, Ghostty mods, text,

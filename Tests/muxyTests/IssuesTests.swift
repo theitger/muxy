@@ -2,6 +2,14 @@ import XCTest
 @testable import muxy
 
 final class IssuesTests: XCTestCase {
+    func testNewSessionIssuePromptIncludesSavedTaskInstructions() {
+        let issue = Issue(repo: "o/r", number: 9, title: "Crash on start", url: "", state: "OPEN")
+        let prompt = NewSessionView.issuePrompt(for: issue, note: "", localRepo: "o/r", agent: .codex,
+                                                implement: false, instructions: "User's task goal:\nPreserve the recovery flow")
+        XCTAssertTrue(prompt.contains("Crash on start"))
+        XCTAssertTrue(prompt.contains("Preserve the recovery flow"))
+    }
+
     func testReferences() {
         XCTAssertEqual(IssueRef.parse("#123"), IssueRef(repo: nil, number: 123))
         XCTAssertEqual(IssueRef.parse("  42 "), IssueRef(repo: nil, number: 42))
@@ -86,6 +94,18 @@ final class IssuesTests: XCTestCase {
 }
 
 final class PromptTemplateTests: XCTestCase {
+    func testImplementIsOnlyExpandedForClaudeEvenWhenRepoHasTheSkill() {
+        let issue = Issue(repo: "o/r", number: 9, title: "Fix it", url: "", state: "OPEN", body: "The task.")
+        XCTAssertEqual(Issues.prompt(for: issue, template: Issues.defaultTemplate, agent: .claude, implement: true),
+                       "/implement o/r#9: Fix it\n\nThe task.")
+        for agent in [AgentKind.codex, nil] {
+            XCTAssertEqual(Issues.prompt(for: issue, template: Issues.defaultTemplate, agent: agent, implement: true),
+                           "o/r#9: Fix it\n\nThe task.")
+        }
+        XCTAssertEqual(Issues.prompt(for: issue, template: Issues.defaultTemplate, agent: .claude, implement: false),
+                       "o/r#9: Fix it\n\nThe task.")
+    }
+
     func testCustomTemplateAndEmptyFields() {
         let issue = Issue(repo: "o/r", number: 9, title: "Crash", url: "https://x/9", state: "OPEN", body: "Use {braces} here")
         let text = Issues.prompt(for: issue, localRepo: "o/r", template: "Plan first.\n\n{reference} {title}\n\n{labels}\n\n{body}\n\n{note}\n\nThen: Closes {reference}")

@@ -33,6 +33,9 @@ struct TabBarView: View {
             }
             Spacer(minLength: 8)
             AppButton(workspace: workspace)
+            if workspace.context.repo != nil {
+                SmallButton(title: L("Task")) { window.openTask(TaskTarget(workspace: workspace)) }
+            }
             ResultButton(window: window, workspace: workspace)
             if !onStage {
                 InboxPill(store: store, window: window)

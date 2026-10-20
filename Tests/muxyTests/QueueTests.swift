@@ -42,9 +42,68 @@ final class QueueTests: XCTestCase {
         XCTAssertEqual(Queue.decide(item(babysits: 1), facts: facts(.land, hasPR: true), now: now), .finish(.ready))
     }
 
-    func testFixLoopGetsTwoChances() {
+    func testQueueWaitsForHumanAcceptanceBeforeQuorum() {
+        XCTAssertEqual(Queue.decide(item(), facts: facts(.accept, hasPR: true), now: now),
+                       .finish(.needsYou(L("Inspect and accept the implementation."))))
+    }
+
+    func testFixLoopUsesDefaultRepairLimit() {
         XCTAssertEqual(Queue.decide(item(babysits: 1), facts: facts(.fix("Fix CI"), hasPR: true), now: now), .babysit)
-        XCTAssertEqual(Queue.decide(item(babysits: 2), facts: facts(.fix("Fix CI"), hasPR: true), now: now), .finish(.needsYou("Fix CI")))
+        XCTAssertEqual(Queue.decide(item(babysits: 2), facts: facts(.fix("Fix CI"), hasPR: true), now: now), .babysit)
+        XCTAssertEqual(Queue.decide(item(babysits: 3), facts: facts(.fix("Fix CI"), hasPR: true), now: now), .finish(.needsYou("Fix CI")))
+    }
+
+    func testFixLoopUsesRepairLimit() {
+        var limited = item(babysits: 1)
+        limited.limits = AutomationLimits(hours: 8, reviews: 1, repairs: 2)
+        XCTAssertEqual(Queue.decide(limited, facts: facts(.fix("Fix CI"), hasPR: true), now: now), .babysit)
+
+        limited.babysits = 2
+        XCTAssertEqual(Queue.decide(limited, facts: facts(.fix("Fix CI"), hasPR: true), now: now), .finish(.needsYou("Fix CI")))
+    }
+
+    func testReviewAttemptsDoNotConsumeRepairAttempts() {
+        var limited = item()
+        limited.limits = AutomationLimits(hours: 8, reviews: 1, repairs: 1)
+        limited.reviews = 1
+        limited.repairs = 0
+
+        XCTAssertEqual(Queue.decide(limited, facts: facts(.review, hasPR: true), now: now),
+                       .finish(.needsYou(L("Review attempt limit reached."))))
+        XCTAssertEqual(Queue.decide(limited, facts: facts(.fix("Fix CI"), hasPR: true), now: now), .babysit)
+    }
+
+    func testFailedDeliveryDoesNotAwaitATurn() {
+        var waiting = item()
+        waiting.awaitingAgent = true
+        waiting.awaitedTurns = 4
+        let failed = Queue.failedHandoff(waiting, message: "Retry the request.", now: now)
+        XCTAssertEqual(failed.phase, .needsYou("Retry the request."))
+        XCTAssertEqual(failed.acted, now)
+        XCTAssertNil(failed.awaitingAgent)
+        XCTAssertNil(failed.awaitedTurns)
+    }
+
+    func testAnswerKeepsTheOriginalTimeBudget() {
+        var waiting = item(started: -3600)
+        waiting.phase = .needsYou("Answer the question.")
+
+        let resumed = Queue.resumed(waiting, awaitingAgent: true, turns: 3, now: now)
+
+        XCTAssertEqual(resumed.started, waiting.started)
+        XCTAssertEqual(resumed.phase, .running)
+        XCTAssertEqual(resumed.awaitedTurns, 3)
+    }
+
+    func testNewTaskDoesNotUseAnEarlierMergeForTheSameIssue() {
+        var replacement = item(started: 0)
+        let old = WorkItem(root: "/repo", branch: "7-old", title: "Old task", issue: issue,
+                           pr: 1, prState: "merged", created: now.addingTimeInterval(-7200),
+                           touched: now.addingTimeInterval(-3600))
+
+        XCTAssertFalse(Queue.recordsMerge(old, for: replacement))
+        replacement.started = now.addingTimeInterval(-7200)
+        XCTAssertTrue(Queue.recordsMerge(old, for: replacement))
     }
 
     func testWithoutQuorumAPullRequestIsReady() {

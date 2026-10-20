@@ -59,6 +59,8 @@ final class WorkLedger: ObservableObject {
 
     @Published private(set) var items: [String: WorkItem] = [:]
     private var timer: Timer?
+    private var reconciling = false
+    private var lastReconciled: Date?
     /// The facts last seen, so each is written down once.
     private var seen: Set<String> = []
 
@@ -130,6 +132,33 @@ final class WorkLedger: ObservableObject {
         }
     }
 
+    /// The collisions as the radar sees them now, in place of the ones it
+    /// saw before: one that was resolved (or was only ever the base's) is
+    /// gone from the evidence and the PR comment too.
+    func current(_ collisions: [Evidence], root: String, branch: String) {
+        upsert(root: root, branch: branch) { item in
+            let before = item.evidence.filter { $0.kind == .collision }
+            let now = collisions.map { fact in before.first { $0.text == fact.text && $0.ref == fact.ref } ?? fact }
+            guard now != before else { return }
+            item.evidence.removeAll { $0.kind == .collision }
+            item.evidence.append(contentsOf: now)
+            for fact in now where !before.contains(fact) { item.touched = max(item.touched, fact.date) }
+        }
+    }
+
+    /// A checkout no longer eligible for Radar cannot still have a current
+    /// collision. Remove its live collision evidence from durable history.
+    func reconcileCollisions(eligibleCheckouts: Set<String>) {
+        var changed = false
+        for key in Array(items.keys) {
+            guard let checkout = items[key]?.checkout, !eligibleCheckouts.contains(checkout),
+                  items[key]?.evidence.contains(where: { $0.kind == .collision }) == true else { continue }
+            items[key]?.evidence.removeAll { $0.kind == .collision }
+            changed = true
+        }
+        if changed { save() }
+    }
+
     private static func fingerprint(_ key: String, _ fact: Evidence) -> String {
         "\(key)|\(fact.kind.rawValue)|\(fact.ref ?? "")|\(fact.text)"
     }
@@ -187,11 +216,16 @@ final class WorkLedger: ObservableObject {
                           ok: status.succeeded ? true : (status.interrupted ? nil : false),
                           ref: status.runDirectory.map { ($0 as NSString).lastPathComponent }), root: root, branch: branch)
         }
-        for collision in Radar.shared.collisions(for: context.checkout) {
-            let other = collision.withBase ? collision.other : Radar.shared.title(of: collision.other)
-            note(Evidence(kind: .collision, date: Date(),
-                          text: L("Collides with %@ in %@", other, collision.files.prefix(3).joined(separator: ", ")),
-                          ok: false, ref: collision.files.sorted().joined(separator: ",")), root: root, branch: branch)
+        if Radar.shared.scanned {
+            let collisions = Radar.shared.collisions(for: context.checkout).map { collision in
+                let files = collision.files.prefix(3).joined(separator: ", ")
+                return Evidence(kind: .collision, date: Date(),
+                                text: collision.withBase
+                                    ? L("Conflicts with %@ in %@", collision.baseName, files)
+                                    : L("Collides with %@ in %@", Radar.shared.title(of: collision.other), files),
+                                ok: false, ref: collision.files.sorted().joined(separator: ","))
+            }
+            current(collisions, root: root, branch: branch)
         }
         if let step = Landing.shared.step(for: workspace) {
             switch step {
@@ -223,15 +257,28 @@ final class WorkLedger: ObservableObject {
                 if item.title == branch { item.title = pull.title }
             }
         }
-        // Open PRs GitHub no longer lists as open: merged or closed meanwhile.
-        let open = Set(HubModel.shared.pulls.map { "\($0.repo.lowercased())#\($0.number)" })
-        guard HubModel.shared.updated != nil else { return }
-        for item in items.values where item.isOpen && item.prState == "open" {
-            guard let repo = item.repo, let pr = item.pr, !open.contains("\(repo.lowercased())#\(pr)"),
-                  !Store.shared.workspaces.contains(where: { $0.context.root == item.root && $0.context.branch == item.branch })
-            else { continue }
-            items[item.id]?.prState = "done"
-            items[item.id]?.dropped = true
+        // Absence from a search is not proof of a merge (pagination,
+        // permissions and temporary failures can all omit an open PR).
+        guard HubModel.shared.updated != nil, !reconciling,
+              lastReconciled.map({ Date().timeIntervalSince($0) > 60 }) ?? true else { return }
+        let candidates = items.values.filter { $0.isOpen && $0.prState == "open" && $0.repo != nil && $0.pr != nil }
+        let keys = candidates.compactMap { item in item.repo.flatMap { repo in item.pr.map { "\(repo.lowercased())#\($0)" } } }
+        guard !keys.isEmpty else { return }
+        reconciling = true
+        Task.detached(priority: .utility) {
+            let result = ReviewHistory.load(keys: keys)
+            await MainActor.run {
+                self.reconciling = false
+                self.lastReconciled = Date()
+                for item in candidates {
+                    guard let repo = item.repo, let pr = item.pr, let state = result.states["\(repo.lowercased())#\(pr)"] else { continue }
+                    self.upsert(root: item.root, branch: item.branch) { current in
+                        guard current.pr == pr else { return }
+                        current.prState = state.rawValue.lowercased()
+                        if state != .open { current.touched = Date() }
+                    }
+                }
+            }
         }
     }
 

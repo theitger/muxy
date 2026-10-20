@@ -59,6 +59,7 @@ final class Store: ObservableObject {
         Radar.shared.start()
         HubModel.shared.start()
         Queue.shared.resume()
+        Landing.shared.resume()
         WorkLedger.shared.start()
         Usage.shared.start()
         // Restored sessions: what was proven on their files before.

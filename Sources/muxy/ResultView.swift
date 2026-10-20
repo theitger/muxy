@@ -162,6 +162,7 @@ struct PanelExtras {
     /// Finished turns, newest first.
     var turns: [Checkpoint] = []
     var quorum: QuorumStatus?
+    var prHead: String?
     var quorumInstalled = false
     var landing: Landing.Step?
     var canLand = false
@@ -232,9 +233,10 @@ struct ResultOverlay: View {
             proof: proofs.result(for: checkout),
             proofRunning: checkout.flatMap { proofs.running[$0] },
             hasChecks: workspace.context.root.map { !ProofCheck.load(root: $0).isEmpty } ?? false,
-            collisions: radar.collisions(for: checkout).map { ($0, $0.withBase ? $0.other : radar.title(of: $0.other)) },
+            collisions: radar.collisions(for: checkout).map { ($0, $0.withBase ? $0.baseName : radar.title(of: $0.other)) },
             turns: turns.checkpoints(for: checkout).filter { $0.moment == .after },
             quorum: quorum.status(for: workspace),
+            prHead: workspace.context.prHead,
             quorumInstalled: Quorum.isInstalled,
             landing: landing.step(for: workspace),
             canLand: landing.canLand(workspace),
@@ -251,7 +253,10 @@ struct ResultOverlay: View {
             },
             cancelProof: { if let checkout { proofs.cancel(checkout: checkout) } },
             sendFailures: {
-                if let result = proofs.result(for: checkout), let agent = agentSession { Proofs.sendFailures(result, to: agent) }
+                if let result = proofs.result(for: checkout), let agent = agentSession,
+                   !Proofs.sendFailures(result, to: agent) {
+                    window.show(L("The failed checks could not be delivered. Check the terminal and try again."), seconds: 5)
+                }
             },
             review: { scope in window.openReview(workspace, scope: scope) },
             restore: { checkpoint in
@@ -276,7 +281,9 @@ struct ResultOverlay: View {
                 let text = collision.withBase
                     ? "Your branch conflicts with \(collision.other) in these files:\n\(files)\n\nMerge \(collision.other) into this branch now (git fetch first), resolve the conflicts keeping both sides' intent, run the relevant tests and commit."
                     : "Another session (\"\(title)\", branch work in \(collision.other)) changes the same lines as you in:\n\(files)\n\nKeep your changes in these files minimal and self-contained so both can merge; say which of your changes there could move elsewhere."
-                RemoteState.type(text, enter: true, into: agent)
+                if !RemoteState.type(text, enter: true, into: agent) {
+                    window.show(L("The collision details could not be delivered. Check the terminal and try again."), seconds: 5)
+                }
             },
             land: { landing.land(workspace) },
             cancelLanding: { landing.cancel(workspace) }
@@ -300,6 +307,8 @@ struct ResultPanel: View {
     var actions = PanelActions()
     var refresh: () -> Void = {}
     var close: () -> Void = {}
+
+    @State private var expandedQuorum: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -549,17 +558,25 @@ struct ResultPanel: View {
                     if status.running {
                         ProgressView().controlSize(.mini)
                     } else {
-                        StateMark(word: "", tone: status.isClean ? Theme.greenTone.strong : Theme.orange.strong, size: 12, dot: true)
+                        StateMark(word: "", tone: status.covers(extras.prHead) ? Theme.greenTone.strong : Theme.orange.strong, size: 12, dot: true)
                     }
                 }
                 .frame(width: 16)
-                Text(status.summary)
+                Text(status.summary(for: extras.prHead))
                     .font(.system(size: 12.5))
                     .foregroundStyle(Theme.textPrimary)
                 Spacer(minLength: 4)
-                if status.report != nil {
+                if status.runDirectory != nil {
+                    SmallButton(title: L("Details")) {
+                        expandedQuorum = expandedQuorum == status.key ? nil : status.key
+                    }
+                } else if status.report != nil {
                     SmallButton(title: L("Report"), action: actions.openReport)
                 }
+            }
+            if expandedQuorum == status.key {
+                QuorumRunView(key: status.key).id(status.key)
+                    .padding(.leading, 24)
             }
         }
     }
@@ -730,6 +747,7 @@ struct PanelButton: View {
     @State private var hovered = false
 
     var body: some View {
+        let shape = RoundedRectangle(cornerRadius: 6, style: .continuous)
         Button(action: action) {
             HStack(spacing: 5) {
                 Text(title)
@@ -740,14 +758,13 @@ struct PanelButton: View {
             .padding(.horizontal, 10)
             .frame(height: 28)
             .background(
-                RoundedRectangle(cornerRadius: 7, style: .continuous)
-                    .fill(prominent ? Theme.textPrimary.opacity(hovered ? 0.85 : 1) : (hovered ? Theme.fillActive : Theme.fillHover))
+                shape.fill(prominent ? Theme.textPrimary.opacity(hovered ? 0.85 : 1) : (hovered ? Theme.fillActive : Theme.fillHover))
             )
-            .overlay(
-                RoundedRectangle(cornerRadius: 7, style: .continuous)
-                    .strokeBorder(Theme.hairline, lineWidth: 1)
-            )
-            .contentShape(Rectangle())
+            .overlay {
+                if !prominent { shape.strokeBorder(Theme.hairline, lineWidth: 1) }
+            }
+            .clipShape(shape)
+            .contentShape(shape)
         }
         .buttonStyle(.plain)
         .onHover { hovered = $0 }

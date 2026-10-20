@@ -25,10 +25,16 @@ struct QuorumStatus: Equatable {
     var reason: String?
     var date: Date
     var runDirectory: String?
+    /// The PR head this finished run accepted. A missing artifact is not a
+    /// reason to treat an older review as covering the current branch.
+    var headSHA: String?
     /// The review's report, when it wrote one.
     var report: String?
     /// The pull request's title, when quorum noted it.
     var title: String?
+    /// A babysit that ended clean partly because the fixing agent argued
+    /// findings away instead of fixing them.
+    var disputed = false
 
     var repo: String { String(key.split(separator: "#").first ?? "") }
     var number: Int? { key.split(separator: "#").last.flatMap { Int($0) } }
@@ -57,6 +63,16 @@ struct QuorumStatus: Equatable {
     /// Converged with nothing open.
     var succeeded: Bool { converged && isClean }
 
+    /// A verdict is reusable only for the exact PR head it accepted.
+    func covers(_ head: String?) -> Bool {
+        guard let head else { return false }
+        return succeeded && headSHA == head.lowercased()
+    }
+
+    func summary(for head: String?) -> String {
+        succeeded && !covers(head) ? L("quorum: review outdated") : summary
+    }
+
     /// One line for a card, in quorum's own terms: what it does right now,
     /// or how it ended and why.
     var summary: String {
@@ -72,6 +88,7 @@ struct QuorumStatus: Equatable {
             return L("quorum: merged")
         case "converged", "clean", "ok", "success":
             if open > 0 { return open == 1 ? L("quorum: 1 finding open") : L("quorum: %d findings open", open) }
+            if disputed { return L("quorum: clean, findings disputed") }
             return fixed > 0 ? L("quorum: clean, %d fixed", fixed) : L("quorum: clean")
         case nil:
             let findings = blockers + critical
@@ -86,6 +103,7 @@ struct QuorumStatus: Equatable {
         switch phase {
         case "review": L("reviews")
         case "fix": L("fixes")
+        case "tests": L("runs the tests")
         case "ci": L("waits for CI")
         case "ci_fix": L("fixes CI")
         case "description": L("writes the description")
@@ -208,6 +226,9 @@ enum Quorum {
             found.suggestions = findings["suggestions"] as? Int ?? 0
             found.report = findings["comment_file"] as? String
         }
+        if !found.running {
+            found.headSHA = acceptedHead(kind: kind, in: dir)
+        }
         // Without a process and without findings it died early: history says how.
         if !found.running, json(dir + "/output/findings.json") == nil, json(dir + "/progress.json") == nil { return nil }
         // Gone without a result (quit, crash, killed): what it had found
@@ -220,17 +241,20 @@ enum Quorum {
         return found
     }
 
-    /// The last 400 finished runs from quorum's history.
-    static func finished() -> [QuorumStatus] {
-        guard let handle = FileHandle(forReadingAtPath: history) else { return [] }
+    /// The newest finished run per PR from quorum's last 400 history entries.
+    /// Resolve artifacts only for those runs, not for every old round on each
+    /// eight-second status refresh.
+    static func finished(at historyFile: String = history) -> [QuorumStatus] {
+        guard let handle = FileHandle(forReadingAtPath: historyFile) else { return [] }
         defer { try? handle.close() }
         let size = (try? handle.seekToEnd()) ?? 0
         try? handle.seek(toOffset: size > 400_000 ? size - 400_000 : 0)
         let lines = String(decoding: handle.readDataToEndOfFile(), as: UTF8.self).split(separator: "\n").suffix(400)
-        return lines.compactMap { line in
+        var latest: [String: QuorumStatus] = [:]
+        for line in lines {
             guard let entry = try? JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any],
-                  let key = entry["key"] as? String else { return nil }
-            return QuorumStatus(
+                  let key = entry["key"] as? String else { continue }
+            let status = QuorumStatus(
                 kind: QuorumStatus.Kind(rawValue: entry["kind"] as? String ?? "") ?? .review,
                 key: key, running: false,
                 blockers: entry["blockers"] as? Int ?? 0, critical: entry["critical"] as? Int ?? 0,
@@ -239,7 +263,35 @@ enum Quorum {
                 date: date(entry["ended_at"]) ?? .distantPast, runDirectory: entry["run_dir"] as? String,
                 title: entry["title"] as? String
             )
+            if latest[key].map({ $0.date < status.date }) ?? true { latest[key] = status }
         }
+        return latest.values.map { status in
+            var status = status
+            if status.succeeded { status.headSHA = acceptedHead(kind: status.kind, in: status.runDirectory) }
+            if status.succeeded, status.kind == .babysit, let dir = status.runDirectory {
+                let messages = (try? FileManager.default.contentsOfDirectory(atPath: dir + "/messages")) ?? []
+                status.disputed = messages.contains { $0.contains("-dispute") }
+            }
+            return status
+        }
+    }
+
+    /// quorum's review artifact names the reviewed commit. Babysit may fix
+    /// that commit, so its final head comes from the run's trace instead.
+    /// Older quorum releases retain the babysit checkout but do not write a
+    /// trace; its final Git head is the compatible source in that case.
+    static func acceptedHead(kind: QuorumStatus.Kind, in directory: String?) -> String? {
+        guard let directory else { return nil }
+        if kind == .babysit {
+            if let sha = validSHA(json(directory + "/divergence-trace.json")?["final_head"] as? String) { return sha }
+            return validSHA(Shell.run(WorkState.git, ["rev-parse", "HEAD"], in: directory + "/worktree"))
+        }
+        return validSHA(json(directory + "/output/findings.json")?["head_sha"] as? String)
+    }
+
+    private static func validSHA(_ value: String?) -> String? {
+        guard let value, value.range(of: "^[0-9a-fA-F]{40}$", options: .regularExpression) != nil else { return nil }
+        return value.lowercased()
     }
 
     /// Where muxy keeps the output of the quorum runs it starts.
@@ -274,7 +326,7 @@ enum Quorum {
     /// commits are pushed, a branch behind origin is moved up; uncommitted
     /// changes or a branch that went both ways are yours. nil: ready, or
     /// the reason it isn't. Blocking.
-    nonisolated static func prepare(branch: String, root: String) -> String? {
+    nonisolated static func prepare(branch: String, root: String, accepted: String? = nil) -> String? {
         let git = "/usr/bin/git"
         let checkout = HubModel.worktree(of: branch, root: root)
         if let checkout, !(Shell.run(git, ["status", "--porcelain"], in: checkout) ?? "").isEmpty {
@@ -283,11 +335,23 @@ enum Quorum {
         guard Shell.execute(git, ["fetch", "--quiet", "origin", "refs/heads/\(branch)"], in: root, timeout: 60).status == 0,
               let remote = Shell.run(git, ["rev-parse", "FETCH_HEAD"], in: root)
         else { return L("Couldn't fetch %@ from GitHub.", branch) }
+        guard accepted.map({ remote.lowercased() == $0.lowercased() }) ?? true else {
+            return L("The accepted commit changed. Inspect the result again.")
+        }
         guard Shell.execute(git, ["rev-parse", "--verify", "--quiet", "refs/heads/\(branch)"], in: root).status == 0 else {
             return nil // only on origin: babysit works from there
         }
+        guard let local = Shell.run(git, ["rev-parse", "refs/heads/\(branch)"], in: root) else {
+            return L("The accepted commit changed. Inspect the result again.")
+        }
         let ahead = Shell.run(git, ["rev-list", "--count", "\(remote)..refs/heads/\(branch)"], in: root).flatMap(Int.init) ?? 0
         let behind = Shell.run(git, ["rev-list", "--count", "refs/heads/\(branch)..\(remote)"], in: root).flatMap(Int.init) ?? 0
+        // The accepted remote may safely fast-forward a stale local branch,
+        // but no other local head can replace the accepted commit.
+        let matchesAccepted = accepted.map { local.lowercased() == $0.lowercased() } ?? true
+        guard matchesAccepted || (ahead == 0 && behind > 0) else {
+            return L("The accepted commit changed. Inspect the result again.")
+        }
         switch (ahead > 0, behind > 0) {
         case (false, false):
             return nil
@@ -324,8 +388,9 @@ enum Quorum {
     /// `follow`: the folder whose new session shows the run live, in the
     /// background (as it showed when it ran in a tab).
     @MainActor
-    static func start(_ kind: QuorumStatus.Kind, pr: Int, draft: Bool, root: String, follow: String? = nil) -> Bool {
-        guard let log = launch(command(kind, pr: pr, draft: draft), in: root, name: "\(kind.rawValue)-\(pr)") else { return false }
+    static func start(_ kind: QuorumStatus.Kind, pr: Int, draft: Bool, root: String,
+                      allowAutoMerge: Bool = false, follow: String? = nil) -> Bool {
+        guard let log = launch(command(kind, pr: pr, draft: draft, allowAutoMerge: allowAutoMerge), in: root, name: "\(kind.rawValue)-\(pr)") else { return false }
         if let follow { showLog(log, in: follow, focus: false) }
         QuorumWatch.shared.start(always: true)
         DispatchQueue.main.asyncAfter(deadline: .now() + 3) { QuorumWatch.shared.refresh() }
@@ -355,9 +420,10 @@ enum Quorum {
 
     /// Starts quorum for a PR and shows its output in a tab of the session.
     @MainActor
-    static func run(_ kind: QuorumStatus.Kind, pr: Int, draft: Bool = false, in workspace: Workspace) {
+    static func run(_ kind: QuorumStatus.Kind, pr: Int, draft: Bool = false,
+                    allowAutoMerge: Bool = false, in workspace: Workspace) {
         let directory = workspace.context.checkout ?? workspace.directory
-        guard let log = launch(command(kind, pr: pr, draft: draft), in: directory, name: "\(kind.rawValue)-\(pr)") else {
+        guard let log = launch(command(kind, pr: pr, draft: draft, allowAutoMerge: allowAutoMerge), in: directory, name: "\(kind.rawValue)-\(pr)") else {
             Store.shared.window(of: workspace)?.show(L("quorum didn't start."))
             return
         }
@@ -371,10 +437,25 @@ enum Quorum {
     /// The shell line that hands a PR to quorum. `draft`: a babysit on a
     /// draft PR, which quorum refuses without `--draft` unless the config
     /// allows drafts; your click is that go-ahead.
-    static func command(_ kind: QuorumStatus.Kind, pr: Int, draft: Bool = false,
-                        behavior: QuorumBehavior = .current) -> String {
+    static func command(_ kind: QuorumStatus.Kind, pr: Int, draft: Bool = false, allowAutoMerge: Bool = false,
+                        behavior: QuorumBehavior = .current, installed: String? = QuorumCompat.installed()) -> String {
         let flag = kind == .babysit && draft && !behavior.babysitsDrafts ? " --draft" : ""
-        return "quorum \(kind.rawValue)\(flag) \(pr)"
+        // The trace records the final head after fixes, so Land can reuse a
+        // clean run only for the exact commit it checked.
+        let trace = kind == .babysit && QuorumCompat.supportsDivergenceScan(installed) ? " --divergence-scan" : ""
+        let command = "quorum \(kind.rawValue)\(flag)\(trace) \(pr)"
+        guard !allowAutoMerge else { return command }
+        // quorum reads AUTO_MERGE from its config file, rather than the
+        // process environment. Give review-only runs a disposable copy.
+        return """
+        config="${QUORUM_CONFIG:-$HOME/.config/quorum/config}"
+        temporary="$(mktemp /tmp/muxy-quorum.XXXXXX)" || exit
+        trap 'rm -f "$temporary"' EXIT
+        if [ -f "$config" ] && ! cp "$config" "$temporary"; then exit 1; fi
+        printf '\\nAUTO_MERGE=0\\n' >> "$temporary" || exit 1
+        QUORUM_CONFIG="$temporary" \(command)
+        exit $?
+        """
     }
 
     private static func pid(in dir: String) -> pid_t? {
@@ -454,9 +535,13 @@ final class QuorumWatch: ObservableObject {
     }
 
     /// quorum in a new tab of the session, where you can watch it.
-    func start(_ kind: QuorumStatus.Kind, in workspace: Workspace) {
+    func start(_ kind: QuorumStatus.Kind, in workspace: Workspace, allowAutoMerge: Bool = false) {
         guard let pr = workspace.context.pr else { return }
-        Quorum.run(kind, pr: pr, draft: workspace.context.isDraft, in: workspace)
+        guard Acceptance.shared.covers(workspace) else {
+            Store.shared.window(of: workspace)?.openAcceptance(workspace)
+            return
+        }
+        Quorum.run(kind, pr: pr, draft: workspace.context.isDraft, allowAutoMerge: allowAutoMerge, in: workspace)
         start(always: true)
         DispatchQueue.main.asyncAfter(deadline: .now() + 3) { self.refresh() }
     }
