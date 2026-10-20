@@ -65,6 +65,20 @@ final class Acceptance: ObservableObject {
         heads[Self.key(repo: repo, pr: pr)]
     }
 
+    func invalidate(repo: String, pr: Int) {
+        heads.removeValue(forKey: Self.key(repo: repo, pr: pr))
+        defaults.set(heads, forKey: Self.storageKey)
+    }
+
+    nonisolated static func acceptedOpenPullRequest(_ lookup: Git.Lookup, number: Int, acceptedHead: String?) -> Git.PullRequest? {
+        guard let acceptedHead,
+              case let .found(pull) = lookup,
+              pull.number == number, pull.state == .open,
+              pull.head?.lowercased() == acceptedHead.lowercased()
+        else { return nil }
+        return pull
+    }
+
     /// The linked issue is the source of imported criteria. A failed refresh
     /// is not equivalent to an issue with no checklist.
     func synchronizeCriteria(for workspace: Workspace) async -> Bool {

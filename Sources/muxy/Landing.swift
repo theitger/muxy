@@ -393,7 +393,10 @@ final class Landing: ObservableObject {
                 await MainActor.run {
                     guard self.current(workspace, run) else { return }
                     if merged.status == 0 {
-                        self.prove(workspace, checkout: checkout, root: root, pr: pr)
+                        if let repo = workspace.context.repo { Acceptance.shared.invalidate(repo: repo, pr: pr) }
+                        self.set(.failed(L("The accepted commit changed. Inspect the result again.")), for: workspace)
+                        workspace.primary?.refreshContext()
+                        Store.shared.window(of: workspace)?.openAcceptance(workspace)
                     } else {
                         self.ask(workspace, L("The agent merges %@", state.start),
                                  "Merge \(state.start) into this branch, resolve anything that comes up, run the relevant tests, commit and push.")

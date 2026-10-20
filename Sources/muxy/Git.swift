@@ -103,15 +103,15 @@ enum Git {
         case unknown
     }
 
-    /// The PR of the directory's current branch (the newest, open or not),
-    /// its checks and whether GitHub would merge it, via gh.
-    static func pullRequest(in directory: String) -> Lookup {
-        let first = fetchPullRequest(in: directory)
+    /// The numbered PR, or the PR of the directory's current branch when no
+    /// number is given, with its checks and mergeability from gh.
+    static func pullRequest(in directory: String, number: Int? = nil) -> Lookup {
+        let first = fetchPullRequest(in: directory, number: number)
         // GitHub computes mergeability lazily: the first ask after a push
         // often answers UNKNOWN and starts the computation — ask once more.
         guard case let .found(pr) = first, pr.state == .open, pr.mergeability == .unknown else { return first }
         Thread.sleep(forTimeInterval: 3)
-        let second = fetchPullRequest(in: directory)
+        let second = fetchPullRequest(in: directory, number: number)
         if case .found = second { return second }
         return first
     }
@@ -167,13 +167,15 @@ enum Git {
         limitLock.withLock { limitedUntil = Date().addingTimeInterval(600) }
     }
 
-    private static func fetchPullRequest(in directory: String) -> Lookup {
+    private static func fetchPullRequest(in directory: String, number: Int? = nil) -> Lookup {
         guard !rateLimited else { return .unknown }
         guard let gh = Shell.find("gh") else { return .unknown }
+        var arguments = ["pr", "view"]
+        if let number { arguments.append(String(number)) }
+        arguments += ["--json", "number,state,headRefOid,isDraft,mergeable,mergeStateStatus,reviewDecision,statusCheckRollup"]
         let result = Shell.execute(
             gh,
-            ["pr", "view", "--json",
-             "number,state,headRefOid,isDraft,mergeable,mergeStateStatus,reviewDecision,statusCheckRollup"],
+            arguments,
             in: directory, timeout: 30
         )
         noteRateLimit(result)

@@ -16,13 +16,29 @@ final class AcceptanceTests: XCTestCase {
         XCTAssertEqual(Acceptance.readiness(checkout: repo.root, expected: changed), .ready(changed))
     }
 
-    func testLandingOnlyPushesTheAcceptedCheckoutHead() throws {
-        let repo = try TempRepo()
-        let accepted = try repo.head()
-        XCTAssertEqual(Landing.checkedOutAcceptedHead(in: repo.root, accepted: accepted), accepted)
+    func testQuorumLaunchRequiresTheFreshAcceptedPullRequestHead() {
+        let accepted = String(repeating: "a", count: 40)
+        let changed = String(repeating: "b", count: 40)
+        func pull(_ head: String?, state: Git.PullRequest.State = .open) -> Git.Lookup {
+            .found(Git.PullRequest(number: 7, state: state, head: head, checks: .none, isDraft: false, mergeability: .clean))
+        }
 
-        try repo.write("new.txt", "new head\n")
-        try repo.commit("New implementation")
-        XCTAssertNil(Landing.checkedOutAcceptedHead(in: repo.root, accepted: accepted))
+        XCTAssertNotNil(Acceptance.acceptedOpenPullRequest(pull(accepted), number: 7, acceptedHead: accepted))
+        XCTAssertNil(Acceptance.acceptedOpenPullRequest(pull(changed), number: 7, acceptedHead: accepted))
+        XCTAssertNil(Acceptance.acceptedOpenPullRequest(pull(accepted, state: .closed), number: 7, acceptedHead: accepted))
+    }
+
+    func testLandingRequiresAcceptanceAfterMergingAnUpdatedBase() throws {
+        let repo = try TempRepo()
+        let checkout = try repo.addWorktree("feature", branch: "feature")
+        try repo.write("feature.txt", "feature\n", in: checkout)
+        try repo.commit("Feature", in: checkout)
+        let accepted = try repo.head(in: checkout)
+        XCTAssertEqual(Landing.checkedOutAcceptedHead(in: checkout, accepted: accepted), accepted)
+
+        try repo.write("base.txt", "base\n")
+        try repo.commit("Base update")
+        try repo.git("merge", "--no-edit", "main", in: checkout)
+        XCTAssertNil(Landing.checkedOutAcceptedHead(in: checkout, accepted: accepted))
     }
 }

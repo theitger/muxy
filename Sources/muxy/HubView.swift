@@ -734,18 +734,30 @@ private struct PullCard: View {
     private func startQuorum(branch: String, root: String) {
         starting = true
         problem = nil
-        let number = pull.number, draft = pull.draft
+        let number = pull.number, repo = pull.repo
         Task.detached(priority: .userInitiated) {
             let blocked = Quorum.prepare(branch: branch, root: root)
+            let live = blocked == nil ? Git.pullRequest(in: root, number: number) : .unknown
             await MainActor.run {
                 if let blocked {
                     problem = blocked
                     starting = false
                     return
                 }
+                guard let current = Acceptance.acceptedOpenPullRequest(
+                    live, number: number, acceptedHead: Acceptance.shared.acceptedHead(repo: repo, pr: number)
+                ) else {
+                    problem = switch live {
+                    case .unknown: Acceptance.Readiness.unavailable.message
+                    case .none, .found: Acceptance.Readiness.changed.message
+                    }
+                    HubModel.shared.refresh()
+                    starting = false
+                    return
+                }
                 // The run live in a session of its own, in its branch's checkout.
                 let follow = HubModel.worktree(of: branch, root: root) ?? root
-                if !Quorum.start(.babysit, pr: number, draft: draft, root: root, follow: follow) {
+                if !Quorum.start(.babysit, pr: number, draft: current.isDraft, root: root, follow: follow) {
                     problem = L("quorum didn't start.")
                 }
                 // Until quorum's own files say it runs.
