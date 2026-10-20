@@ -53,6 +53,8 @@ rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$REPO/Packaging/Info.plist" "$APP/Contents/Info.plist"
 cp "$REPO/.build/release/muxy" "$APP/Contents/MacOS/muxy"
+# SwiftPM resources include the implementation workflow used in any repo.
+cp -R "$REPO/.build/release/muxy_muxy.bundle" "$APP/Contents/Resources/"
 cp "$ICNS" "$APP/Contents/Resources/AppIcon.icns"
 # The agent hook; muxy copies it to ~/.local/share/muxy on install.
 cp "$REPO/Scripts/agent-hook.sh" "$APP/Contents/Resources/agent-hook.sh"

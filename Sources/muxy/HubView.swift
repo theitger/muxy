@@ -660,12 +660,12 @@ private struct PullCard: View {
             }
             if let status {
                 HStack(spacing: 6) {
-                    if status.running { ProgressView().controlSize(.mini).frame(width: 12) }
-                    Text(status.summary(for: pull.head))
-                        .font(.system(size: 11))
-                        .foregroundStyle(status.running ? Theme.blue.strong
-                            : status.covers(pull.head) ? Theme.greenTone.strong : status.interrupted ? Theme.textDim : Theme.orange.strong)
-                        .lineLimit(1)
+                    if let current = SessionSummary.completedQuorum(status, head: pull.head)
+                        ?? SessionSummary.resolve(agent: .none, next: quorumStep ?? .none,
+                                                  quorumRunning: status.running, quorumPhase: status.phase,
+                                                  prState: .open) {
+                        SessionSummaryLine(status: current)
+                    }
                     Spacer(minLength: 4)
                     if status.runDirectory != nil {
                         QuorumDetailsButton(status: status)
@@ -903,7 +903,11 @@ private struct SessionCard: View {
                 Spacer(minLength: 4)
                 if let item = work.item(for: workspace), !item.evidence.isEmpty { EvidenceButton(item: item) }
             }
-            Signals(workspace: workspace)
+            if let status = workspace.sessionStatus {
+                Button { window.openTask(TaskTarget(workspace: workspace)) } label: {
+                    SessionSummaryLine(status: status)
+                }.buttonStyle(.plain).help(L("Open task details"))
+            }
             nextStep(next)
             if workspace.agentTab != nil {
                 // Say something to the agent without going there.
@@ -946,8 +950,7 @@ private struct SessionCard: View {
         HStack(spacing: 6) {
             switch next {
             case .wait, .reviewing, .landing:
-                ProgressView().controlSize(.mini).frame(width: 12)
-                Text(next.title).font(.system(size: 11.5)).foregroundStyle(Theme.textMuted).lineLimit(1)
+                EmptyView()
             case .none:
                 EmptyView()
             default:
@@ -985,57 +988,6 @@ private struct SessionCard: View {
             return
         }
         message = ""
-    }
-}
-
-/// The small facts under a session: muxy's checks, collisions, quorum.
-struct Signals: View {
-    @ObservedObject var workspace: Workspace
-    @ObservedObject private var proofs = Proofs.shared
-    @ObservedObject private var radar = Radar.shared
-    @ObservedObject private var quorum = QuorumWatch.shared
-
-    var body: some View {
-        let checkout = workspace.context.checkout
-        let collisions = radar.collisions(for: checkout)
-        let proof = proofs.result(for: checkout)
-        let status = quorum.status(for: workspace)
-        if proofs.isRunning(checkout) || proof != nil || !collisions.isEmpty || status != nil {
-            FlowSignals {
-                if proofs.isRunning(checkout) {
-                    Badge(text: L("checking"), tone: Theme.blue)
-                } else if let proof {
-                    switch proof.verdict {
-                    case .passed: Badge(text: L("proven"), tone: Theme.greenTone)
-                    case .failed: Badge(text: proof.failed.count == 1 ? L("1 check fails") : L("%d checks fail", proof.failed.count),
-                                        tone: Theme.redTone, symbol: "xmark.shield.fill")
-                    default: EmptyView()
-                    }
-                }
-                ForEach(Array(collisions.enumerated()), id: \.offset) { _, collision in
-                    Badge(text: radar.describe(collision), tone: collision.withBase ? Theme.neutral : Theme.orange,
-                          symbol: collision.withBase ? "arrow.down.to.line" : "arrow.triangle.merge")
-                        .help(collision.files.joined(separator: "\n"))
-                }
-                if let status {
-                    Badge(text: status.summary(for: workspace.context.prHead),
-                          tone: status.running ? Theme.blue : (status.covers(workspace.context.prHead) ? Theme.greenTone : Theme.orange),
-                          symbol: "person.3.fill")
-                }
-            }
-        }
-    }
-}
-
-/// Badges left to right, wrapping.
-private struct FlowSignals<Content: View>: View {
-    @ViewBuilder let content: Content
-
-    var body: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(spacing: 4) { content }
-            VStack(alignment: .leading, spacing: 4) { content }
-        }
     }
 }
 

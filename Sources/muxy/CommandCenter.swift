@@ -311,7 +311,8 @@ final class CommandCenter {
         }
         Task.detached(priority: .userInitiated) {
             // The panel offers a worktree only inside a repository.
-            let inRepo = Launcher.mainCheckout(of: directory) != nil
+            let root = Launcher.mainCheckout(of: directory)
+            let inRepo = root != nil
             // The issue itself, like the panel looks it up. Unreachable
             // (gh missing, offline): the agent gets the reference only.
             var found: Issue?
@@ -334,11 +335,12 @@ final class CommandCenter {
                     store.openWindow?(id: "main", value: model.id)
                     return model
                 }()
-                if choice == NewSessionView.both, inRepo, let root = Launcher.mainCheckout(of: directory) {
+                if choice == NewSessionView.both, let root {
                     if let issueFound {
                         FanOut.launch(issue: issueFound, root: root, agents: AgentKind.allCases, in: window)
                     } else {
-                        FanOut.launch(prompt: prompt ?? "", root: root, agents: AgentKind.allCases, branch: branch, in: window)
+                        let task = issue.map { ImplementationWorkflow.unresolvedIssueTask($0, note: prompt ?? "") } ?? prompt ?? ""
+                        FanOut.launch(prompt: task, root: root, agents: AgentKind.allCases, branch: branch, in: window)
                     }
                     reply(Reply(ok: true, output: store.workspaces.suffix(AgentKind.allCases.count).map(\.id.uuidString).joined(separator: "\n")))
                     return
@@ -350,7 +352,9 @@ final class CommandCenter {
                 if let issue {
                     store.launch(issue: issue, found: issueFound, spec: spec, in: window)
                 } else {
-                    store.launch(spec, in: window)
+                    var task = spec
+                    task.prompt = ImplementationWorkflow.applying(to: task.prompt, agent: task.agent, root: root)
+                    store.launch(task, in: window)
                 }
                 // launch adds the session last.
                 reply(Reply(ok: true, output: store.workspaces.last?.id.uuidString ?? ""))
@@ -371,11 +375,12 @@ extension Store {
     /// `found` is the issue as gh knows it; nil when gh couldn't say.
     func launch(issue ref: String, found: Issue?, spec: SessionSpec, in window: WindowModel) {
         var spec = spec
+        let root = Launcher.mainCheckout(of: spec.directory) ?? spec.directory
         if let found {
             let note = IssueRef.parse(ref)?.note ?? ""
             let extra = [note, spec.prompt].filter { !$0.isEmpty }.joined(separator: "\n\n")
-            let issuePrompt = Issues.prompt(for: found, note: extra, localRepo: Issues.repo(of: spec.directory),
-                                            agent: spec.agent, implement: Issues.implementSkill(in: spec.directory))
+            let issuePrompt = ImplementationWorkflow.prompt(for: found, note: extra, localRepo: Issues.repo(of: spec.directory),
+                                            agent: spec.agent, root: root)
             spec.prompt = [issuePrompt, TaskLedger.shared.instructions(for: found)]
                 .filter { !$0.isEmpty }.joined(separator: "\n\n")
             spec.issue = found
@@ -385,8 +390,7 @@ extension Store {
                 spec.autoName = false
             }
         } else {
-            let task = "Work on issue \(ref)"
-            spec.prompt = spec.prompt.isEmpty ? task : task + "\n\n" + spec.prompt
+            spec.prompt = ImplementationWorkflow.unresolvedIssuePrompt(ref, note: spec.prompt, agent: spec.agent, root: root)
             // Named after the task, which now always has one.
             if let branch = spec.branch, BranchNamer.isPlaceholder(branch) { spec.autoName = true }
         }

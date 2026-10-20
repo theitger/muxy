@@ -17,7 +17,8 @@ let package = Package(
                 .product(name: "GhosttyTerminal", package: "libghostty-spm"),
                 "Sparkle"
             ],
-            path: "Sources/muxy"
+            path: "Sources/muxy",
+            resources: [.copy("Resources/Skills")]
         ),
         .testTarget(
             name: "muxyTests",

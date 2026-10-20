@@ -21,12 +21,16 @@ final class RenderTests: XCTestCase {
         let face = WingFace(
             title: issue.heading, agent: .idle, attention: true, isGit: true, pr: 128, prStatus: .failed,
             activity: "Done", lines: ["$ npm test", "  12 passing", "  1 failing"], agents: [.idle],
-            result: ResultFace(summary: full.summary, tests: .failed, checks: .failed)
+            result: ResultFace(summary: full.summary, tests: .failed, checks: .failed),
+            appPort: 3000,
+            sessionStatus: SessionSummary.resolve(agent: .idle, next: .accept)
         )
         var signals = face
-        signals.quorum = "quorum: 2 findings open"
-        signals.proof = .passed
-        signals.collisions = ["Konten löschen"]
+        signals.sessionStatus = SessionSummary.resolve(agent: .idle, quorumRunning: true, quorumPhase: "review")
+        let shell = WingFace(
+            title: "Shell", agent: .none, attention: false, isGit: false, pr: nil, prStatus: .none,
+            activity: "Building release", lines: [], agents: [], result: nil
+        )
         let quorumStatus = QuorumStatus(kind: .babysit, key: "render/repo#128", running: false,
                                         blockers: 1, outcome: "failed", date: Date())
         let quorumRun = QuorumRun(status: quorumStatus, steps: [
@@ -66,6 +70,8 @@ final class RenderTests: XCTestCase {
             ("card", AnyView(WingCardFace(face: face, detailed: true, onStage: true).frame(width: 240))),
             ("row", AnyView(WingCardFace(face: face, detailed: false).frame(width: 240))),
             ("row-signals", AnyView(WingCardFace(face: signals, detailed: false).frame(width: 300))),
+            ("shell-card", AnyView(WingCardFace(face: shell, detailed: true).frame(width: 240))),
+            ("shell-row", AnyView(WingCardFace(face: shell, detailed: false).frame(width: 240))),
             ("issue", AnyView(VStack(alignment: .leading) {
                 IssueRow(issue: issue)
                 IssueRow(issue: Issue(repo: "o/r", number: 7, title: "Closed one", url: "", state: "CLOSED"), prominent: false)

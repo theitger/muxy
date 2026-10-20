@@ -78,6 +78,9 @@ enum DebugDriver {
                 UserDefaults.standard.set(value, forKey: "settingsPane")
             }
             store.openSettings?()
+        case "skills-install":
+            do { try ImplementationWorkflow.installGlobally() }
+            catch { return reply(false, error.localizedDescription) }
         case "shot-other":
             // The newest window that isn't a session window (Settings).
             guard let value, let other = NSApplication.shared.windows.last(where: { win in

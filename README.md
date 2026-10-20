@@ -105,6 +105,17 @@ checks and exits non-zero when one fails.
 For muxy's own pull requests, `.quorum/testcmd` fetches the pinned binary
 frameworks and runs `swift test` on macOS, including in a fresh review worktree.
 
+Muxy includes [Matt Pocock's implement skill](https://github.com/mattpocock/skills)
+and its related TDD and code-review references for task starts with Claude or
+Codex in any repository. Repository implementation skills take precedence;
+Codex invokes its own skill with `$implement`, Claude with `/implement`.
+The bundled skill texts are pinned and attributed in
+`Sources/muxy/Resources/Skills/SOURCE.md`.
+
+Session cards show one current activity or decision. Test evidence, collision
+details and past Quorum results remain in the task and result views; the
+session list does not display them as permanent badges.
+
 ## Every turn, and the way back
 
 Muxy keeps the files as they were before and after every turn as hidden
