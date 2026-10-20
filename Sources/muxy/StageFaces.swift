@@ -27,12 +27,17 @@ struct WingFace {
     var showsResult: Bool { result != nil && (agent == .idle || agent == .none) }
 
     var currentStatus: SessionSummary? {
-        sessionStatus ?? SessionSummary.resolve(agent: agent)
+        guard !showsResult else { return nil }
+        return sessionStatus ?? SessionSummary.resolve(agent: agent)
     }
 
     var fallbackActivity: String? {
         guard currentStatus == nil, !showsResult, !activity.isEmpty else { return nil }
         return activity
+    }
+
+    var appPortText: String? {
+        appPort.map { L("app on :%@", String($0)) }
     }
 
     /// Nothing running, nothing new: the card steps back.
@@ -86,6 +91,7 @@ struct WingCardFace: View {
                     .truncationMode(.middle)
             }
             status
+            portIndicator
             if blocked, !face.lines.isEmpty {
                 VStack(alignment: .leading, spacing: 1.5) {
                     ForEach(Array(face.lines.suffix(3).enumerated()), id: \.offset) { _, line in
@@ -140,6 +146,12 @@ struct WingCardFace: View {
         }
     }
 
+    @ViewBuilder private var portIndicator: some View {
+        if let text = face.appPortText {
+            Badge(text: text, tone: Theme.neutral).lineLimit(1)
+        }
+    }
+
     // MARK: Simple
 
     private var row: some View {
@@ -150,7 +162,10 @@ struct WingCardFace: View {
                     .font(.system(size: 13, weight: onStage ? .semibold : .medium))
                     .foregroundStyle(onStage ? Theme.textPrimary : Theme.textBody)
                     .lineLimit(1)
-                status
+                HStack(spacing: 5) {
+                    status
+                    portIndicator
+                }
             }
             Spacer(minLength: 4)
             PRBadge(pr: face.pr, status: face.prStatus)

@@ -53,4 +53,35 @@ final class SessionSummaryTests: XCTestCase {
         XCTAssertNil(face.currentStatus)
         XCTAssertEqual(face.fallbackActivity, "Building release")
     }
+
+    func testCompletedResultTakesPriorityOverAnIdleStatus() {
+        let face = WingFace(title: "Task", agent: .idle, attention: false, isGit: true, pr: nil, prStatus: .none,
+                            activity: "Done", lines: [], agents: [.idle], result: ResultFace(summary: "Finished"))
+
+        XCTAssertTrue(face.showsResult)
+        XCTAssertNil(face.currentStatus)
+    }
+
+    func testCardFormatsItsWebAppPort() {
+        let face = WingFace(title: "Task", agent: .working, attention: false, isGit: true, pr: nil, prStatus: .none,
+                            activity: "Working", lines: [], agents: [.working], result: nil, appPort: 3000)
+
+        XCTAssertEqual(face.appPortText, L("app on :%@", "3000"))
+    }
+
+    func testCompletedQuorumOutcomeKeepsItsVerdict() {
+        var quorum = QuorumStatus(kind: .babysit, key: "o/r#1", running: false, blockers: 2, outcome: "converged", date: Date())
+        quorum.headSHA = "head"
+
+        let status = SessionSummary.completedQuorum(quorum, head: "head")
+
+        XCTAssertEqual(status?.text, L("quorum: clean, %d fixed", 2))
+        XCTAssertEqual(status?.tone, .quiet)
+
+        let failed = QuorumStatus(kind: .babysit, key: "o/r#1", running: false, outcome: "failed", date: Date())
+        XCTAssertEqual(SessionSummary.completedQuorum(failed, head: "head")?.tone, .failure)
+
+        let interrupted = QuorumStatus(kind: .babysit, key: "o/r#1", running: false, outcome: "interrupted", date: Date())
+        XCTAssertEqual(SessionSummary.completedQuorum(interrupted, head: "head")?.tone, .attention)
+    }
 }

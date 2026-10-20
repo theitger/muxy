@@ -660,9 +660,10 @@ private struct PullCard: View {
             }
             if let status {
                 HStack(spacing: 6) {
-                    if let current = SessionSummary.resolve(agent: .none, next: quorumStep ?? .none,
-                                                            quorumRunning: status.running, quorumPhase: status.phase,
-                                                            prState: .open) {
+                    if let current = SessionSummary.completedQuorum(status, head: pull.head)
+                        ?? SessionSummary.resolve(agent: .none, next: quorumStep ?? .none,
+                                                  quorumRunning: status.running, quorumPhase: status.phase,
+                                                  prState: .open) {
                         SessionSummaryLine(status: current)
                     }
                     Spacer(minLength: 4)

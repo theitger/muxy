@@ -70,5 +70,11 @@ final class ImplementationWorkflowTests: XCTestCase {
         for name in ImplementationWorkflow.skills {
             XCTAssertTrue(FileManager.default.isReadableFile(atPath: root.appendingPathComponent(".agents/skills/" + name + "/SKILL.md").path))
         }
+
+        let broken = root.appendingPathComponent(".agents/skills/tdd")
+        try FileManager.default.removeItem(at: broken)
+        try FileManager.default.createSymbolicLink(at: broken, withDestinationURL: root.appendingPathComponent("missing-skill"))
+        try ImplementationWorkflow.installGlobally(home: root)
+        XCTAssertTrue(FileManager.default.isReadableFile(atPath: broken.appendingPathComponent("SKILL.md").path))
     }
 }

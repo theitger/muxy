@@ -7,6 +7,13 @@ struct SessionSummary: Equatable {
     var tone: Tone = .quiet
     var running = false
 
+    static func completedQuorum(_ quorum: QuorumStatus, head: String?) -> Self? {
+        guard !quorum.running, quorum.outcome != nil,
+              !quorum.succeeded || quorum.covers(head) else { return nil }
+        let tone: Tone = quorum.succeeded ? .quiet : (quorum.interrupted ? .attention : .failure)
+        return Self(text: quorum.summary(for: head), tone: tone)
+    }
+
     static func resolve(agent: AgentState, next: NextStep = .none, proving: Bool = false, proof: ProofResult? = nil,
                         quorumRunning: Bool = false, quorumPhase: String? = nil,
                         prState: Git.PullRequest.State? = nil, checks: Checks = .none,

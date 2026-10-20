@@ -22,6 +22,7 @@ final class RenderTests: XCTestCase {
             title: issue.heading, agent: .idle, attention: true, isGit: true, pr: 128, prStatus: .failed,
             activity: "Done", lines: ["$ npm test", "  12 passing", "  1 failing"], agents: [.idle],
             result: ResultFace(summary: full.summary, tests: .failed, checks: .failed),
+            appPort: 3000,
             sessionStatus: SessionSummary.resolve(agent: .idle, next: .accept)
         )
         var signals = face

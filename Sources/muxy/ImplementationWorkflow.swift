@@ -84,7 +84,10 @@ enum ImplementationWorkflow {
             try files.createDirectory(at: root, withIntermediateDirectories: true)
             for name in skills {
                 let link = root.appendingPathComponent(name)
-                if files.fileExists(atPath: link.path) || (try? files.destinationOfSymbolicLink(atPath: link.path)) != nil { continue }
+                if files.fileExists(atPath: link.path) { continue }
+                if (try? files.destinationOfSymbolicLink(atPath: link.path)) != nil {
+                    try files.removeItem(at: link)
+                }
                 let target = destination.appendingPathComponent(prefix + name)
                 guard files.fileExists(atPath: target.appendingPathComponent("SKILL.md").path) else { throw CocoaError(.fileNoSuchFile) }
                 try files.createSymbolicLink(at: link, withDestinationURL: target)
