@@ -33,6 +33,13 @@ final class SessionSummaryTests: XCTestCase {
         XCTAssertEqual(status?.tone, .failure)
     }
 
+    func testLiveCollisionTakesPriorityOverACompletedDecision() {
+        let status = SessionSummary.resolve(agent: .idle, next: .land, collision: L("conflicts with %@", "main"))
+
+        XCTAssertEqual(status?.text, L("conflicts with %@", "main"))
+        XCTAssertEqual(status?.tone, .attention)
+    }
+
     func testOnlyOpenPullRequestsHaveMergeAndCIFailures() {
         XCTAssertEqual(SessionSummary.resolve(agent: .idle, prState: .merged, checks: .failed, mergeability: .conflicting)?.text, L("Merged"))
         XCTAssertEqual(SessionSummary.resolve(agent: .idle, prState: .closed, checks: .failed)?.text, L("Pull request closed"))

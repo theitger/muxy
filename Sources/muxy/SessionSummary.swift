@@ -17,7 +17,7 @@ struct SessionSummary: Equatable {
     static func resolve(agent: AgentState, next: NextStep = .none, proving: Bool = false, proof: ProofResult? = nil,
                         quorumRunning: Bool = false, quorumPhase: String? = nil,
                         prState: Git.PullRequest.State? = nil, checks: Checks = .none,
-                        mergeability: Mergeability = .unknown) -> Self? {
+                        mergeability: Mergeability = .unknown, collision: String? = nil) -> Self? {
         if next == .approvePlan { return Self(text: L("Plan ready for approval"), tone: .attention) }
         if agent == .blocked { return Self(text: L("Needs your answer"), tone: .attention) }
         if quorumRunning {
@@ -39,6 +39,7 @@ struct SessionSummary: Equatable {
         }
         if proving { return Self(text: L("Tests running"), tone: .active, running: true) }
         if proof?.verdict == .failed { return Self(text: L("Checks failed"), tone: .failure) }
+        if let collision { return Self(text: collision, tone: .attention) }
         if prState == .merged { return Self(text: L("Merged")) }
         if prState == .closed { return Self(text: L("Pull request closed")) }
         if prState == .open, mergeability == .conflicting {
@@ -86,11 +87,14 @@ struct SessionSummaryLine: View {
 extension Workspace {
     var sessionStatus: SessionSummary? {
         let quorum = QuorumWatch.shared.status(for: self)
+        let collisions = Radar.shared.collisions(for: context.checkout)
+        let collision = collisions.first(where: \.withBase) ?? collisions.first
         return SessionSummary.resolve(agent: agent, next: Flow.next(for: self),
                                      proving: Proofs.shared.isRunning(context.checkout),
                                      proof: Proofs.shared.result(for: context.checkout),
                                      quorumRunning: quorum?.running == true, quorumPhase: quorum?.phase,
                                      prState: context.pr == nil ? nil : context.prState,
-                                     checks: context.checks, mergeability: context.mergeability)
+                                     checks: context.checks, mergeability: context.mergeability,
+                                     collision: collision.map(Radar.shared.describe))
     }
 }
