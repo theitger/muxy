@@ -253,7 +253,10 @@ struct ResultOverlay: View {
             },
             cancelProof: { if let checkout { proofs.cancel(checkout: checkout) } },
             sendFailures: {
-                if let result = proofs.result(for: checkout), let agent = agentSession { Proofs.sendFailures(result, to: agent) }
+                if let result = proofs.result(for: checkout), let agent = agentSession,
+                   !Proofs.sendFailures(result, to: agent) {
+                    window.show(L("The failed checks could not be delivered. Check the terminal and try again."), seconds: 5)
+                }
             },
             review: { scope in window.openReview(workspace, scope: scope) },
             restore: { checkpoint in
@@ -278,7 +281,9 @@ struct ResultOverlay: View {
                 let text = collision.withBase
                     ? "Your branch conflicts with \(collision.other) in these files:\n\(files)\n\nMerge \(collision.other) into this branch now (git fetch first), resolve the conflicts keeping both sides' intent, run the relevant tests and commit."
                     : "Another session (\"\(title)\", branch work in \(collision.other)) changes the same lines as you in:\n\(files)\n\nKeep your changes in these files minimal and self-contained so both can merge; say which of your changes there could move elsewhere."
-                RemoteState.type(text, enter: true, into: agent)
+                if !RemoteState.type(text, enter: true, into: agent) {
+                    window.show(L("The collision details could not be delivered. Check the terminal and try again."), seconds: 5)
+                }
             },
             land: { landing.land(workspace) },
             cancelLanding: { landing.cancel(workspace) }

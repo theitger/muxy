@@ -399,7 +399,10 @@ final class RemoteConnection {
             if let tab { RemoteState.markSeen(tab) }
             push()
         case "type":
-            if let tab { RemoteState.type(message["text"] as? String ?? "", enter: message["enter"] as? Bool ?? false, into: tab) }
+            guard let tab, RemoteState.type(message["text"] as? String ?? "", enter: message["enter"] as? Bool ?? false, into: tab) else {
+                return send(["t": "typed", "ok": false])
+            }
+            send(["t": "typed", "ok": true])
         case "key":
             if let tab, let key = message["key"] as? String { RemoteState.press(key, in: tab) }
         case "choose":

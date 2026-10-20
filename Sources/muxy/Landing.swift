@@ -435,7 +435,10 @@ final class Landing: ObservableObject {
                         }
                         guard self.mayAsk(workspace) else { return }
                         guard self.set(.waitingForAgent(L("The agent fixes the failed checks")), for: workspace) else { return }
-                        Proofs.sendFailures(result, to: session)
+                        guard Proofs.sendFailures(result, to: session) else {
+                            self.set(.failed(L("The failed checks could not be delivered. Check the terminal and retry.")), for: workspace)
+                            return
+                        }
                     case .cancelled:
                         self.set(.failed(L("Checks cancelled")), for: workspace)
                     case .passed, .skipped:
@@ -720,6 +723,9 @@ final class Landing: ObservableObject {
         }
         guard mayAsk(workspace) else { return }
         guard set(.waitingForAgent(step), for: workspace) else { return }
-        RemoteState.type(message, enter: true, into: session)
+        guard RemoteState.type(message, enter: true, into: session) else {
+            set(.failed(L("The request could not be delivered. Check the terminal and retry.")), for: workspace)
+            return
+        }
     }
 }

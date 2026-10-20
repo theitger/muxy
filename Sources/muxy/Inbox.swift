@@ -117,10 +117,16 @@ final class Inbox: ObservableObject {
     static func reply(_ text: String, to session: TerminalSession) -> Bool {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, session.terminalView.currentSurface != nil, followDecision(in: session) else { return false }
-        RemoteState.type(trimmed, enter: false, into: session)
-        let delivered = RemoteState.press("enter", in: session)
+        let delivered = RemoteState.type(trimmed, enter: true, into: session)
+        guard delivered else {
+            if let workspace = Store.shared.workspaces.first(where: { $0.sessions.contains { $0 === session } }) {
+                Queue.shared.deliveryFailed(in: workspace, message: L("The answer could not be delivered. Check the terminal and send it again."))
+                Store.shared.window(of: workspace)?.show(L("The answer could not be delivered. Check the terminal and try again."), seconds: 5)
+            }
+            return false
+        }
         Queue.shared.resume()
-        return delivered
+        return true
     }
 
     /// Dispatch a choice only while the same prompt is still on screen.
@@ -134,6 +140,7 @@ final class Inbox: ObservableObject {
                 if !RemoteState.press(key, in: session) {
                     session.needsAttention = true
                     if let workspace = Store.shared.workspaces.first(where: { $0.sessions.contains { $0 === session } }) {
+                        Queue.shared.deliveryFailed(in: workspace, message: L("The answer could not be delivered. Check the terminal and send it again."))
                         Store.shared.window(of: workspace)?.show(L("The answer could not be delivered."), seconds: 5)
                     }
                 }

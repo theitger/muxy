@@ -145,7 +145,7 @@ final class ReviewModel: ObservableObject {
 
     func send() -> Bool {
         guard !comments.isEmpty, let session = agentSession else { return false }
-        RemoteState.type(ReviewMessage.compose(comments), enter: true, into: session)
+        guard RemoteState.type(ReviewMessage.compose(comments), enter: true, into: session) else { return false }
         comments = []
         return true
     }
@@ -195,7 +195,10 @@ final class ReviewModel: ObservableObject {
             Store.shared.sessionsChanged()
             delivered = true
         }
-        guard delivered else { return false }
+        guard delivered else {
+            Queue.shared.deliveryFailed(in: workspace, message: L("Feedback could not be delivered. Check the terminal and send it again."))
+            return false
+        }
         guard TaskLedger.shared.update(target.id, { record in
             record.commitFeedback(receipt)
             record.draft = ""
@@ -470,7 +473,7 @@ struct ReviewView: View {
             feedbackProblem = nil
             if !embedded { close() }
         } else {
-            feedbackProblem = taskLedger.problem ?? L("The agent could not receive feedback. Your draft was kept.")
+            feedbackProblem = taskLedger.problem ?? Queue.shared.problem ?? L("The agent could not receive feedback. Your draft was kept.")
         }
     }
 
@@ -544,6 +547,7 @@ struct ReviewView: View {
             if !model.comments.isEmpty {
                 Button {
                     if model.send() { close() }
+                    else { Store.shared.window(of: model.workspace)?.show(L("Comments could not be delivered. Check the terminal and try again."), seconds: 5) }
                 } label: {
                     HStack(spacing: 6) {
                         Icon("paperplane.fill", size: 10.5)

@@ -263,7 +263,9 @@ struct TaskPage: View {
             case .land, .review, .fix, .openPR:
                 SmallButton(title: next.title) {
                     if let reason = queue.landingBlocker(for: workspace) { window.show(reason); return }
-                    _ = Flow.take(next, in: workspace, window: window)
+                    if !Flow.take(next, in: workspace, window: window) {
+                        window.show(L("The request could not be delivered. Check the terminal and try again."))
+                    }
                 }
             default: EmptyView()
             } }
@@ -391,7 +393,9 @@ struct TaskPage: View {
                     .font(.system(size: 12)).foregroundStyle(Theme.textDim)
                 SmallButton(title: L("Approve the plan")) {
                     if let item = queue.item(for: workspace), item.phase == .planReady { queue.approve(item) }
-                    else { _ = Flow.take(next, in: workspace, window: window) }
+                    else if !Flow.take(next, in: workspace, window: window) {
+                        window.show(L("The request could not be delivered. Check the terminal and try again."))
+                    }
                 }
             }
             if let step = landing.step(for: workspace) {

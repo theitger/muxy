@@ -190,6 +190,23 @@ final class Queue: ObservableObject {
         return save()
     }
 
+    /// The request could not reach the terminal. Stop waiting for a turn
+    /// that will not start, while leaving the caller's draft available to retry.
+    func deliveryFailed(in workspace: Workspace, message: String) {
+        guard let queued = item(for: workspace), let index = items.firstIndex(where: { $0.id == queued.id }) else { return }
+        items[index] = Self.failedHandoff(items[index], message: message, now: Date())
+        _ = save()
+    }
+
+    nonisolated static func failedHandoff(_ item: Item, message: String, now: Date) -> Item {
+        var failed = item
+        failed.phase = .needsYou(message)
+        failed.acted = now
+        failed.awaitingAgent = nil
+        failed.awaitedTurns = nil
+        return failed
+    }
+
     enum Followup: Equatable { case waiting, started, unconfirmed }
 
     nonisolated static func followup(_ item: Item, agent: AgentState, turns: Int, now: Date) -> Followup {
@@ -430,8 +447,11 @@ final class Queue: ObservableObject {
             item.acted = now
             items[index] = item
             guard save() else { return }
-            if let window = Store.shared.window(of: workspace) {
-                Flow.take(.openPR, in: workspace, window: window)
+            guard let window = Store.shared.window(of: workspace),
+                  Flow.take(.openPR, in: workspace, window: window) else {
+                items[index] = Self.failedHandoff(item, message: L("The request to open the pull request could not be delivered. Check the terminal and retry."), now: now)
+                _ = save()
+                return
             }
         case .babysit:
             item.babysits += 1

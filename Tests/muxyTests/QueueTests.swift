@@ -62,6 +62,17 @@ final class QueueTests: XCTestCase {
         XCTAssertEqual(Queue.decide(limited, facts: facts(.fix("Fix CI"), hasPR: true), now: now), .finish(.needsYou("Fix CI")))
     }
 
+    func testFailedDeliveryDoesNotAwaitATurn() {
+        var waiting = item()
+        waiting.awaitingAgent = true
+        waiting.awaitedTurns = 4
+        let failed = Queue.failedHandoff(waiting, message: "Retry the request.", now: now)
+        XCTAssertEqual(failed.phase, .needsYou("Retry the request."))
+        XCTAssertEqual(failed.acted, now)
+        XCTAssertNil(failed.awaitingAgent)
+        XCTAssertNil(failed.awaitedTurns)
+    }
+
     func testWithoutQuorumAPullRequestIsReady() {
         XCTAssertEqual(Queue.decide(item(), facts: facts(.review, hasPR: true, quorum: false), now: now), .finish(.ready))
     }

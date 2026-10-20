@@ -237,13 +237,14 @@ final class Proofs: ObservableObject {
 
     /// Asks the agent to fix what failed: the check, its command and the
     /// output's end go into its prompt.
-    static func sendFailures(_ result: ProofResult, to session: TerminalSession) {
+    @discardableResult
+    static func sendFailures(_ result: ProofResult, to session: TerminalSession) -> Bool {
         let parts = result.failed.map { entry in
             "muxy ran the check \"\(entry.name)\" (`\(entry.command)`) on your work and it failed. The end of its output:\n\n```\n\(entry.tail)\n```"
         }
-        guard !parts.isEmpty else { return }
+        guard !parts.isEmpty else { return false }
         let text = parts.joined(separator: "\n\n") + "\n\nFind the cause and fix it, then say in one sentence what it was."
-        RemoteState.type(text, enter: true, into: session)
+        return RemoteState.type(text, enter: true, into: session)
     }
 
     // MARK: Running (off the main thread)

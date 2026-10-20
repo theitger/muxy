@@ -949,7 +949,7 @@ private struct SessionCard: View {
             default:
                 SmallButton(title: next.title, prominent: true) {
                     if !Flow.take(next, in: workspace, window: window) {
-                        window.show(L("No agent runs in this session to ask"))
+                        window.show(L("The request could not be delivered. Check the terminal and try again."))
                     }
                 }
             }
@@ -976,7 +976,10 @@ private struct SessionCard: View {
     private func send() {
         let text = message.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty, let agent = workspace.agentTab else { return }
-        RemoteState.type(text, enter: true, into: agent)
+        guard RemoteState.type(text, enter: true, into: agent) else {
+            window.show(L("The message could not be delivered. Check the terminal and try again."))
+            return
+        }
         message = ""
     }
 }

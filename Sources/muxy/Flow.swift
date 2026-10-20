@@ -146,7 +146,7 @@ enum Flow {
             guard let yes = choices.first(where: { $0.label.lowercased().hasPrefix("yes") }) ?? choices.first else { return false }
             guard Inbox.choose(yes, in: session) else { return false }
         case .codex:
-            RemoteState.type("Go ahead: implement the plan.", enter: true, into: session)
+            guard RemoteState.type("Go ahead: implement the plan.", enter: true, into: session) else { return false }
         case nil:
             return false
         }
@@ -167,7 +167,7 @@ enum Flow {
         case .openPR:
             guard let agent = workspace.agentTab else { return false }
             let closes = workspace.sessions.lazy.compactMap(\.issue).first.map { " that closes #\($0.number)" } ?? ""
-            RemoteState.type(
+            return RemoteState.type(
                 "Commit your work, push the branch and open a pull request\(closes). Fill in the repository's pull request template if it has one.",
                 enter: true, into: agent
             )
@@ -182,7 +182,7 @@ enum Flow {
             if Quorum.isInstalled, workspace.context.pr != nil {
                 Landing.shared.review(workspace)
             } else if let agent = workspace.agentTab {
-                RemoteState.type("The pull request isn't ready: CI or checks fail, or it conflicts with its base. Find out why, fix it, and push.", enter: true, into: agent)
+                return RemoteState.type("The pull request isn't ready: CI or checks fail, or it conflicts with its base. Find out why, fix it, and push.", enter: true, into: agent)
             } else {
                 return false
             }
