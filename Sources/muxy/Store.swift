@@ -843,7 +843,7 @@ final class Store: ObservableObject {
                     .new(prompt: !prompt.isEmpty, id: conversation), skipPermissions: skipPermissions, plan: spec.plan
                 ))
             },
-            environment: prompt.isEmpty ? [:] : ["MUXY_PROMPT": spec.plan && spec.agent == .codex ? prompt + "\n\n" + Flow.planNote : prompt],
+            environment: prompt.isEmpty ? [:] : ["MUXY_PROMPT": prompt],
             preparing: spec.branch == nil ? nil : L("Creating worktree …")
         )
         session.kind = spec.agent
