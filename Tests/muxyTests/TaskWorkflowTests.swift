@@ -239,17 +239,34 @@ final class QueuePersistenceTests: XCTestCase {
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: folder) }
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-        let queue = Queue(file: folder, restoreLegacy: false)
+        let blockedParent = folder.appendingPathComponent("not-a-directory")
+        try Data().write(to: blockedParent)
+        let queue = Queue(file: blockedParent.appendingPathComponent("queue.json"), restoreLegacy: false)
         let first = Issue(repo: "o/r", number: 1, title: "First", url: "", state: "OPEN")
         let second = Issue(repo: "o/r", number: 2, title: "Second", url: "", state: "OPEN")
 
         queue.add(first, agent: .claude)
         XCTAssertNotNil(queue.problem)
-        try FileManager.default.removeItem(at: folder)
+        try FileManager.default.removeItem(at: blockedParent)
+        try FileManager.default.createDirectory(at: blockedParent, withIntermediateDirectories: true)
 
         queue.add(second, agent: .codex)
         XCTAssertNil(queue.problem)
-        XCTAssertEqual(Queue(file: folder, restoreLegacy: false).items.map(\.issue.number), [1, 2])
+        XCTAssertEqual(Queue(file: blockedParent.appendingPathComponent("queue.json"), restoreLegacy: false).items.map(\.issue.number), [1, 2])
+    }
+
+    func testCorruptQueueIsNotOverwritten() throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let file = folder.appendingPathComponent("queue.json")
+        try Data("broken".utf8).write(to: file)
+        let queue = Queue(file: file, restoreLegacy: false)
+
+        queue.add(Issue(repo: "o/r", number: 1, title: "First", url: "", state: "OPEN"), agent: .claude)
+
+        XCTAssertNotNil(queue.problem)
+        XCTAssertEqual(try String(contentsOf: file), "broken")
     }
 }
 

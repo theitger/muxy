@@ -40,6 +40,17 @@ final class WorkTests: XCTestCase {
         XCTAssertTrue(item.map(WorkLedger.report)?.contains(L("No collisions with other work")) == true)
     }
 
+    func testIneligibleCheckoutClearsItsCollisionEvidence() {
+        let ledger = WorkLedger()
+        let old = Evidence(kind: .collision, date: Date(), text: "Collides with A in x.go", ok: false, ref: "x.go")
+        ledger.upsert(root: "/r", branch: "feat/x") { $0.checkout = "/r/.worktrees/feat-x" }
+        ledger.current([old], root: "/r", branch: "feat/x")
+
+        ledger.reconcileCollisions(eligibleCheckouts: [])
+
+        XCTAssertTrue(ledger.items[WorkItem.key(root: "/r", branch: "feat/x")]?.evidence.isEmpty == true)
+    }
+
     func testDroppedOrEndedWorkIsOffTheBoard() {
         var item = WorkItem(root: "/r", branch: "b", title: "t", created: Date(), touched: Date())
         XCTAssertTrue(item.isOpen)

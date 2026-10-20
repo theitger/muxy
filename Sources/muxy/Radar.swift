@@ -75,6 +75,7 @@ final class Radar: ObservableObject {
         }
         guard !byRoot.isEmpty else {
             if !byCheckout.isEmpty { byCheckout = [:] }
+            WorkLedger.shared.reconcileCollisions(eligibleCheckouts: [])
             return
         }
         scanning = true
@@ -94,6 +95,7 @@ final class Radar: ObservableObject {
                 self.scanned = true
                 let before = self.byCheckout
                 if found != before { self.byCheckout = found }
+                WorkLedger.shared.reconcileCollisions(eligibleCheckouts: Set(byRoot.values.flatMap { $0 }))
                 self.announce(before: before, after: found)
             }
         }

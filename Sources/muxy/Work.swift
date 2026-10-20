@@ -146,6 +146,19 @@ final class WorkLedger: ObservableObject {
         }
     }
 
+    /// A checkout no longer eligible for Radar cannot still have a current
+    /// collision. Remove its live collision evidence from durable history.
+    func reconcileCollisions(eligibleCheckouts: Set<String>) {
+        var changed = false
+        for key in Array(items.keys) {
+            guard let checkout = items[key]?.checkout, !eligibleCheckouts.contains(checkout),
+                  items[key]?.evidence.contains(where: { $0.kind == .collision }) == true else { continue }
+            items[key]?.evidence.removeAll { $0.kind == .collision }
+            changed = true
+        }
+        if changed { save() }
+    }
+
     private static func fingerprint(_ key: String, _ fact: Evidence) -> String {
         "\(key)|\(fact.kind.rawValue)|\(fact.ref ?? "")|\(fact.text)"
     }

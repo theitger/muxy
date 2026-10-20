@@ -74,6 +74,8 @@ final class Queue: ObservableObject {
         var merged: Set<String>?
     }
     private let file: URL
+    /// A queue we could not decode must never be replaced with an empty one.
+    private var canSave = true
     @Published private(set) var problem: String?
     @Published private(set) var merged: Set<String> = []
 
@@ -88,7 +90,10 @@ final class Queue: ObservableObject {
                 items = saved.items
                 running = saved.running && items.contains { !$0.phase.isFinished }
                 merged = saved.merged ?? []
-            } catch { problem = L("The queue could not be restored: %@", error.localizedDescription) }
+            } catch {
+                canSave = false
+                problem = L("The queue could not be restored: %@", error.localizedDescription)
+            }
         } else if restoreLegacy, let data = UserDefaults.standard.data(forKey: "queue"),
                   let saved = try? JSONDecoder().decode([Item].self, from: data) {
             items = saved
@@ -535,6 +540,7 @@ final class Queue: ObservableObject {
 
     @discardableResult
     private func save(_ saved: Saved? = nil) -> Bool {
+        guard canSave else { return false }
         do {
             try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
             try JSONEncoder().encode(saved ?? Saved(items: items, running: running, merged: merged)).write(to: file, options: .atomic)
