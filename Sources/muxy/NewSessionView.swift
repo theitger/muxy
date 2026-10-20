@@ -425,7 +425,7 @@ struct NewSessionView: View {
                 Self.issuePrompt(for: $0.issue, note: $0.note, localRepo: issues.targetRepo,
                                  agent: agent, implement: Issues.implementSkill(in: target),
                                  instructions: TaskLedger.shared.instructions(for: $0.issue), root: target)
-            } ?? ImplementationWorkflow.applying(to: prompt, agent: agent),
+            } ?? ImplementationWorkflow.applying(to: prompt, agent: agent, root: repo?.path),
             worktree: worktree, branch: typedBranch ?? issueBranch
         )
         // An issue already named it.

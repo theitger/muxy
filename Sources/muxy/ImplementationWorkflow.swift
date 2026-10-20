@@ -114,12 +114,15 @@ enum ImplementationWorkflow {
         return note.isEmpty ? task : task + "\n\n" + note
     }
 
-    static func unresolvedIssuePrompt(_ reference: String, note: String, agent: AgentKind?) -> String {
-        applying(to: unresolvedIssueTask(reference, note: note), agent: agent)
+    static func unresolvedIssuePrompt(_ reference: String, note: String, agent: AgentKind?, root: String? = nil) -> String {
+        applying(to: unresolvedIssueTask(reference, note: note), agent: agent, root: root)
     }
 
-    static func applying(to task: String, agent: AgentKind?, includeImplement: Bool = true) -> String {
+    static func applying(to task: String, agent: AgentKind?, root: String? = nil, includeImplement: Bool = true) -> String {
         guard agent != nil, !task.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return task }
+        if let root, let invocation = invocation(for: agent, in: root) {
+            return invocation + task
+        }
         guard let implement = bundledSkill,
               let root = resources.url(forResource: "Skills", withExtension: nil) else {
             return task + "\n\nMuxy's bundled implement skill is unavailable. Report this to the user before proceeding."

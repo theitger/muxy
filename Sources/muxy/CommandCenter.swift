@@ -311,7 +311,8 @@ final class CommandCenter {
         }
         Task.detached(priority: .userInitiated) {
             // The panel offers a worktree only inside a repository.
-            let inRepo = Launcher.mainCheckout(of: directory) != nil
+            let root = Launcher.mainCheckout(of: directory)
+            let inRepo = root != nil
             // The issue itself, like the panel looks it up. Unreachable
             // (gh missing, offline): the agent gets the reference only.
             var found: Issue?
@@ -334,7 +335,7 @@ final class CommandCenter {
                     store.openWindow?(id: "main", value: model.id)
                     return model
                 }()
-                if choice == NewSessionView.both, inRepo, let root = Launcher.mainCheckout(of: directory) {
+                if choice == NewSessionView.both, let root {
                     if let issueFound {
                         FanOut.launch(issue: issueFound, root: root, agents: AgentKind.allCases, in: window)
                     } else {
@@ -352,7 +353,7 @@ final class CommandCenter {
                     store.launch(issue: issue, found: issueFound, spec: spec, in: window)
                 } else {
                     var task = spec
-                    task.prompt = ImplementationWorkflow.applying(to: task.prompt, agent: task.agent)
+                    task.prompt = ImplementationWorkflow.applying(to: task.prompt, agent: task.agent, root: root)
                     store.launch(task, in: window)
                 }
                 // launch adds the session last.
@@ -374,11 +375,12 @@ extension Store {
     /// `found` is the issue as gh knows it; nil when gh couldn't say.
     func launch(issue ref: String, found: Issue?, spec: SessionSpec, in window: WindowModel) {
         var spec = spec
+        let root = Launcher.mainCheckout(of: spec.directory) ?? spec.directory
         if let found {
             let note = IssueRef.parse(ref)?.note ?? ""
             let extra = [note, spec.prompt].filter { !$0.isEmpty }.joined(separator: "\n\n")
             let issuePrompt = ImplementationWorkflow.prompt(for: found, note: extra, localRepo: Issues.repo(of: spec.directory),
-                                            agent: spec.agent, root: spec.directory)
+                                            agent: spec.agent, root: root)
             spec.prompt = [issuePrompt, TaskLedger.shared.instructions(for: found)]
                 .filter { !$0.isEmpty }.joined(separator: "\n\n")
             spec.issue = found
@@ -388,7 +390,7 @@ extension Store {
                 spec.autoName = false
             }
         } else {
-            spec.prompt = ImplementationWorkflow.unresolvedIssuePrompt(ref, note: spec.prompt, agent: spec.agent)
+            spec.prompt = ImplementationWorkflow.unresolvedIssuePrompt(ref, note: spec.prompt, agent: spec.agent, root: root)
             // Named after the task, which now always has one.
             if let branch = spec.branch, BranchNamer.isPlaceholder(branch) { spec.autoName = true }
         }

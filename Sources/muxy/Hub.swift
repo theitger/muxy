@@ -417,7 +417,7 @@ enum FanOut {
         let slug = branch ?? BranchNamer.placeholder()
         for agent in agents {
             var spec = SessionSpec(directory: root, agent: agent,
-                                   prompt: ImplementationWorkflow.applying(to: prompt, agent: agent),
+                                   prompt: ImplementationWorkflow.applying(to: prompt, agent: agent, root: root),
                                    worktree: true, branch: "\(slug)-\(agent.rawValue)")
             spec.autoName = branch == nil
             spec.variantGroup = group

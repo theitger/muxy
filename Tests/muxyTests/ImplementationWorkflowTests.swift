@@ -37,6 +37,20 @@ final class ImplementationWorkflowTests: XCTestCase {
         XCTAssertEqual(try String(contentsOfFile: repo.root + "/.agents/skills/implement/SKILL.md"), "Codex skill")
     }
 
+    func testStandaloneTasksPreferRepositorySkills() throws {
+        let repo = try TempRepo()
+        try repo.write(".claude/commands/implement.md", "Claude command")
+        try repo.write(".codex/skills/implement/SKILL.md", "Codex skill")
+
+        let claude = ImplementationWorkflow.applying(to: "Fix login", agent: .claude, root: repo.root)
+        let codex = ImplementationWorkflow.applying(to: "Fix login", agent: .codex, root: repo.root)
+
+        XCTAssertEqual(claude, "/implement Fix login")
+        XCTAssertEqual(codex, "$implement Fix login")
+        XCTAssertFalse(claude.contains(try XCTUnwrap(ImplementationWorkflow.bundledSkill)))
+        XCTAssertFalse(codex.contains(try XCTUnwrap(ImplementationWorkflow.bundledSkill)))
+    }
+
     func testCustomTemplateAndShellRetainTaskContent() throws {
         let repo = try TempRepo()
         let template = "{reference}: {title}\n\n{body}"
