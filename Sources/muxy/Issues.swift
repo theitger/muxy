@@ -164,18 +164,15 @@ enum Issues {
     /// worded the same for every agent.
     /// What an issue becomes for the agent, editable in Settings. Fields
     /// in braces are filled in; one that is empty takes its line with it.
+    /// The issue and nothing else: /implement in front where the
+    /// repository has it. The queue's note and Codex's plan request come
+    /// only when they apply; "Closes #…" muxy asks for with the PR.
     static let defaultTemplate = """
-    GitHub issue {reference}: {title}
-
-    {url}
-
-    {labels}
+    {implement}{reference}: {title}
 
     {body}
 
     {note}
-
-    Work on this issue. When you open the pull request, write "Closes {reference}" in its description.
     """
 
     static let templateKey = "issuePromptTemplate"
@@ -190,14 +187,21 @@ enum Issues {
     }
 
     /// The fields a template can use, for Settings to list.
-    static let templateFields = ["{reference}", "{title}", "{url}", "{labels}", "{body}", "{note}", "{number}", "{repo}"]
+    static let templateFields = ["{implement}", "{reference}", "{title}", "{url}", "{labels}", "{body}", "{note}", "{number}",
+                                 "{repo}", "{plan}", "{unattended}"]
 
     static var template: String {
         let saved = UserDefaults.standard.string(forKey: templateKey) ?? ""
         return saved.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? defaultTemplate : saved
     }
 
-    static func prompt(for issue: Issue, note: String = "", localRepo: String? = nil, template: String? = nil) -> String {
+    /// `implement`: Claude, in a repository with an implement skill: the
+    /// `{implement}` field starts it. `plan`: Codex asked for a plan first
+    /// (Claude has its plan mode). `unattended`: the queue's note that
+    /// nobody answers. A template without `{plan}` or `{unattended}` gets
+    /// them at its end when they apply: plan first and the queue need them.
+    static func prompt(for issue: Issue, note: String = "", localRepo: String? = nil, template: String? = nil,
+                       implement: Bool = false, plan: Bool = false, unattended: Bool = false) -> String {
         let reference = localRepo?.lowercased() == issue.repo.lowercased() ? "#\(issue.number)" : "\(issue.repo)#\(issue.number)"
         var body = (issue.body ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         // The prompt travels in an environment variable: keep it sane.
@@ -206,9 +210,14 @@ enum Issues {
             "{reference}": reference, "{title}": issue.title, "{url}": issue.url,
             "{labels}": issue.labels.isEmpty ? "" : "Labels: " + issue.labels.joined(separator: ", "),
             "{body}": body, "{note}": note.isEmpty ? "" : "Note: " + note,
-            "{number}": String(issue.number), "{repo}": issue.repo
+            "{number}": String(issue.number), "{repo}": issue.repo,
+            "{implement}": implement ? "/implement " : "",
+            "{plan}": plan ? Flow.planNote : "",
+            "{unattended}": unattended ? Queue.unattendedNote : ""
         ]
         var text = template ?? Self.template
+        if plan, !text.contains("{plan}") { text += "\n\n{plan}" }
+        if unattended, !text.contains("{unattended}") { text += "\n\n{unattended}" }
         // The body last: braces inside it stay as they are.
         for (field, value) in values where field != "{body}" {
             text = text.replacingOccurrences(of: field, with: value)

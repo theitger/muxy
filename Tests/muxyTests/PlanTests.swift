@@ -38,3 +38,28 @@ final class PlanTests: XCTestCase {
         XCTAssertNil(items.first?.plan)
     }
 }
+
+final class PromptFieldTests: XCTestCase {
+    private let issue = Issue(repo: "o/r", number: 9, title: "Fix it", url: "u", state: "OPEN", body: "The body.")
+
+    func testTheDefaultPromptIsTheIssueAndNothingElse() {
+        let claude = Issues.prompt(for: issue, localRepo: "o/r", template: Issues.defaultTemplate, implement: true)
+        XCTAssertEqual(claude, "/implement #9: Fix it\n\nThe body.")
+        let plain = Issues.prompt(for: issue, localRepo: "o/r", template: Issues.defaultTemplate)
+        XCTAssertEqual(plain, "#9: Fix it\n\nThe body.")
+
+        let queued = Issues.prompt(for: issue, localRepo: "o/r", template: Issues.defaultTemplate, plan: true, unattended: true)
+        XCTAssertTrue(queued.hasPrefix("#9: Fix it\n\nThe body.\n\n"))
+        XCTAssertTrue(queued.contains(Flow.planNote))
+        XCTAssertTrue(queued.hasSuffix(Queue.unattendedNote))
+    }
+
+    func testAnOwnTemplateDecidesAboutImplementButKeepsWhatPlanAndQueueNeed() {
+        let own = "{title}: do it."
+        XCTAssertEqual(Issues.prompt(for: issue, template: own, implement: true), "Fix it: do it.", "no {implement}, no /implement")
+        let queued = Issues.prompt(for: issue, template: own, plan: true, unattended: true)
+        XCTAssertTrue(queued.hasPrefix("Fix it: do it."))
+        XCTAssertTrue(queued.contains(Flow.planNote))
+        XCTAssertTrue(queued.contains(Queue.unattendedNote))
+    }
+}

@@ -334,7 +334,7 @@ private struct PromptSettings: View {
                         .font(.system(size: 11.5))
                 }
             }
-            Text(L("What the agent gets when you start it on an issue. Fields in braces are filled in; an empty one leaves no gap."))
+            Text(L("What the agent gets when you start it on an issue. Fields in braces are filled in; an empty one leaves no gap. {implement} is /implement for Claude where the repository has that skill. Queued agents also get a note that nobody answers, Codex asked to plan first a request for the plan."))
                 .font(.system(size: 11.5))
                 .foregroundStyle(Theme.textDim)
                 .fixedSize(horizontal: false, vertical: true)

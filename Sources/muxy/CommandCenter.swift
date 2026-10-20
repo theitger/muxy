@@ -370,7 +370,8 @@ extension Store {
         if let found {
             let note = IssueRef.parse(ref)?.note ?? ""
             let extra = [note, spec.prompt].filter { !$0.isEmpty }.joined(separator: "\n\n")
-            spec.prompt = Issues.prompt(for: found, note: extra, localRepo: Issues.repo(of: spec.directory))
+            spec.prompt = Issues.prompt(for: found, note: extra, localRepo: Issues.repo(of: spec.directory),
+                                        implement: spec.agent == .claude && Issues.implementSkill(in: spec.directory))
             spec.issue = found
             // Named after the issue, not by the model.
             if let branch = spec.branch, BranchNamer.isPlaceholder(branch) {

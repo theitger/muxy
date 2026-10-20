@@ -316,14 +316,15 @@ enum FanOut {
                        background: Bool = false, plan: Bool = false, in window: WindowModel) {
         let base = Issues.branchName(for: issue)
         let group = agents.count > 1 ? UUID().uuidString : nil
-        var prompt = Issues.prompt(for: issue, localRepo: Issues.repo(of: root))
-        if unattended { prompt += "\n\n" + Queue.unattendedNote }
         let implement = Issues.implementSkill(in: root)
         for agent in agents {
+            // Per agent: /implement for Claude where the repository has it,
+            // the plan request for Codex (Claude plans in its own mode).
+            let prompt = Issues.prompt(for: issue, localRepo: Issues.repo(of: root),
+                                       implement: agent == .claude && implement,
+                                       plan: plan && agent == .codex, unattended: unattended)
             var spec = SessionSpec(
-                directory: root, agent: agent,
-                // The repository's own way to implement, where it has one.
-                prompt: agent == .claude && implement ? "/implement " + prompt : prompt,
+                directory: root, agent: agent, prompt: prompt,
                 worktree: true, branch: agents.count > 1 ? "\(base)-\(agent.rawValue)" : base
             )
             spec.autoName = false

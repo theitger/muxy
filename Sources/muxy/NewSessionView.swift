@@ -421,7 +421,10 @@ struct NewSessionView: View {
         }
         var spec = SessionSpec(
             directory: target, agent: agent,
-            prompt: resolved.map { Issues.prompt(for: $0.issue, note: $0.note, localRepo: issues.targetRepo) } ?? prompt,
+            prompt: resolved.map {
+                Issues.prompt(for: $0.issue, note: $0.note, localRepo: issues.targetRepo,
+                              implement: agent == .claude && Issues.implementSkill(in: target))
+            } ?? prompt,
             worktree: worktree, branch: typedBranch ?? issueBranch
         )
         // An issue already named it.
