@@ -424,8 +424,8 @@ struct NewSessionView: View {
             prompt: resolved.map {
                 Self.issuePrompt(for: $0.issue, note: $0.note, localRepo: issues.targetRepo,
                                  agent: agent, implement: Issues.implementSkill(in: target),
-                                 instructions: TaskLedger.shared.instructions(for: $0.issue))
-            } ?? prompt,
+                                 instructions: TaskLedger.shared.instructions(for: $0.issue), root: target)
+            } ?? ImplementationWorkflow.applying(to: prompt, agent: agent),
             worktree: worktree, branch: typedBranch ?? issueBranch
         )
         // An issue already named it.
@@ -436,9 +436,13 @@ struct NewSessionView: View {
     }
 
     static func issuePrompt(for issue: Issue, note: String, localRepo: String?, agent: AgentKind?,
-                            implement: Bool, instructions: String) -> String {
-        [Issues.prompt(for: issue, note: note, localRepo: localRepo, agent: agent, implement: implement), instructions]
-            .filter { !$0.isEmpty }.joined(separator: "\n\n")
+                            implement: Bool, instructions: String, root: String? = nil) -> String {
+        let prompt = if let root {
+            ImplementationWorkflow.prompt(for: issue, note: note, localRepo: localRepo, agent: agent, root: root)
+        } else {
+            Issues.prompt(for: issue, note: note, localRepo: localRepo, agent: agent, implement: implement)
+        }
+        return [prompt, instructions].filter { !$0.isEmpty }.joined(separator: "\n\n")
     }
 }
 

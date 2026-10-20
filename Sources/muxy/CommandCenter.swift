@@ -350,7 +350,9 @@ final class CommandCenter {
                 if let issue {
                     store.launch(issue: issue, found: issueFound, spec: spec, in: window)
                 } else {
-                    store.launch(spec, in: window)
+                    var task = spec
+                    task.prompt = ImplementationWorkflow.applying(to: task.prompt, agent: task.agent)
+                    store.launch(task, in: window)
                 }
                 // launch adds the session last.
                 reply(Reply(ok: true, output: store.workspaces.last?.id.uuidString ?? ""))
@@ -374,8 +376,8 @@ extension Store {
         if let found {
             let note = IssueRef.parse(ref)?.note ?? ""
             let extra = [note, spec.prompt].filter { !$0.isEmpty }.joined(separator: "\n\n")
-            let issuePrompt = Issues.prompt(for: found, note: extra, localRepo: Issues.repo(of: spec.directory),
-                                            agent: spec.agent, implement: Issues.implementSkill(in: spec.directory))
+            let issuePrompt = ImplementationWorkflow.prompt(for: found, note: extra, localRepo: Issues.repo(of: spec.directory),
+                                            agent: spec.agent, root: spec.directory)
             spec.prompt = [issuePrompt, TaskLedger.shared.instructions(for: found)]
                 .filter { !$0.isEmpty }.joined(separator: "\n\n")
             spec.issue = found

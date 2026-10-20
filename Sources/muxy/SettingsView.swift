@@ -184,6 +184,8 @@ private struct TerminalPane: View {
 }
 
 private struct AgentsPane: View {
+    @State private var skillMessage: String?
+    @State private var skillsInstalled = ImplementationWorkflow.globallyAvailable()
     @AppStorage(AgentKind.defaultKey) private var defaultAgent = AgentKind.preferredChoice()
     @AppStorage("skipPermissions") private var skipPermissions = true
     @AppStorage("restoreSessions") private var restoreSessions = true
@@ -199,6 +201,21 @@ private struct AgentsPane: View {
             }
         }
         SettingCard { SettingBlock { HookSettings() } }
+        SettingCard {
+            SettingRow(L("Implementation workflow"), detail: skillMessage ?? L("Matt Pocock's implement skill is included for task starts in every repository, for Claude and Codex. Repository skills take precedence.")) {
+                if skillsInstalled {
+                    Text(L("Installed globally")).font(.system(size: 12)).foregroundStyle(Theme.textMuted)
+                } else {
+                    Button(L("Install globally")) {
+                        do {
+                            try ImplementationWorkflow.installGlobally()
+                            skillsInstalled = ImplementationWorkflow.globallyAvailable()
+                            skillMessage = L("Skills available in every repository. Existing user skills were kept.")
+                        } catch { skillMessage = L("Skills could not be installed: %@", error.localizedDescription) }
+                    }
+                }
+            }
+        }
         SettingCard {
             SettingRow(L("Skip permission prompts"), detail: L("New sessions start Claude with --dangerously-skip-permissions and Codex with --dangerously-bypass-approvals-and-sandbox.")) {
                 Toggle("", isOn: $skipPermissions).labelsHidden().toggleStyle(.offOn)
@@ -338,7 +355,7 @@ private struct PromptSettings: View {
                         .font(.system(size: 11.5))
                 }
             }
-            Text(L("What the agent gets when you start it on an issue. Fields in braces are filled in; an empty one leaves no gap. {implement} is /implement for Claude where the repository has that skill. Queued agents also get a note that nobody answers, Codex asked to plan first a request for the plan."))
+            Text(L("Fields in braces are filled in from the issue. {implement} invokes a repository's implementation skill when available. Otherwise muxy adds its bundled implement skill. Plan and unattended instructions are added when needed."))
                 .font(.system(size: 11.5))
                 .foregroundStyle(Theme.textDim)
                 .fixedSize(horizontal: false, vertical: true)

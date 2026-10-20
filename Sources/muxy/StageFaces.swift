@@ -21,18 +21,7 @@ struct WingFace {
     var subtitle: String = ""
     /// The agent the card speaks for.
     var kind: AgentKind?
-    /// muxy's own checks: running, or how they came out.
-    var proof: ProofResult.Outcome?
-    var proving = false
-    /// Other sessions changing the same lines.
-    var collisions: [String] = []
-    /// The base it lands on, when merging that in would conflict.
-    var baseConflict: String?
-    /// quorum on its PR, as a short line.
-    var quorum: String?
-    var quorumRunning = false
-    /// Landing in progress.
-    var landing: String?
+    var sessionStatus: SessionSummary?
 
     /// The outcome line replaces the activity while nothing runs.
     var showsResult: Bool { result != nil && (agent == .idle || agent == .none) }
@@ -50,6 +39,7 @@ struct WingCardFace: View {
     /// The session on stage: same size and place as every other card (so
     /// nothing jumps when you switch), upright and framed.
     var onStage = false
+    var openDetails: (() -> Void)?
 
     static let radius: CGFloat = 9
 
@@ -86,9 +76,7 @@ struct WingCardFace: View {
                     .lineLimit(1)
                     .truncationMode(.middle)
             }
-            if face.showsResult || (face.activity != face.subtitle && face.activity != face.title) {
-                status
-            }
+            status
             if blocked, !face.lines.isEmpty {
                 VStack(alignment: .leading, spacing: 1.5) {
                     ForEach(Array(face.lines.suffix(3).enumerated()), id: \.offset) { _, line in
@@ -102,7 +90,6 @@ struct WingCardFace: View {
                 .padding(.vertical, 5)
                 .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(Theme.orange.soft))
             }
-            facts
         }
         .padding(10)
         .background(
@@ -125,88 +112,14 @@ struct WingCardFace: View {
         .opacity(face.isQuiet && !hovered && !onStage ? 0.7 : 1)
     }
 
-    /// One line: what is happening now, or what the last turn came to.
-    private var status: some View {
-        HStack(spacing: 6) {
-            switch face.agent {
-            case .working:
-                ProgressView().controlSize(.mini).scaleEffect(0.75).frame(width: 10, height: 10)
-            case .blocked, .failed:
-                Circle().fill(tone).frame(width: 6, height: 6)
-            case .idle where face.attention:
-                Circle().fill(tone).frame(width: 6, height: 6)
-            default:
-                EmptyView()
-            }
-            if face.showsResult, let result = face.result {
-                ResultLine(face: result)
+    @ViewBuilder private var status: some View {
+        if let value = face.sessionStatus ?? SessionSummary.resolve(agent: face.agent) {
+            if let openDetails {
+                Button(action: openDetails) { SessionSummaryLine(status: value) }
+                    .buttonStyle(.plain).help(L("Open task details"))
             } else {
-                Text(face.activity)
-                    .font(.system(size: 11.5, weight: blocked ? .semibold : .regular))
-                    .foregroundStyle(tone == Theme.textDim ? Theme.textMuted : tone)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
+                SessionSummaryLine(status: value)
             }
-            Spacer(minLength: 0)
-        }
-    }
-
-    /// What muxy knows beyond the agent, in words: checks, collisions,
-    /// quorum, landing, the app it serves. Nothing when there is nothing.
-    @ViewBuilder
-    private var facts: some View {
-        let chips = factChips
-        if !chips.isEmpty {
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: 4) { ForEach(chips, id: \.text) { chip($0) } }
-                VStack(alignment: .leading, spacing: 4) { ForEach(chips, id: \.text) { chip($0) } }
-            }
-        }
-    }
-
-    private struct Fact {
-        var text: String
-        var symbol: String
-        var tone: Theme.Tone
-    }
-
-    private var factChips: [Fact] {
-        var chips: [Fact] = []
-        if let landing = face.landing { chips.append(Fact(text: landing, symbol: "airplane", tone: Theme.blue)) }
-        if face.proving {
-            chips.append(Fact(text: L("checking"), symbol: "shield", tone: Theme.blue))
-        } else if face.proof == .failed {
-            chips.append(Fact(text: L("checks fail"), symbol: "xmark.shield.fill", tone: Theme.redTone))
-        } else if face.proof == .passed {
-            chips.append(Fact(text: L("proven"), symbol: "checkmark.shield.fill", tone: Theme.greenTone))
-        }
-        for other in face.collisions.prefix(2) {
-            chips.append(Fact(text: L("collides with %@", other), symbol: "arrow.triangle.merge", tone: Theme.orange))
-        }
-        if let base = face.baseConflict {
-            chips.append(Fact(text: L("conflicts with %@", base), symbol: "arrow.down.to.line", tone: Theme.neutral))
-        }
-        if let quorum = face.quorum {
-            chips.append(Fact(text: quorum, symbol: "person.3", tone: face.quorumRunning ? Theme.blue : Theme.neutral))
-        }
-        if let port = face.appPort {
-            chips.append(Fact(text: L("app on :%@", String(port)), symbol: "globe", tone: Theme.neutral))
-        }
-        return chips
-    }
-
-    private func chip(_ fact: Fact) -> some View {
-        Badge(text: fact.text, tone: fact.tone)
-            .lineLimit(1)
-    }
-
-    private var tone: Color {
-        switch face.agent {
-        case .blocked: Theme.orange.strong
-        case .failed: Theme.redTone.strong
-        case .working: Theme.blue.strong
-        case .idle where face.attention: Theme.greenTone.strong
-        default: Theme.textDim
         }
     }
 
@@ -220,19 +133,7 @@ struct WingCardFace: View {
                     .font(.system(size: 13, weight: onStage ? .semibold : .medium))
                     .foregroundStyle(onStage ? Theme.textPrimary : Theme.textBody)
                     .lineLimit(1)
-                // What muxy knows first, then the agent's own line.
-                HStack(spacing: 5) {
-                    FaceSignals(face: face)
-                    if face.showsResult, let result = face.result {
-                        ResultLine(face: result)
-                    } else {
-                        Text(face.activity)
-                            .font(.system(size: 11))
-                            .foregroundStyle(tone)
-                            .lineLimit(1)
-                            .truncationMode(.middle)
-                    }
-                }
+                status
             }
             Spacer(minLength: 4)
             PRBadge(pr: face.pr, status: face.prStatus)
@@ -394,50 +295,5 @@ struct TitleBarButton: View {
         }
         .buttonStyle(.plain)
         .onHover { hovered = $0 }
-    }
-}
-
-/// A card's quiet words for what muxy knows beyond the agent: landing,
-/// collisions, quorum, its checks, in their state's color. Each says more
-/// on hover.
-struct FaceSignals: View {
-    let face: WingFace
-
-    var body: some View {
-        HStack(spacing: 6) {
-            if face.landing != nil {
-                word(L("lands"), Theme.blue.strong, face.landing ?? "")
-            }
-            if !face.collisions.isEmpty {
-                word(L("collides"), Theme.orange.strong, L("Collides with %@", face.collisions.joined(separator: ", ")))
-            }
-            if let base = face.baseConflict {
-                word(L("conflicts with %@", base), Theme.textMuted, L("Merging %@ in would conflict", base))
-            }
-            if face.quorumRunning {
-                word("quorum", Theme.blue.strong, face.quorum ?? "")
-            } else if let quorum = face.quorum {
-                word("quorum", Theme.textDim, quorum)
-            }
-            if face.proving {
-                word(L("checks"), Theme.blue.strong, L("muxy runs the checks"))
-            } else if let proof = face.proof {
-                switch proof {
-                case .passed: word(L("checks"), Theme.greenTone.strong, L("muxy's checks pass"))
-                case .failed: word(L("checks"), Theme.redTone.strong, L("muxy's checks fail"))
-                default: EmptyView()
-                }
-            }
-        }
-    }
-
-    private func word(_ text: String, _ tone: Color, _ help: String) -> some View {
-        Text(text)
-            .font(.system(size: 11, weight: .semibold))
-            .lineLimit(1)
-            .fixedSize()
-            .foregroundStyle(tone)
-            .help(help)
-            .accessibilityLabel(help)
     }
 }

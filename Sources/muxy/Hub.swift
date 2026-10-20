@@ -389,12 +389,11 @@ enum FanOut {
                        background: Bool = false, plan: Bool = false, in window: WindowModel) {
         let base = Issues.branchName(for: issue)
         let group = agents.count > 1 ? UUID().uuidString : nil
-        let implement = Issues.implementSkill(in: root)
         for agent in agents {
             // Per agent: /implement for Claude where the repository has it,
             // the plan request for Codex (Claude plans in its own mode).
-            let basePrompt = Issues.prompt(for: issue, localRepo: Issues.repo(of: root),
-                                       agent: agent, implement: implement,
+            let basePrompt = ImplementationWorkflow.prompt(for: issue, localRepo: Issues.repo(of: root),
+                                       agent: agent, root: root,
                                        plan: plan && agent == .codex, unattended: unattended)
             let prompt = [basePrompt, TaskLedger.shared.instructions(for: issue)].filter { !$0.isEmpty }.joined(separator: "\n\n")
             var spec = SessionSpec(
@@ -417,7 +416,9 @@ enum FanOut {
         let group = UUID().uuidString
         let slug = branch ?? BranchNamer.placeholder()
         for agent in agents {
-            var spec = SessionSpec(directory: root, agent: agent, prompt: prompt, worktree: true, branch: "\(slug)-\(agent.rawValue)")
+            var spec = SessionSpec(directory: root, agent: agent,
+                                   prompt: ImplementationWorkflow.applying(to: prompt, agent: agent),
+                                   worktree: true, branch: "\(slug)-\(agent.rawValue)")
             spec.autoName = branch == nil
             spec.variantGroup = group
             Store.shared.launch(spec, in: window)

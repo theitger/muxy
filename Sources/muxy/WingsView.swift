@@ -45,7 +45,8 @@ private struct WingCard: View {
     var body: some View {
         WingCardFace(
             face: workspace.face, detailed: store.detailedWings, hovered: hovered,
-            onStage: window.selectedWorkspaceID == workspace.id
+            onStage: window.selectedWorkspaceID == workspace.id,
+            openDetails: workspace.context.repo == nil ? nil : { window.openTask(TaskTarget(workspace: workspace)) }
         )
         .contentShape(Rectangle())
         .onTapGesture { window.select(workspace) }
@@ -105,15 +106,7 @@ extension Workspace {
             appPort: Previews.shared.ports(of: self).first(where: \.isWeb)?.port,
             subtitle: subtitle,
             kind: featured?.kind,
-            proof: Proofs.shared.result(for: context.checkout)?.verdict,
-            proving: Proofs.shared.isRunning(context.checkout),
-            collisions: Radar.shared.collisions(for: context.checkout).filter { !$0.withBase }.map {
-                Radar.shared.title(of: $0.other)
-            },
-            baseConflict: Radar.shared.collisions(for: context.checkout).first(where: \.withBase)?.baseName,
-            quorum: QuorumWatch.shared.status(for: self)?.summary(for: context.prHead),
-            quorumRunning: QuorumWatch.shared.status(for: self)?.running == true,
-            landing: Landing.shared.step(for: self).flatMap { $0.isActive ? $0.text : nil }
+            sessionStatus: sessionStatus
         )
     }
 }

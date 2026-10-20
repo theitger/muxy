@@ -21,12 +21,11 @@ final class RenderTests: XCTestCase {
         let face = WingFace(
             title: issue.heading, agent: .idle, attention: true, isGit: true, pr: 128, prStatus: .failed,
             activity: "Done", lines: ["$ npm test", "  12 passing", "  1 failing"], agents: [.idle],
-            result: ResultFace(summary: full.summary, tests: .failed, checks: .failed)
+            result: ResultFace(summary: full.summary, tests: .failed, checks: .failed),
+            sessionStatus: SessionSummary.resolve(agent: .idle, next: .accept)
         )
         var signals = face
-        signals.quorum = "quorum: 2 findings open"
-        signals.proof = .passed
-        signals.collisions = ["Konten löschen"]
+        signals.sessionStatus = SessionSummary.resolve(agent: .idle, quorumRunning: true, quorumPhase: "review")
         let quorumStatus = QuorumStatus(kind: .babysit, key: "render/repo#128", running: false,
                                         blockers: 1, outcome: "failed", date: Date())
         let quorumRun = QuorumRun(status: quorumStatus, steps: [

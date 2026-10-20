@@ -23,10 +23,16 @@ final class TerminalSession: NSObject, ObservableObject, Identifiable {
         // text washed out, so it is not an option.)
         // The wrapper renders its theme AFTER the config file: empty (the
         // default) leaves your colors alone; muxy's neutral one replaces them.
-        return TerminalController(
+        let controller = TerminalController(
             configFilePath: existing,
             theme: TerminalColors.currentTheme
         )
+        // Tools can query terminal colors before SwiftUI attaches the first
+        // surface. Codex caches that answer for the session, so start with
+        // the actual appearance rather than the wrapper's light default.
+        let dark = NSApplication.shared.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+        controller.setColorScheme(dark ? .dark : .light)
+        return controller
     }()
 
     let id: UUID
