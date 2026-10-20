@@ -7,7 +7,7 @@ struct SessionSummary: Equatable {
     var tone: Tone = .quiet
     var running = false
 
-    static func resolve(agent: AgentState, next: NextStep = .none, proving: Bool = false,
+    static func resolve(agent: AgentState, next: NextStep = .none, proving: Bool = false, proof: ProofResult? = nil,
                         quorumRunning: Bool = false, quorumPhase: String? = nil,
                         prState: Git.PullRequest.State? = nil, checks: Checks = .none,
                         mergeability: Mergeability = .unknown) -> Self? {
@@ -31,6 +31,7 @@ struct SessionSummary: Equatable {
             return Self(text: proving ? L("Working · tests running") : L("Working"), tone: .active, running: true)
         }
         if proving { return Self(text: L("Tests running"), tone: .active, running: true) }
+        if proof?.verdict == .failed { return Self(text: L("Checks failed"), tone: .failure) }
         if prState == .merged { return Self(text: L("Merged")) }
         if prState == .closed { return Self(text: L("Pull request closed")) }
         if prState == .open, mergeability == .conflicting {
@@ -80,6 +81,7 @@ extension Workspace {
         let quorum = QuorumWatch.shared.status(for: self)
         return SessionSummary.resolve(agent: agent, next: Flow.next(for: self),
                                      proving: Proofs.shared.isRunning(context.checkout),
+                                     proof: Proofs.shared.result(for: context.checkout),
                                      quorumRunning: quorum?.running == true, quorumPhase: quorum?.phase,
                                      prState: context.pr == nil ? nil : context.prState,
                                      checks: context.checks, mergeability: context.mergeability)

@@ -106,6 +106,15 @@ enum ImplementationWorkflow {
         return applying(to: text, agent: agent, includeImplement: invocation == nil)
     }
 
+    static func unresolvedIssueTask(_ reference: String, note: String) -> String {
+        let task = "Work on issue \(reference)"
+        return note.isEmpty ? task : task + "\n\n" + note
+    }
+
+    static func unresolvedIssuePrompt(_ reference: String, note: String, agent: AgentKind?) -> String {
+        applying(to: unresolvedIssueTask(reference, note: note), agent: agent)
+    }
+
     static func applying(to task: String, agent: AgentKind?, includeImplement: Bool = true) -> String {
         guard agent != nil, !task.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return task }
         guard let implement = bundledSkill,

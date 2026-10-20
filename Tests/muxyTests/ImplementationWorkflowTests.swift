@@ -46,6 +46,13 @@ final class ImplementationWorkflowTests: XCTestCase {
         XCTAssertEqual(ImplementationWorkflow.applying(to: "ls", agent: nil), "ls")
     }
 
+    func testUnresolvedIssueGetsTheImplementationWorkflow() throws {
+        let prompt = ImplementationWorkflow.unresolvedIssuePrompt("#7", note: "Keep recovery working.", agent: .codex)
+
+        XCTAssertTrue(prompt.hasPrefix("Work on issue #7\n\nKeep recovery working."))
+        XCTAssertTrue(prompt.contains(try XCTUnwrap(ImplementationWorkflow.bundledSkill)))
+    }
+
     func testGlobalInstallationKeepsUserSkillsAndWorksWithoutRepoFiles() throws {
         let home = try TempRepo()
         try home.write(".claude/skills/code-review/SKILL.md", "User's own review")

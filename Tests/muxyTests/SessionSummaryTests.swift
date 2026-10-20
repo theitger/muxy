@@ -22,6 +22,17 @@ final class SessionSummaryTests: XCTestCase {
                        L("CI failed"))
     }
 
+    func testFailedLocalChecksTakePriorityOverACompletedDecision() {
+        let proof = ProofResult(tree: "tree", entries: [
+            .init(name: "test", command: "swift test", outcome: .failed, seconds: 1, tail: "failure", log: "")
+        ], finished: Date())
+
+        let status = SessionSummary.resolve(agent: .idle, next: .land, proof: proof)
+
+        XCTAssertEqual(status?.text, L("Checks failed"))
+        XCTAssertEqual(status?.tone, .failure)
+    }
+
     func testOnlyOpenPullRequestsHaveMergeAndCIFailures() {
         XCTAssertEqual(SessionSummary.resolve(agent: .idle, prState: .merged, checks: .failed, mergeability: .conflicting)?.text, L("Merged"))
         XCTAssertEqual(SessionSummary.resolve(agent: .idle, prState: .closed, checks: .failed)?.text, L("Pull request closed"))
@@ -33,5 +44,13 @@ final class SessionSummaryTests: XCTestCase {
         XCTAssertNil(SessionSummary.resolve(agent: .none))
         XCTAssertEqual(SessionSummary.resolve(agent: .idle, next: .accept)?.text, L("Ready for your inspection"))
         XCTAssertEqual(SessionSummary.resolve(agent: .idle, next: .land)?.text, L("Ready to merge"))
+    }
+
+    func testShellCardKeepsActivityWhenItHasNoSummary() {
+        let face = WingFace(title: "Shell", agent: .none, attention: false, isGit: false, pr: nil, prStatus: .none,
+                            activity: "Building release", lines: [], agents: [], result: nil)
+
+        XCTAssertNil(face.currentStatus)
+        XCTAssertEqual(face.fallbackActivity, "Building release")
     }
 }

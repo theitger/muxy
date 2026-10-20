@@ -338,7 +338,8 @@ final class CommandCenter {
                     if let issueFound {
                         FanOut.launch(issue: issueFound, root: root, agents: AgentKind.allCases, in: window)
                     } else {
-                        FanOut.launch(prompt: prompt ?? "", root: root, agents: AgentKind.allCases, branch: branch, in: window)
+                        let task = issue.map { ImplementationWorkflow.unresolvedIssueTask($0, note: prompt ?? "") } ?? prompt ?? ""
+                        FanOut.launch(prompt: task, root: root, agents: AgentKind.allCases, branch: branch, in: window)
                     }
                     reply(Reply(ok: true, output: store.workspaces.suffix(AgentKind.allCases.count).map(\.id.uuidString).joined(separator: "\n")))
                     return
@@ -387,8 +388,7 @@ extension Store {
                 spec.autoName = false
             }
         } else {
-            let task = "Work on issue \(ref)"
-            spec.prompt = spec.prompt.isEmpty ? task : task + "\n\n" + spec.prompt
+            spec.prompt = ImplementationWorkflow.unresolvedIssuePrompt(ref, note: spec.prompt, agent: spec.agent)
             // Named after the task, which now always has one.
             if let branch = spec.branch, BranchNamer.isPlaceholder(branch) { spec.autoName = true }
         }

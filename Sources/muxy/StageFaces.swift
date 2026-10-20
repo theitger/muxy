@@ -26,6 +26,15 @@ struct WingFace {
     /// The outcome line replaces the activity while nothing runs.
     var showsResult: Bool { result != nil && (agent == .idle || agent == .none) }
 
+    var currentStatus: SessionSummary? {
+        sessionStatus ?? SessionSummary.resolve(agent: agent)
+    }
+
+    var fallbackActivity: String? {
+        guard currentStatus == nil, !showsResult, !activity.isEmpty else { return nil }
+        return activity
+    }
+
     /// Nothing running, nothing new: the card steps back.
     var isQuiet: Bool { agent == .none && !attention }
 }
@@ -113,13 +122,21 @@ struct WingCardFace: View {
     }
 
     @ViewBuilder private var status: some View {
-        if let value = face.sessionStatus ?? SessionSummary.resolve(agent: face.agent) {
+        if let value = face.currentStatus {
             if let openDetails {
                 Button(action: openDetails) { SessionSummaryLine(status: value) }
                     .buttonStyle(.plain).help(L("Open task details"))
             } else {
                 SessionSummaryLine(status: value)
             }
+        } else if face.showsResult, let result = face.result {
+            ResultLine(face: result)
+        } else if let activity = face.fallbackActivity {
+            Text(activity)
+                .font(.system(size: 11.5))
+                .foregroundStyle(Theme.textMuted)
+                .lineLimit(1)
+                .truncationMode(.tail)
         }
     }
 
