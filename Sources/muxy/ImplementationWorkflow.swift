@@ -84,8 +84,16 @@ enum ImplementationWorkflow {
             try files.createDirectory(at: root, withIntermediateDirectories: true)
             for name in skills {
                 let link = root.appendingPathComponent(name)
-                if files.fileExists(atPath: link.path) { continue }
-                if (try? files.destinationOfSymbolicLink(atPath: link.path)) != nil {
+                let existing = try? files.destinationOfSymbolicLink(atPath: link.path)
+                let oldTarget = existing.map {
+                    URL(fileURLWithPath: $0, relativeTo: link.deletingLastPathComponent()).standardizedFileURL.path
+                }
+                let managedRoot = parent.standardizedFileURL.path + "/"
+                if oldTarget?.hasPrefix(managedRoot) == true {
+                    try files.removeItem(at: link)
+                } else if files.fileExists(atPath: link.path) {
+                    continue
+                } else if existing != nil {
                     try files.removeItem(at: link)
                 }
                 let target = destination.appendingPathComponent(prefix + name)

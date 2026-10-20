@@ -424,7 +424,7 @@ struct NewSessionView: View {
             prompt: resolved.map {
                 Self.issuePrompt(for: $0.issue, note: $0.note, localRepo: issues.targetRepo,
                                  agent: agent, implement: Issues.implementSkill(in: target),
-                                 instructions: TaskLedger.shared.instructions(for: $0.issue), root: target)
+                                 instructions: TaskLedger.shared.instructions(for: $0.issue), root: repo?.path ?? target)
             } ?? ImplementationWorkflow.applying(to: prompt, agent: agent, root: repo?.path),
             worktree: worktree, branch: typedBranch ?? issueBranch
         )

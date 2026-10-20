@@ -90,5 +90,15 @@ final class ImplementationWorkflowTests: XCTestCase {
         try FileManager.default.createSymbolicLink(at: broken, withDestinationURL: root.appendingPathComponent("missing-skill"))
         try ImplementationWorkflow.installGlobally(home: root)
         XCTAssertTrue(FileManager.default.isReadableFile(atPath: broken.appendingPathComponent("SKILL.md").path))
+
+        let stale = root.appendingPathComponent(".local/share/muxy/skills/older/codex/implement")
+        try FileManager.default.createDirectory(at: stale, withIntermediateDirectories: true)
+        try "Old skill".write(to: stale.appendingPathComponent("SKILL.md"), atomically: true, encoding: .utf8)
+        let codexLink = root.appendingPathComponent(".agents/skills/implement")
+        try FileManager.default.removeItem(at: codexLink)
+        try FileManager.default.createSymbolicLink(at: codexLink, withDestinationURL: stale)
+        try ImplementationWorkflow.installGlobally(home: root)
+        XCTAssertEqual(try FileManager.default.destinationOfSymbolicLink(atPath: codexLink.path),
+                       root.appendingPathComponent(".local/share/muxy/skills/" + ImplementationWorkflow.revision + "/codex/implement").path)
     }
 }
