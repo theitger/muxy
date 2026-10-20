@@ -641,6 +641,10 @@ final class Landing: ObservableObject {
                 }
                 guard !status.running else { continue }
                 if status.succeeded, let checkout = context.checkout, let pr = context.pr {
+                    guard status.covers(context.prHead) else {
+                        set(.failed(L("quorum's result does not cover the current commit. Review it again.")), for: workspace)
+                        continue
+                    }
                     Self.takeFixes(in: checkout)
                     if status.outcome == "merged" {
                         set(.landed, for: workspace)

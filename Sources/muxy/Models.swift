@@ -21,10 +21,18 @@ enum AgentKind: String, CaseIterable, Identifiable, Codable {
     case codex
 
     static let defaultKey = "defaultAgent"
+    static let shell = "shell"
+
+    /// The old new-session picker also allowed a terminal without a coding
+    /// tool. Keep that saved choice even though it is not an AgentKind.
+    static func preferredChoice(in defaults: UserDefaults = .standard) -> String {
+        let value = defaults.string(forKey: defaultKey) ?? defaults.string(forKey: "newSessionAgent")
+        guard let value, Self(rawValue: value) != nil || value == shell else { return claude.rawValue }
+        return value
+    }
 
     static func preferred(in defaults: UserDefaults = .standard) -> AgentKind {
-        let value = defaults.string(forKey: defaultKey) ?? defaults.string(forKey: "newSessionAgent")
-        return value.flatMap(Self.init(rawValue:)) ?? .claude
+        Self(rawValue: preferredChoice(in: defaults)) ?? .claude
     }
 
     var id: String { rawValue }

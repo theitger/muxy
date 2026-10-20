@@ -54,8 +54,8 @@ final class ReviewModel: ObservableObject {
         workspace.agentTab
     }
 
-    var feedbackAgent: AgentKind {
-        AgentKind.preferred()
+    var feedbackAgent: AgentKind? {
+        AgentKind(rawValue: AgentKind.preferredChoice())
     }
 
     func load() {
@@ -154,6 +154,7 @@ final class ReviewModel: ObservableObject {
         let existing = agentSession
         guard Landing.shared.step(for: workspace)?.isActive != true,
               QuorumWatch.shared.status(for: workspace)?.running != true else { return false }
+        guard existing != nil || feedbackAgent != nil else { return false }
         if let existing {
             guard existing.agent != .working, existing.terminalView.currentSurface != nil else { return false }
         }
@@ -177,7 +178,7 @@ final class ReviewModel: ObservableObject {
             // A PR opened from the hub may have only a shell tab. Start the
             // preferred agent in this checkout with the feedback as its first
             // prompt; typing into a just-created terminal would lose it.
-            let kind = feedbackAgent
+            guard let kind = feedbackAgent else { return false }
             let conversation = kind == .claude ? UUID().uuidString.lowercased() : nil
             let skipPermissions = Store.shared.skipPermissions
             let session = TerminalSession(
@@ -190,7 +191,10 @@ final class ReviewModel: ObservableObject {
             session.skipsPermissions = skipPermissions
             session.issue = workspace.sessions.compactMap(\.issue).first
             session.agent = .idle
-            guard BackgroundStart.start(session) else { return false }
+            guard BackgroundStart.start(session) else {
+                Queue.shared.deliveryFailed(in: workspace, message: L("Feedback could not be delivered. Check the terminal and send it again."))
+                return false
+            }
             Store.shared.add(session, to: workspace)
             Store.shared.sessionsChanged()
             delivered = true
@@ -420,8 +424,10 @@ struct ReviewView: View {
                             .allowsHitTesting(false)
                     }
                 }
-            Button(model.agentSession == nil ? L("Start %@ with feedback", model.feedbackAgent.name) : L("Send feedback")) { sendFeedback() }
-                .disabled(model.workspace.agent == .working || Landing.shared.step(for: model.workspace)?.isActive == true || QuorumWatch.shared.status(for: model.workspace)?.running == true || (feedback.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && screenshot == nil && model.comments.isEmpty))
+            Button(model.agentSession == nil
+                   ? (model.feedbackAgent.map { L("Start %@ with feedback", $0.name) } ?? L("Terminal-only preference"))
+                   : L("Send feedback")) { sendFeedback() }
+                .disabled(model.agentSession == nil && model.feedbackAgent == nil || model.workspace.agent == .working || Landing.shared.step(for: model.workspace)?.isActive == true || QuorumWatch.shared.status(for: model.workspace)?.running == true || (feedback.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && screenshot == nil && model.comments.isEmpty))
                 .frame(maxWidth: .infinity)
             Spacer(minLength: 12)
             Rectangle().fill(Theme.hairline).frame(height: 1)

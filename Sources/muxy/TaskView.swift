@@ -153,7 +153,7 @@ struct TaskPage: View {
     @State private var githubIssueState: String?
     @State private var starting = false
     @State private var startProblem: String?
-    @AppStorage(AgentKind.defaultKey) private var defaultAgent = AgentKind.preferred().rawValue
+    @AppStorage(AgentKind.defaultKey) private var defaultAgent = AgentKind.preferredChoice()
     @State private var agentOverride: String?
     private var preferredAgent: String { agentOverride ?? defaultAgent }
 
@@ -229,19 +229,23 @@ struct TaskPage: View {
             }
             if let issue = startIssue {
                 HStack(spacing: 12) {
-                    let agent = AgentKind(rawValue: preferredAgent) ?? .claude
-                    PanelButton(title: starting ? L("Starting task…") : L("Start with %@", agent.name), symbol: "play.fill", prominent: true) {
+                    let agent = AgentKind(rawValue: preferredAgent)
+                    PanelButton(title: starting ? L("Starting task…") : (agent.map { L("Start with %@", $0.name) } ?? L("Open terminal")), symbol: "play.fill", prominent: true) {
                         starting = true
                         startProblem = nil
-                        HubModel.shared.start(issue, agents: [agent], in: window, hideHub: false) { id in
+                        let done: (String?) -> Void = { id in
                             starting = false
                             if id == nil { startProblem = L("Task could not start. Check the repository checkout and agent setup.") }
                         }
+                        if let agent { HubModel.shared.start(issue, agents: [agent], in: window, hideHub: false, then: done) }
+                        else { HubModel.shared.startTerminal(issue, in: window, hideHub: false, then: done) }
                     }.disabled(starting)
                     Picker(L("Agent"), selection: Binding(get: { preferredAgent }, set: { agentOverride = $0 })) {
                         ForEach(AgentKind.allCases) { Text($0.name).tag($0.rawValue) }
+                        Text(L("Terminal only")).tag(AgentKind.shell)
                     }.labelsHidden().frame(width: 110).disabled(starting)
-                    Text(L("Starts an agent in its own checkout.")).font(.system(size: 11)).foregroundStyle(Theme.textDim)
+                    Text(agent == nil ? L("Opens a terminal in its own checkout.") : L("Starts an agent in its own checkout."))
+                        .font(.system(size: 11)).foregroundStyle(Theme.textDim)
                 }
             }
             if let startProblem { Text(startProblem).font(.system(size: 12)).foregroundStyle(Theme.textMuted) }

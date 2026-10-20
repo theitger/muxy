@@ -325,6 +325,48 @@ final class HubModel: ObservableObject {
         }
     }
 
+    /// Opens the issue's own worktree in a terminal without starting a
+    /// coding tool. This keeps a saved terminal-only preference intact.
+    func startTerminal(_ issue: Issue, in window: WindowModel, hideHub: Bool = false,
+                       then: ((String?) -> Void)? = nil) {
+        guard let root = checkout(of: issue.repo) else {
+            window.show(L("%@ isn't cloned on this Mac", issue.repo))
+            then?(nil)
+            return
+        }
+        if hideHub { window.showHub = false }
+        Task.detached(priority: .userInitiated) {
+            let fetched = Issues.view(issue.number, repo: issue.repo, in: root, fresh: true)
+            guard case let .found(full) = fetched else {
+                await MainActor.run {
+                    window.show(L("The issue could not be refreshed. Try starting again when GitHub is available."), seconds: 6)
+                    then?(nil)
+                }
+                return
+            }
+            await MainActor.run {
+                guard full.isOpen else {
+                    window.show(L("This issue is closed."), seconds: 5)
+                    then?(nil)
+                    return
+                }
+                guard TaskLedger.shared.update(TaskTarget(issue: full).id, { $0.synchronize(full, previousTitle: issue.title) }) else {
+                    window.show(TaskLedger.shared.problem ?? L("Task notes could not be saved."), seconds: 6)
+                    then?(nil)
+                    return
+                }
+                let before = Set(Store.shared.workspaces.map(\.id))
+                var spec = SessionSpec(directory: root, agent: nil, prompt: "", worktree: true, branch: Issues.branchName(for: full))
+                spec.autoName = false
+                spec.issue = full
+                spec.background = !hideHub
+                Store.shared.launch(issue: "#\(full.number)", found: full, spec: spec, in: window)
+                if !hideHub { window.show(L("Terminal opens for #%d", issue.number)) }
+                then?(Store.shared.workspaces.first { !before.contains($0.id) }?.id.uuidString)
+            }
+        }
+    }
+
     /// Signs gh in, in a terminal where you can follow its steps.
     func signIn(in window: WindowModel) {
         window.showHub = false

@@ -75,6 +75,8 @@ final class TaskIssueSyncTests: XCTestCase {
         XCTAssertEqual(AgentKind.preferred(in: defaults), .claude)
         defaults.set("codex", forKey: "newSessionAgent")
         XCTAssertEqual(AgentKind.preferred(in: defaults), .codex)
+        defaults.set("shell", forKey: "newSessionAgent")
+        XCTAssertEqual(AgentKind.preferredChoice(in: defaults), "shell")
         defaults.set("claude", forKey: AgentKind.defaultKey)
         XCTAssertEqual(AgentKind.preferred(in: defaults), .claude)
         defaults.set("invalid", forKey: AgentKind.defaultKey)

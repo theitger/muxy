@@ -184,7 +184,7 @@ private struct TerminalPane: View {
 }
 
 private struct AgentsPane: View {
-    @AppStorage(AgentKind.defaultKey) private var defaultAgent = AgentKind.preferred().rawValue
+    @AppStorage(AgentKind.defaultKey) private var defaultAgent = AgentKind.preferredChoice()
     @AppStorage("skipPermissions") private var skipPermissions = true
     @AppStorage("restoreSessions") private var restoreSessions = true
     @AppStorage(KeepAlive.key) private var keepSessions = false
@@ -194,6 +194,7 @@ private struct AgentsPane: View {
             SettingRow(L("Default agent"), detail: L("Used for new tasks and sessions. Choosing another agent for one task does not change this default.")) {
                 Picker(L("Default agent"), selection: $defaultAgent) {
                     ForEach(AgentKind.allCases) { Text($0.name).tag($0.rawValue) }
+                    Text(L("Terminal only")).tag(AgentKind.shell)
                 }.labelsHidden().frame(width: 140)
             }
         }

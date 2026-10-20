@@ -296,7 +296,7 @@ final class CommandCenter {
             return reply(Reply(ok: false, output: "no such folder: \(directory)"))
         }
         let defaults = UserDefaults.standard
-        var choice = agent ?? AgentKind.preferred(in: defaults).rawValue
+        var choice = agent ?? AgentKind.preferredChoice(in: defaults)
         // The panel's last choice was both agents: one, unless asked for both.
         if agent == nil, choice == NewSessionView.both { choice = AgentKind.claude.rawValue }
         guard choice == "none" || choice == "shell" || choice == NewSessionView.both || AgentKind(rawValue: choice) != nil else {

@@ -153,7 +153,8 @@ struct HubView: View {
                             IssueCard(issue: issue, local: hub.checkout(of: issue.repo) != nil, showsRepo: groups.count <= 1,
                                       inspect: { window.openTask(TaskTarget(issue: issue)) },
                                       queue: { queue.add(issue, agent: $0, plan: $1) },
-                                      plan: { hub.start(issue, agents: [$0], in: window, plan: true) }) { agents in
+                                      plan: { hub.start(issue, agents: [$0], in: window, plan: true) },
+                                      startTerminal: { hub.startTerminal(issue, in: window) }) { agents in
                                 hub.start(issue, agents: agents, in: window)
                             }
                         }
@@ -392,8 +393,9 @@ private struct IssueCard: View {
     let inspect: () -> Void
     let queue: (AgentKind, Bool) -> Void
     let plan: (AgentKind) -> Void
+    let startTerminal: () -> Void
     let start: ([AgentKind]) -> Void
-    @AppStorage(AgentKind.defaultKey) private var preferred = AgentKind.preferred().rawValue
+    @AppStorage(AgentKind.defaultKey) private var preferred = AgentKind.preferredChoice()
 
     var body: some View {
         VStack(alignment: .leading, spacing: 7) {
@@ -429,8 +431,10 @@ private struct IssueCard: View {
                 }
             }
             HStack(spacing: 6) {
-                let agent = AgentKind(rawValue: preferred) ?? .claude
-                SmallButton(title: L("Start %@", agent.name), prominent: true) { start([agent]) }
+                let agent = AgentKind(rawValue: preferred)
+                SmallButton(title: agent.map { L("Start %@", $0.name) } ?? L("Open terminal"), prominent: true) {
+                    if let agent { start([agent]) } else { startTerminal() }
+                }
                     .disabled(!local)
                 Menu {
                     ForEach(AgentKind.allCases) { kind in
@@ -603,7 +607,7 @@ private struct PullCard: View {
     var resume: (() -> Void)?
     let inspect: () -> Void
     let open: (AgentKind?) -> Void
-    @AppStorage(AgentKind.defaultKey) private var preferred = AgentKind.preferred().rawValue
+    @AppStorage(AgentKind.defaultKey) private var preferred = AgentKind.preferredChoice()
     @ObservedObject private var quorum = QuorumWatch.shared
     @ObservedObject private var acceptance = Acceptance.shared
     @State private var starting = false
@@ -697,14 +701,14 @@ private struct PullCard: View {
                 }
             }
             HStack(spacing: 6) {
-                let agent = AgentKind(rawValue: preferred) ?? .claude
+                let agent = AgentKind(rawValue: preferred)
                 let ready = local && pull.branch != nil
                 if let resume, let item {
-                    SmallButton(title: L("Continue with %@", (item.agent ?? agent).name), prominent: true, action: resume)
+                    SmallButton(title: L("Continue with %@", (item.agent ?? agent ?? .claude).name), prominent: true, action: resume)
                         .help(L("Its agent's conversation, where it left off"))
                 } else {
-                    SmallButton(title: L("New %@ chat", agent.name), prominent: true) { open(agent) }
-                        .help(L("A new chat in the worktree with the PR's branch"))
+                    SmallButton(title: agent.map { L("New %@ chat", $0.name) } ?? L("Open terminal"), prominent: true) { open(agent) }
+                        .help(agent == nil ? L("A terminal in the worktree with the PR's branch") : L("A new chat in the worktree with the PR's branch"))
                         .disabled(!ready)
                 }
                 Menu {

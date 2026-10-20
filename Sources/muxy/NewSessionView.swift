@@ -10,7 +10,7 @@ struct NewSessionView: View {
     @ObservedObject var store: Store
     @ObservedObject var window: WindowModel
 
-    @State private var agentChoice = AgentKind.preferred().rawValue
+    @State private var agentChoice = AgentKind.preferredChoice()
     @AppStorage("newSessionWorktree") private var useWorktree = true
     @State private var prompt = ""
     @State private var repos: [Repos.Repo] = []
