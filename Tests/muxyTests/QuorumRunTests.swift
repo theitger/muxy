@@ -157,6 +157,9 @@ final class QuorumRunTests: XCTestCase {
         XCTAssertFalse(QuorumCompat.newer("1.16.0", than: "1.16.0"))
         XCTAssertFalse(QuorumCompat.newer("1.15.5", than: "1.16.0"))
         XCTAssertFalse(QuorumCompat.newer("1.16.0-dev+3d85e2a.dirty", than: "1.16.0"))
+        XCTAssertTrue(QuorumCompat.supportsDivergenceScan("1.10.0"))
+        XCTAssertFalse(QuorumCompat.supportsDivergenceScan("1.9.9"))
+        XCTAssertFalse(QuorumCompat.supportsDivergenceScan(nil))
 
         XCTAssertNil(QuorumCompat.warning(for: nil, installed: QuorumCompat.tested))
         XCTAssertNotNil(QuorumCompat.warning(for: nil, installed: "1.17.0"))

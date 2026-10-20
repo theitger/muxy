@@ -180,14 +180,17 @@ final class Queue: ObservableObject {
     @discardableResult
     func followDecision(in workspace: Workspace, awaitingAgent: Bool) -> Bool {
         guard let queued = item(for: workspace), let index = items.firstIndex(where: { $0.id == queued.id }) else { return true }
-        let wasActive = items[index].phase.isActive
-        items[index].phase = .running
-        items[index].acted = Date()
-        if !wasActive { items[index].started = Date() }
-        items[index].idleSince = nil
-        items[index].awaitingAgent = awaitingAgent
-        items[index].awaitedTurns = workspace.agentTab?.turnsEnded ?? 0
-        return save()
+        var savedItems = items
+        let wasActive = savedItems[index].phase.isActive
+        savedItems[index].phase = .running
+        savedItems[index].acted = Date()
+        if !wasActive { savedItems[index].started = Date() }
+        savedItems[index].idleSince = nil
+        savedItems[index].awaitingAgent = awaitingAgent
+        savedItems[index].awaitedTurns = workspace.agentTab?.turnsEnded ?? 0
+        guard save(Saved(items: savedItems, running: running, merged: merged)) else { return false }
+        items = savedItems
+        return true
     }
 
     /// The request could not reach the terminal. Stop waiting for a turn
@@ -531,15 +534,14 @@ final class Queue: ObservableObject {
     }
 
     @discardableResult
-    private func save() -> Bool {
-        guard problem == nil else { return false }
+    private func save(_ saved: Saved? = nil) -> Bool {
         do {
             try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
-            try JSONEncoder().encode(Saved(items: items, running: running, merged: merged)).write(to: file, options: .atomic)
+            try JSONEncoder().encode(saved ?? Saved(items: items, running: running, merged: merged)).write(to: file, options: .atomic)
+            problem = nil
             return true
         } catch {
             problem = L("The queue could not be saved: %@", error.localizedDescription)
-            running = false
             return false
         }
     }

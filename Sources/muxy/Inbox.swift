@@ -107,9 +107,7 @@ final class Inbox: ObservableObject {
 
     /// The screen as it is now, for its choices.
     static func choices(of session: TerminalSession) -> [Choice] {
-        guard session.agent == .blocked,
-              let text = session.terminalView.currentSurface?.readText(screen: false) else { return [] }
-        return Choices.parse(text)
+        prompt(in: session)?.choices ?? []
     }
 
     /// Answers a session without going there: text and Enter, or a choice.
@@ -132,23 +130,53 @@ final class Inbox: ObservableObject {
     /// Dispatch a choice only while the same prompt is still on screen.
     @discardableResult
     static func choose(_ choice: Choice, in session: TerminalSession) -> Bool {
-        let current = choices(of: session)
-        guard current.contains(where: { $0.number == choice.number && $0.label == choice.label }),
+        guard let current = prompt(in: session),
+              current.choices.contains(where: { $0.number == choice.number && $0.label == choice.label }),
               session.terminalView.currentSurface != nil, followDecision(in: session) else { return false }
-        for (index, key) in Choices.keys(to: choice, in: current).enumerated() {
+        var pending = true
+        for (index, key) in Choices.keys(to: choice, in: current.choices).enumerated() {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.04 * Double(index)) {
+                guard pending else { return }
+                guard samePrompt(current, isStillIn: session) else {
+                    pending = false
+                    deliveryFailed(in: session, message: L("The prompt changed before this choice was delivered. Check the terminal and choose again."))
+                    return
+                }
                 if !RemoteState.press(key, in: session) {
-                    session.needsAttention = true
-                    if let workspace = Store.shared.workspaces.first(where: { $0.sessions.contains { $0 === session } }) {
-                        Queue.shared.deliveryFailed(in: workspace, message: L("The answer could not be delivered. Check the terminal and send it again."))
-                        Store.shared.window(of: workspace)?.show(L("The answer could not be delivered."), seconds: 5)
-                    }
+                    pending = false
+                    deliveryFailed(in: session, message: L("The answer could not be delivered. Check the terminal and send it again."))
                 }
             }
         }
         session.needsAttention = false
         Queue.shared.resume()
         return true
+    }
+
+    private static func prompt(in session: TerminalSession) -> (choices: [Choice], fingerprint: String)? {
+        guard session.agent == .blocked,
+              let screen = session.terminalView.currentSurface?.readText(screen: false) else { return nil }
+        let fingerprint = screen.split(separator: "\n", omittingEmptySubsequences: false).map { line in
+            String(line)
+                .replacingOccurrences(of: #"^\s*[❯›>▶]\s*"#, with: "", options: .regularExpression)
+                .trimmingCharacters(in: .whitespaces)
+        }.joined(separator: "\n")
+        return (Choices.parse(screen), fingerprint)
+    }
+
+    private static func samePrompt(_ prompt: (choices: [Choice], fingerprint: String), isStillIn session: TerminalSession) -> Bool {
+        guard let latest = self.prompt(in: session), prompt.fingerprint == latest.fingerprint,
+              prompt.choices.count == latest.choices.count else { return false }
+        return zip(prompt.choices, latest.choices).allSatisfy {
+            $0.number == $1.number && $0.label == $1.label
+        }
+    }
+
+    private static func deliveryFailed(in session: TerminalSession, message: String) {
+        session.needsAttention = true
+        guard let workspace = Store.shared.workspaces.first(where: { $0.sessions.contains { $0 === session } }) else { return }
+        Queue.shared.deliveryFailed(in: workspace, message: message)
+        Store.shared.window(of: workspace)?.show(message, seconds: 5)
     }
 
     private static func followDecision(in session: TerminalSession) -> Bool {

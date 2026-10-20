@@ -425,11 +425,11 @@ enum Quorum {
     /// draft PR, which quorum refuses without `--draft` unless the config
     /// allows drafts; your click is that go-ahead.
     static func command(_ kind: QuorumStatus.Kind, pr: Int, draft: Bool = false,
-                        behavior: QuorumBehavior = .current) -> String {
+                        behavior: QuorumBehavior = .current, installed: String? = QuorumCompat.installed()) -> String {
         let flag = kind == .babysit && draft && !behavior.babysitsDrafts ? " --draft" : ""
         // The trace records the final head after fixes, so Land can reuse a
         // clean run only for the exact commit it checked.
-        let trace = kind == .babysit ? " --divergence-scan" : ""
+        let trace = kind == .babysit && QuorumCompat.supportsDivergenceScan(installed) ? " --divergence-scan" : ""
         return "quorum \(kind.rawValue)\(flag)\(trace) \(pr)"
     }
 

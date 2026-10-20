@@ -445,10 +445,11 @@ final class QuorumFlowTests: XCTestCase {
     }
 
     func testDraftsGetTheGoAheadOnlyWhenTheConfigDoesntGiveIt() {
-        XCTAssertEqual(Quorum.command(.babysit, pr: 7, draft: true, behavior: QuorumBehavior([:])), "quorum babysit --draft --divergence-scan 7")
-        XCTAssertEqual(Quorum.command(.babysit, pr: 7, draft: true, behavior: QuorumBehavior(["BABYSIT_DRAFTS": "1"])), "quorum babysit --divergence-scan 7")
-        XCTAssertEqual(Quorum.command(.babysit, pr: 7, draft: false, behavior: QuorumBehavior([:])), "quorum babysit --divergence-scan 7")
-        XCTAssertEqual(Quorum.command(.review, pr: 7, draft: true, behavior: QuorumBehavior([:])), "quorum review 7")
+        XCTAssertEqual(Quorum.command(.babysit, pr: 7, draft: true, behavior: QuorumBehavior([:]), installed: QuorumCompat.tested), "quorum babysit --draft --divergence-scan 7")
+        XCTAssertEqual(Quorum.command(.babysit, pr: 7, draft: true, behavior: QuorumBehavior(["BABYSIT_DRAFTS": "1"]), installed: QuorumCompat.tested), "quorum babysit --divergence-scan 7")
+        XCTAssertEqual(Quorum.command(.babysit, pr: 7, draft: false, behavior: QuorumBehavior([:]), installed: QuorumCompat.tested), "quorum babysit --divergence-scan 7")
+        XCTAssertEqual(Quorum.command(.babysit, pr: 7, draft: false, behavior: QuorumBehavior([:]), installed: "1.9.9"), "quorum babysit 7")
+        XCTAssertEqual(Quorum.command(.review, pr: 7, draft: true, behavior: QuorumBehavior([:]), installed: QuorumCompat.tested), "quorum review 7")
     }
 
     func testStepsMatchWhatQuorumDoes() {

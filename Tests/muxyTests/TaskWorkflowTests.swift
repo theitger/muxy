@@ -234,6 +234,23 @@ final class QueuePersistenceTests: XCTestCase {
         mergedDependent.remove(mergedDependent.items[0])
         XCTAssertEqual(mergedDependent.items.count, 1)
     }
+
+    func testQueueCanSaveAgainAfterItsFileBecomesWritable() throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let queue = Queue(file: folder, restoreLegacy: false)
+        let first = Issue(repo: "o/r", number: 1, title: "First", url: "", state: "OPEN")
+        let second = Issue(repo: "o/r", number: 2, title: "Second", url: "", state: "OPEN")
+
+        queue.add(first, agent: .claude)
+        XCTAssertNotNil(queue.problem)
+        try FileManager.default.removeItem(at: folder)
+
+        queue.add(second, agent: .codex)
+        XCTAssertNil(queue.problem)
+        XCTAssertEqual(Queue(file: folder, restoreLegacy: false).items.map(\.issue.number), [1, 2])
+    }
 }
 
 final class MergeOrderTests: XCTestCase {

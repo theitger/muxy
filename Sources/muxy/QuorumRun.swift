@@ -347,6 +347,8 @@ struct QuorumRun: Equatable {
 enum QuorumCompat {
     /// The quorum release muxy's reading was last checked against.
     static let tested = "1.16.0"
+    /// `--divergence-scan` first shipped in quorum 1.10.0.
+    static let divergenceScan = "1.10.0"
     /// The file schemas muxy reads, as quorum numbers them.
     static let schemas = ["output/findings.json": 1, "target.json": 2, "divergence-trace.json": 1]
 
@@ -388,5 +390,10 @@ enum QuorumCompat {
             if l != r { return l > r }
         }
         return false
+    }
+
+    static func supportsDivergenceScan(_ installed: String?) -> Bool {
+        guard let installed else { return false }
+        return !newer(divergenceScan, than: installed)
     }
 }
