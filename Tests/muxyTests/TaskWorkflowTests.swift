@@ -296,6 +296,24 @@ final class QueuePersistenceTests: XCTestCase {
         XCTAssertEqual(Queue(file: blockedParent.appendingPathComponent("queue.json"), restoreLegacy: false).items.map(\.issue.number), [1, 2])
     }
 
+    func testRequeueingClearsAnOlderMergeReceipt() throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let file = folder.appendingPathComponent("queue.json")
+        let issue = Issue(repo: "o/r", number: 1, title: "Again", url: "", state: "OPEN")
+        let previous = Queue.Item(issue: issue, agent: .claude)
+        let saved = SavedQueue(items: [previous], running: false, merged: [previous.id])
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try JSONEncoder().encode(saved).write(to: file, options: .atomic)
+
+        let queue = Queue(file: file, restoreLegacy: false)
+        queue.remove(queue.items[0])
+        queue.add(issue, agent: .codex)
+
+        XCTAssertFalse(queue.merged.contains(previous.id))
+        XCTAssertEqual(queue.items.count, 1)
+    }
+
     func testCorruptQueueIsNotOverwritten() throws {
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: folder) }

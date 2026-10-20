@@ -84,6 +84,28 @@ final class QueueTests: XCTestCase {
         XCTAssertNil(failed.awaitedTurns)
     }
 
+    func testAnswerKeepsTheOriginalTimeBudget() {
+        var waiting = item(started: -3600)
+        waiting.phase = .needsYou("Answer the question.")
+
+        let resumed = Queue.resumed(waiting, awaitingAgent: true, turns: 3, now: now)
+
+        XCTAssertEqual(resumed.started, waiting.started)
+        XCTAssertEqual(resumed.phase, .running)
+        XCTAssertEqual(resumed.awaitedTurns, 3)
+    }
+
+    func testNewTaskDoesNotUseAnEarlierMergeForTheSameIssue() {
+        var replacement = item(started: 0)
+        let old = WorkItem(root: "/repo", branch: "7-old", title: "Old task", issue: issue,
+                           pr: 1, prState: "merged", created: now.addingTimeInterval(-7200),
+                           touched: now.addingTimeInterval(-3600))
+
+        XCTAssertFalse(Queue.recordsMerge(old, for: replacement))
+        replacement.started = now.addingTimeInterval(-7200)
+        XCTAssertTrue(Queue.recordsMerge(old, for: replacement))
+    }
+
     func testWithoutQuorumAPullRequestIsReady() {
         XCTAssertEqual(Queue.decide(item(), facts: facts(.review, hasPR: true, quorum: false), now: now), .finish(.ready))
     }

@@ -196,16 +196,22 @@ final class Queue: ObservableObject {
     func followDecision(in workspace: Workspace, awaitingAgent: Bool) -> Bool {
         guard let queued = item(for: workspace), let index = items.firstIndex(where: { $0.id == queued.id }) else { return true }
         var savedItems = items
-        let wasActive = savedItems[index].phase.isActive
-        savedItems[index].phase = .running
-        savedItems[index].acted = Date()
-        if !wasActive { savedItems[index].started = Date() }
-        savedItems[index].idleSince = nil
-        savedItems[index].awaitingAgent = awaitingAgent
-        savedItems[index].awaitedTurns = workspace.agentTab?.turnsEnded ?? 0
+        savedItems[index] = Self.resumed(savedItems[index], awaitingAgent: awaitingAgent,
+                                         turns: workspace.agentTab?.turnsEnded ?? 0, now: Date())
         guard save(Saved(items: savedItems, running: running, merged: merged)) else { return false }
         items = savedItems
         return true
+    }
+
+    nonisolated static func resumed(_ item: Item, awaitingAgent: Bool, turns: Int, now: Date) -> Item {
+        var resumed = item
+        resumed.phase = .running
+        resumed.acted = now
+        resumed.started = resumed.started ?? now
+        resumed.idleSince = nil
+        resumed.awaitingAgent = awaitingAgent
+        resumed.awaitedTurns = turns
+        return resumed
     }
 
     /// The request could not reach the terminal. Stop waiting for a turn
@@ -234,12 +240,18 @@ final class Queue: ObservableObject {
 
     private func recordMerges() {
         for item in items {
-            if let workspace = HubModel.shared.session(for: item.issue), workspace.context.pr != nil,
-               workspace.context.prState == .merged { merged.insert(item.id); continue }
-            if WorkLedger.shared.items.values.contains(where: {
-                $0.issue?.repo.lowercased() == item.issue.repo.lowercased() && $0.issue?.number == item.issue.number && $0.prState == "merged"
-            }) { merged.insert(item.id) }
+            if WorkLedger.shared.items.values.contains(where: { Self.recordsMerge($0, for: item) }) {
+                merged.insert(item.id)
+            }
         }
+    }
+
+    /// A reopened issue is a new queue run. Its predecessor's archived PR
+    /// must not release it or any task that depends on it.
+    nonisolated static func recordsMerge(_ work: WorkItem, for item: Item) -> Bool {
+        guard let started = item.started, work.touched >= started else { return false }
+        return work.issue?.repo.lowercased() == item.issue.repo.lowercased()
+            && work.issue?.number == item.issue.number && work.prState == "merged"
     }
 
     var parallel: Int {
@@ -256,6 +268,7 @@ final class Queue: ObservableObject {
         var item = Item(issue: issue, agent: agent)
         item.limits = TaskLedger.shared.record(for: TaskTarget(issue: issue)).limits
         item.plan = plan ? true : nil
+        merged.remove(item.id)
         items.append(item)
         save()
         if running { tick() }
