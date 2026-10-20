@@ -341,12 +341,17 @@ enum Quorum {
         guard Shell.execute(git, ["rev-parse", "--verify", "--quiet", "refs/heads/\(branch)"], in: root).status == 0 else {
             return nil // only on origin: babysit works from there
         }
-        guard let local = Shell.run(git, ["rev-parse", "refs/heads/\(branch)"], in: root),
-              accepted.map({ local.lowercased() == $0.lowercased() }) ?? true else {
+        guard let local = Shell.run(git, ["rev-parse", "refs/heads/\(branch)"], in: root) else {
             return L("The accepted commit changed. Inspect the result again.")
         }
         let ahead = Shell.run(git, ["rev-list", "--count", "\(remote)..refs/heads/\(branch)"], in: root).flatMap(Int.init) ?? 0
         let behind = Shell.run(git, ["rev-list", "--count", "refs/heads/\(branch)..\(remote)"], in: root).flatMap(Int.init) ?? 0
+        // The accepted remote may safely fast-forward a stale local branch,
+        // but no other local head can replace the accepted commit.
+        let matchesAccepted = accepted.map { local.lowercased() == $0.lowercased() } ?? true
+        guard matchesAccepted || (ahead == 0 && behind > 0) else {
+            return L("The accepted commit changed. Inspect the result again.")
+        }
         switch (ahead > 0, behind > 0) {
         case (false, false):
             return nil

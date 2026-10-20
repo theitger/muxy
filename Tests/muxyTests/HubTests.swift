@@ -604,6 +604,19 @@ final class QuorumPrepareTests: XCTestCase {
         XCTAssertEqual(repo.read("c.txt", in: checkout), "theirs\n")
     }
 
+    func testAnAcceptedBranchBehindOriginIsMovedUp() throws {
+        let repo = try TempRepo()
+        let (checkout, other) = try setUp(repo)
+        try repo.write("c.txt", "theirs\n", in: other)
+        try repo.git("add", "-A", in: other)
+        try repo.git("-c", "user.name=o", "-c", "user.email=o@o", "commit", "--quiet", "-m", "Theirs", in: other)
+        try repo.git("push", "--quiet", "origin", "feature", in: other)
+        let accepted = try originHead(repo)
+
+        XCTAssertNil(Quorum.prepare(branch: "feature", root: repo.root, accepted: accepted))
+        XCTAssertEqual(try repo.head(in: checkout), accepted)
+    }
+
     func testBothWaysOrUncommittedIsYours() throws {
         let repo = try TempRepo()
         let (checkout, other) = try setUp(repo)
