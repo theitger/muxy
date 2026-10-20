@@ -1383,9 +1383,21 @@ private struct ReviewRunRow: View {
         }
         let workspace = Store.shared.makeWorkspace(directory: root, in: window)
         window.select(workspace)
-        Quorum.run(kind, pr: number, in: workspace)
-        if let first = workspace.sessions.first, workspace.sessions.count > 1 { Store.shared.close(first, in: workspace) }
-        QuorumWatch.shared.start(always: true)
+        Task.detached(priority: .userInitiated) {
+            let live = Git.pullRequest(in: root, number: number)
+            await MainActor.run {
+                guard let repo = Issues.repo(of: root),
+                      let pull = Acceptance.acceptedOpenPullRequest(live, number: number,
+                                                                      acceptedHead: Acceptance.shared.acceptedHead(repo: repo, pr: number))
+                else {
+                    window.show(Acceptance.Readiness.changed.message, seconds: 6)
+                    return
+                }
+                Quorum.run(kind, pr: pull.number, in: workspace)
+                if let first = workspace.sessions.first, workspace.sessions.count > 1 { Store.shared.close(first, in: workspace) }
+                QuorumWatch.shared.start(always: true)
+            }
+        }
     }
 }
 

@@ -91,6 +91,7 @@ final class Landing: ObservableObject {
     private var reviewAttempts: [Workspace.ID: Int] = [:]
     private var uncertain = Set<Workspace.ID>()
     private var autoMerges: [Workspace.ID: Bool] = [:]
+    private var reconcilingQuorum = Set<Workspace.ID>()
 
     func resume() {
         guard !journal.persistenceBlocked else { return }
@@ -272,6 +273,14 @@ final class Landing: ObservableObject {
     /// A clean verdict for this PR is not enough: a later push invalidates it.
     nonisolated static func reviewCovers(_ status: QuorumStatus?, head: String?) -> Bool {
         status?.covers(head) == true
+    }
+
+    /// A finished babysit can push fixes, so its recorded final head must
+    /// match GitHub before landing continues; the workspace context may lag.
+    nonisolated static func quorumCovers(_ status: QuorumStatus, pull: Git.Lookup, pr: Int) -> Bool {
+        guard let head = status.headSHA, status.covers(head), case let .found(pull) = pull,
+              pull.number == pr, pull.head?.lowercased() == head.lowercased() else { return false }
+        return status.outcome == "merged" ? pull.state == .merged : pull.state == .open
     }
 
     // MARK: Steps
@@ -648,32 +657,7 @@ final class Landing: ObservableObject {
                 }
                 guard !status.running else { continue }
                 if status.succeeded, let checkout = context.checkout, let pr = context.pr {
-                    guard status.covers(context.prHead) else {
-                        set(.failed(L("quorum's result does not cover the current commit. Review it again.")), for: workspace)
-                        continue
-                    }
-                    Self.takeFixes(in: checkout)
-                    if goal(for: workspace) == .review {
-                        if status.outcome == "merged" {
-                            set(.failed(L("quorum merged a review-only run.")), for: workspace)
-                        } else {
-                            set(.reviewed, for: workspace)
-                        }
-                    } else if status.outcome == "merged" {
-                        set(.landed, for: workspace)
-                    } else if autoMerges[workspace.id] == true {
-                        proven[workspace.id] = status.headSHA
-                        set(.merging(L("Waiting for quorum's merge on GitHub")), for: workspace)
-                    } else {
-                        // quorum may have pushed fixes. Merge only the final
-                        // head recorded by that run; GitHub rejects a later push.
-                        if let head = status.headSHA {
-                            proven[workspace.id] = head
-                            merge(workspace, checkout: checkout, pr: pr)
-                        } else {
-                            set(.failed(L("quorum did not record the final commit")), for: workspace)
-                        }
-                    }
+                    reconcileQuorum(status, in: workspace, checkout: checkout, pr: pr)
                 } else if status.outcome == nil, status.isClean {
                     continue // its verdict isn't in quorum's history yet
                 } else {
@@ -693,6 +677,46 @@ final class Landing: ObservableObject {
            !journal.receipts.values.contains(where: { $0.step.isActive && !restored.contains($0.id) }) {
             timer?.invalidate()
             timer = nil
+        }
+    }
+
+    private func reconcileQuorum(_ status: QuorumStatus, in workspace: Workspace, checkout: String, pr: Int) {
+        guard let head = status.headSHA, status.covers(head) else {
+            set(.failed(L("quorum's result does not cover the current commit. Review it again.")), for: workspace)
+            return
+        }
+        guard reconcilingQuorum.insert(workspace.id).inserted else { return }
+        let run = runs[workspace.id]
+        Task.detached(priority: .userInitiated) {
+            let pull = Git.pullRequest(in: checkout, number: pr)
+            await MainActor.run {
+                self.reconcilingQuorum.remove(workspace.id)
+                guard self.current(workspace, run), self.steps[workspace.id] == .reviewing else { return }
+                guard Self.quorumCovers(status, pull: pull, pr: pr) else {
+                    self.set(.failed(L("quorum's result does not cover the current commit. Review it again.")), for: workspace)
+                    workspace.primary?.refreshContext()
+                    return
+                }
+                workspace.primary?.refreshContext()
+                Self.takeFixes(in: checkout)
+                if self.goal(for: workspace) == .review {
+                    if status.outcome == "merged" {
+                        self.set(.failed(L("quorum merged a review-only run.")), for: workspace)
+                    } else {
+                        self.set(.reviewed, for: workspace)
+                    }
+                } else if status.outcome == "merged" {
+                    self.set(.landed, for: workspace)
+                } else if self.autoMerges[workspace.id] == true {
+                    self.proven[workspace.id] = head
+                    self.set(.merging(L("Waiting for quorum's merge on GitHub")), for: workspace)
+                } else {
+                    // quorum may have pushed fixes. Merge only the final
+                    // head recorded by that run; GitHub rejects a later push.
+                    self.proven[workspace.id] = head
+                    self.merge(workspace, checkout: checkout, pr: pr)
+                }
+            }
         }
     }
 

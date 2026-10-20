@@ -115,7 +115,7 @@ final class Acceptance: ObservableObject {
         guard let repo = context.repo, let pr = context.pr, let checkout = context.checkout else { return .noHead }
         guard let inspectedHead, inspectedHead == context.prHead?.lowercased() else { return .changed }
         let live = await Task.detached(priority: .userInitiated) {
-            Git.pullRequest(in: checkout)
+            Git.pullRequest(in: checkout, number: pr)
         }.value
         let expected: String
         switch live {
@@ -139,7 +139,7 @@ final class Acceptance: ObservableObject {
         }.value
         guard case let .ready(finalHead) = finalState else { return finalState }
         let finalLive = await Task.detached(priority: .userInitiated) {
-            Git.pullRequest(in: checkout)
+            Git.pullRequest(in: checkout, number: pr)
         }.value
         switch finalLive {
         case let .found(pull) where pull.number == pr && pull.state == .open && pull.head?.lowercased() == finalHead:

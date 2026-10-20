@@ -28,6 +28,18 @@ final class AcceptanceTests: XCTestCase {
         XCTAssertNil(Acceptance.acceptedOpenPullRequest(pull(accepted, state: .closed), number: 7, acceptedHead: accepted))
     }
 
+    func testQuorumCompletionUsesItsFinalHeadInsteadOfStaleContext() {
+        let old = String(repeating: "a", count: 40)
+        let final = String(repeating: "b", count: 40)
+        var status = QuorumStatus(kind: .babysit, key: "o/r#7", running: false, outcome: "converged", date: Date())
+        status.headSHA = final
+        let matching = Git.Lookup.found(Git.PullRequest(number: 7, state: .open, head: final, checks: .passed, isDraft: false, mergeability: .clean))
+        let stale = Git.Lookup.found(Git.PullRequest(number: 7, state: .open, head: old, checks: .passed, isDraft: false, mergeability: .clean))
+
+        XCTAssertTrue(Landing.quorumCovers(status, pull: matching, pr: 7))
+        XCTAssertFalse(Landing.quorumCovers(status, pull: stale, pr: 7))
+    }
+
     func testLandingRequiresAcceptanceAfterMergingAnUpdatedBase() throws {
         let repo = try TempRepo()
         let checkout = try repo.addWorktree("feature", branch: "feature")
