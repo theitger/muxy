@@ -15,4 +15,14 @@ final class AcceptanceTests: XCTestCase {
         XCTAssertEqual(Acceptance.readiness(checkout: repo.root, expected: head), .changed)
         XCTAssertEqual(Acceptance.readiness(checkout: repo.root, expected: changed), .ready(changed))
     }
+
+    func testLandingOnlyPushesTheAcceptedCheckoutHead() throws {
+        let repo = try TempRepo()
+        let accepted = try repo.head()
+        XCTAssertEqual(Landing.checkedOutAcceptedHead(in: repo.root, accepted: accepted), accepted)
+
+        try repo.write("new.txt", "new head\n")
+        try repo.commit("New implementation")
+        XCTAssertNil(Landing.checkedOutAcceptedHead(in: repo.root, accepted: accepted))
+    }
 }

@@ -303,7 +303,10 @@ final class Landing: ObservableObject {
         let dirty = !(Shell.run(git, ["status", "--porcelain"], in: checkout) ?? "").isEmpty
         let start = Launcher.startPoint(in: root, recipe: WorktreeRecipe.load(root: root))
         if start.hasPrefix("origin/") {
-            _ = Shell.execute(git, ["fetch", "--quiet", "origin", String(start.dropFirst("origin/".count))], in: root, timeout: 60)
+            let fetched = Shell.execute(git, ["fetch", "--quiet", "origin", String(start.dropFirst("origin/".count))], in: root, timeout: 60)
+            guard fetched.status == 0 else {
+                return Inspection(dirty: dirty, start: start, baseAvailable: false, behind: false, conflicts: [], unpushed: 1)
+            }
         }
         let behind = Shell.execute(git, ["merge-base", "--is-ancestor", start, "HEAD"], in: checkout).status != 0
         let conflicts = behind ? WorkState.conflicts(between: "HEAD", and: start, in: checkout) ?? [] : []
@@ -315,13 +318,16 @@ final class Landing: ObservableObject {
            Shell.execute(git, ["fetch", "--quiet", "origin", branch], in: checkout, timeout: 60).status == 0 {
             fromOrigin = Shell.run(git, ["rev-list", "--count", "HEAD..FETCH_HEAD"], in: checkout).flatMap(Int.init) ?? 0
         }
-        return Inspection(dirty: dirty, start: start, behind: behind, conflicts: conflicts, unpushed: unpushed ?? 1,
+        return Inspection(dirty: dirty, start: start, baseAvailable: true, behind: behind, conflicts: conflicts, unpushed: unpushed ?? 1,
                           fromOrigin: fromOrigin)
     }
 
     struct Inspection {
         var dirty: Bool
         var start: String
+        /// False when the current base could not be fetched; stale refs must
+        /// never be used to decide whether landing is safe.
+        var baseAvailable: Bool
         var behind: Bool
         var conflicts: [String]
         /// Commits origin doesn't have (1 when there is no upstream yet).
@@ -332,6 +338,10 @@ final class Landing: ObservableObject {
 
     private func act(on state: Inspection, workspace: Workspace, checkout: String, root: String, pr: Int) {
         let run = runs[workspace.id]
+        guard state.baseAvailable else {
+            set(.failed(L("Couldn't fetch %@ from GitHub.", state.start)), for: workspace)
+            return
+        }
         if state.dirty {
             ask(workspace, L("The agent commits its remaining changes"),
                 "Commit all remaining changes in this checkout with a clear message, then push the branch. Don't change anything else.")
@@ -435,20 +445,31 @@ final class Landing: ObservableObject {
 
     private func push(_ workspace: Workspace, checkout: String, pr: Int) {
         let run = runs[workspace.id]
+        guard let repo = workspace.context.repo, let branch = workspace.context.branch,
+              let accepted = Acceptance.shared.acceptedHead(repo: repo, pr: pr) else {
+            set(.failed(L("The accepted commit changed. Inspect the result again.")), for: workspace)
+            return
+        }
         guard set(.pushing, for: workspace) else { return }
         let reviewStatus = QuorumWatch.shared.status(for: workspace)
         Task.detached(priority: .userInitiated) {
-            let result = Shell.execute(WorkState.git, ["push", "--quiet", "origin", "HEAD"], in: checkout, timeout: 1200)
-            let head = Shell.run(WorkState.git, ["rev-parse", "HEAD"], in: checkout)
+            guard let head = Self.checkedOutAcceptedHead(in: checkout, accepted: accepted) else {
+                await MainActor.run {
+                    guard self.current(workspace, run), self.steps[workspace.id] == .pushing else { return }
+                    self.set(.failed(L("The accepted commit changed. Inspect the result again.")), for: workspace)
+                    workspace.primary?.refreshContext()
+                    Store.shared.window(of: workspace)?.openAcceptance(workspace)
+                }
+                return
+            }
+            // Push the accepted object, not the moving HEAD ref. A checkout
+            // changed between this check and git's start cannot publish it.
+            let result = Shell.execute(WorkState.git, ["push", "--quiet", "origin", "\(head):refs/heads/\(branch)"], in: checkout, timeout: 1200)
             await MainActor.run {
                 guard self.current(workspace, run), self.steps[workspace.id] == .pushing else { return }
                 guard result.status == 0 else {
                     let reason = result.error.split(separator: "\n").last.map(String.init) ?? ""
                     self.set(.failed(L("Push failed: %@", reason)), for: workspace)
-                    return
-                }
-                guard let head else {
-                    self.set(.failed(L("Could not read the pushed commit")), for: workspace)
                     return
                 }
                 guard let repo = workspace.context.repo,
@@ -476,6 +497,13 @@ final class Landing: ObservableObject {
                 }
             }
         }
+    }
+
+    nonisolated static func checkedOutAcceptedHead(in checkout: String, accepted: String) -> String? {
+        guard let head = Shell.run(WorkState.git, ["rev-parse", "HEAD"], in: checkout),
+              head.lowercased() == accepted.lowercased()
+        else { return nil }
+        return head
     }
 
     private func merge(_ workspace: Workspace, checkout: String, pr: Int) {

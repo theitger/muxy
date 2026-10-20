@@ -59,6 +59,10 @@ final class Acceptance: ObservableObject {
         return heads[Self.key(repo: repo, pr: pr)] == head.lowercased()
     }
 
+    func acceptedHead(repo: String, pr: Int) -> String? {
+        heads[Self.key(repo: repo, pr: pr)]
+    }
+
     /// Check both GitHub's PR head and the local working tree. The approval
     /// button must not certify a screenshot of files that are not in the PR.
     nonisolated static func readiness(checkout: String, expected: String?) -> Readiness {
@@ -78,7 +82,18 @@ final class Acceptance: ObservableObject {
         let context = workspace.context
         guard let repo = context.repo, let pr = context.pr, let checkout = context.checkout else { return .noHead }
         guard let inspectedHead, inspectedHead == context.prHead?.lowercased() else { return .changed }
-        let expected = context.prHead
+        let live = await Task.detached(priority: .userInitiated) {
+            Git.pullRequest(in: checkout)
+        }.value
+        let expected: String
+        switch live {
+        case let .found(pull) where pull.number == pr && pull.state == .open && pull.head?.lowercased() == inspectedHead:
+            expected = inspectedHead
+        case .unknown:
+            return .unavailable
+        default:
+            return .changed
+        }
         let state = await Task.detached(priority: .userInitiated) {
             Self.readiness(checkout: checkout, expected: expected)
         }.value

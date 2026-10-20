@@ -226,7 +226,7 @@ final class RadarTests: XCTestCase {
         try repo.commit("Main moves")
         try repo.git("push", "--quiet", "origin", "main")
         try repo.git("fetch", "--quiet", "origin")
-        let found = Radar.scan(root: repo.root, checkouts: [a, b], memo: Radar.Memo())
+        let found = try XCTUnwrap(Radar.scan(root: repo.root, checkouts: [a, b], memo: Radar.Memo()))
         let forA = try XCTUnwrap(found[a])
         XCTAssertTrue(forA.contains { $0.other == b && $0.files == ["shared.txt"] })
         XCTAssertTrue(forA.contains { $0.withBase && $0.other == "origin/main" })
@@ -252,7 +252,7 @@ final class RadarTests: XCTestCase {
         try repo.write("own.txt", "mine\n", in: current)
         try repo.commit("Own work", in: current)
         try repo.git("merge", "--quiet", "--no-edit", "origin/main", in: current)
-        let found = Radar.scan(root: repo.root, checkouts: [stale, current, idle], memo: Radar.Memo())
+        let found = try XCTUnwrap(Radar.scan(root: repo.root, checkouts: [stale, current, idle], memo: Radar.Memo()))
         XCTAssertEqual(found[stale], [Collision(other: "origin/main", withBase: true, files: ["shared.txt"])])
         XCTAssertNil(found[current])
         XCTAssertNil(found[idle], "a session with nothing of its own collides with nothing")
@@ -265,7 +265,15 @@ final class RadarTests: XCTestCase {
         let b = try repo.addWorktree("b", branch: "b")
         try repo.write("a.txt", "a\n", in: a)
         try repo.write("b.txt", "b\n", in: b)
-        XCTAssertTrue(Radar.scan(root: repo.root, checkouts: [a, b], memo: Radar.Memo()).isEmpty)
+        XCTAssertTrue(try XCTUnwrap(Radar.scan(root: repo.root, checkouts: [a, b], memo: Radar.Memo())).isEmpty)
+    }
+
+    func testIncompleteScanIsNotAnEmptyResult() throws {
+        let repo = try TempRepo()
+        let checkout = try repo.addWorktree("feature", branch: "feature")
+        let missing = (repo.base as NSString).appendingPathComponent("missing-checkout")
+
+        XCTAssertNil(Radar.scan(root: repo.root, checkouts: [checkout, missing], memo: Radar.Memo()))
     }
 }
 
@@ -496,6 +504,15 @@ final class QuorumFixesTests: XCTestCase {
         wait(for: [expectation], timeout: 5)
         XCTAssertEqual(repo.read("a.txt", in: checkout), "agent, fixed\n")
         XCTAssertEqual(Landing.inspect(checkout: checkout, root: repo.root).fromOrigin, 0)
+    }
+
+    func testLandingDoesNotUseABaseThatCouldNotBeFetched() throws {
+        let repo = try TempRepo()
+        try repo.addOrigin()
+        let checkout = try repo.addWorktree("feature", branch: "feature")
+        try repo.git("remote", "set-url", "origin", "/definitely/not/a/repository", in: repo.root)
+
+        XCTAssertFalse(Landing.inspect(checkout: checkout, root: repo.root).baseAvailable)
     }
 }
 

@@ -82,7 +82,11 @@ final class Radar: ObservableObject {
         Task.detached(priority: .utility) {
             var collected: [String: [Collision]] = [:]
             for (root, checkouts) in byRoot {
-                collected.merge(Self.scan(root: root, checkouts: Array(checkouts).sorted(), memo: memo)) { $1 }
+                guard let found = Self.scan(root: root, checkouts: Array(checkouts).sorted(), memo: memo) else {
+                    await MainActor.run { self.scanning = false }
+                    return
+                }
+                collected.merge(found) { $1 }
             }
             let found = collected
             await MainActor.run {
@@ -95,21 +99,26 @@ final class Radar: ObservableObject {
         }
     }
 
-    nonisolated static func scan(root: String, checkouts: [String], memo: Memo) -> [String: [Collision]] {
+    /// nil means git could not complete the scan. Callers keep the previous
+    /// result in that case: an unavailable checkout is not evidence that its
+    /// collisions went away.
+    nonisolated static func scan(root: String, checkouts: [String], memo: Memo) -> [String: [Collision]]? {
         let start = Launcher.startPoint(in: root, recipe: WorktreeRecipe.load(root: root))
-        guard let base = Shell.run(WorkState.git, ["rev-parse", "--verify", start], in: root) else { return [:] }
+        guard let base = Shell.run(WorkState.git, ["rev-parse", "--verify", start], in: root) else { return nil }
         var snapshots: [(checkout: String, commit: String, own: Set<String>)] = []
         for checkout in checkouts {
-            guard let snapshot = WorkState.snapshot(of: checkout) else { continue }
+            guard let snapshot = WorkState.snapshot(of: checkout),
+                  let own = memo.own(snapshot.commit, base: base, in: root)
+            else { return nil }
             // Nothing of its own (a fresh session, or one that only took the
             // base in): nothing to collide.
-            let own = memo.own(snapshot.commit, base: base, in: root)
             if own.isEmpty { continue }
             snapshots.append((checkout, snapshot.commit, own))
         }
         var found: [String: [Collision]] = [:]
         for item in snapshots {
-            if let files = memo.conflicts(item.commit, base, in: root), !files.isEmpty {
+            guard let files = memo.conflicts(item.commit, base, in: root) else { return nil }
+            if !files.isEmpty {
                 found[item.checkout, default: []].append(Collision(other: start, withBase: true, files: files))
             }
         }
@@ -120,9 +129,9 @@ final class Radar: ObservableObject {
                 // base in carries the base's files, and an older session's
                 // conflict with those is its conflict with the base, said there.
                 let shared = a.own.intersection(b.own)
-                guard !shared.isEmpty,
-                      let files = memo.conflicts(a.commit, b.commit, in: root)?.filter(shared.contains), !files.isEmpty
-                else { continue }
+                guard !shared.isEmpty else { continue }
+                guard let files = memo.conflicts(a.commit, b.commit, in: root)?.filter(shared.contains) else { return nil }
+                guard !files.isEmpty else { continue }
                 found[a.checkout, default: []].append(Collision(other: b.checkout, withBase: false, files: files))
                 found[b.checkout, default: []].append(Collision(other: a.checkout, withBase: false, files: files))
             }
@@ -153,11 +162,18 @@ final class Radar: ObservableObject {
 
         /// The files a commit changed since it left the base (since the
         /// last merge of the base, when it took one in).
-        func own(_ commit: String, base: String, in root: String) -> Set<String> {
+        func own(_ commit: String, base: String, in root: String) -> Set<String>? {
             let key = commit + base
             if let known = lock.withLock({ owned[key] }) { return known }
-            guard let fork = Shell.run(WorkState.git, ["merge-base", commit, base], in: root) else { return [] }
-            let files = fork == commit ? [] : Set(WorkState.changedFiles(from: fork, to: commit, in: root))
+            guard let fork = Shell.run(WorkState.git, ["merge-base", commit, base], in: root) else { return nil }
+            let files: Set<String>
+            if fork == commit {
+                files = []
+            } else {
+                let changed = Shell.execute(WorkState.git, ["diff", "--name-only", "-z", fork, commit], in: root, timeout: 60)
+                guard changed.status == 0 else { return nil }
+                files = Set(changed.output.split(separator: "\0").map(String.init))
+            }
             lock.withLock {
                 if owned.count > 2000 { owned.removeAll() }
                 owned[key] = files
