@@ -14,7 +14,7 @@ final class Queue: ObservableObject {
 
     /// Appended to the issue prompt: nobody answers until it is done.
     nonisolated static let unattendedNote = """
-    You are working unattended: nobody will answer questions until this is done. Decide sensibly on your own and note your assumptions in the pull request. When the work is done and the checks pass, commit, push the branch and open the pull request yourself.
+    You are working unattended: nobody will answer questions until this is done. Decide sensibly on your own and note your assumptions in the pull request. When the work is done and the checks pass, commit, push the branch and open the pull request yourself, with "Closes" and the issue in its description.
     """
 
     struct Item: Codable, Equatable, Identifiable {

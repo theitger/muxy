@@ -54,12 +54,9 @@ final class IssuesTests: XCTestCase {
             state: "OPEN", labels: ["bug"], body: "Steps:\n1. open"
         )
         let prompt = Issues.prompt(for: issue, localRepo: "o/r")
-        XCTAssertTrue(prompt.hasPrefix("GitHub issue #9: Crash on start\n\nhttps://github.com/o/r/issues/9"))
-        XCTAssertTrue(prompt.contains("Labels: bug"))
-        XCTAssertTrue(prompt.contains("Steps:\n1. open"))
-        XCTAssertTrue(prompt.hasSuffix("write \"Closes #9\" in its description."))
+        XCTAssertEqual(prompt, "#9: Crash on start\n\nSteps:\n1. open")
         // Another repository's issue is referenced in full.
-        XCTAssertTrue(Issues.prompt(for: issue, localRepo: "me/fork").contains("Closes o/r#9"))
+        XCTAssertTrue(Issues.prompt(for: issue, localRepo: "me/fork").hasPrefix("o/r#9: Crash on start"))
     }
 
     func testSavedSessionsWithoutIssueStillLoad() throws {

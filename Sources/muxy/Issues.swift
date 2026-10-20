@@ -164,22 +164,15 @@ enum Issues {
     /// worded the same for every agent.
     /// What an issue becomes for the agent, editable in Settings. Fields
     /// in braces are filled in; one that is empty takes its line with it.
+    /// The issue and nothing else: /implement in front where the
+    /// repository has it. The queue's note and Codex's plan request come
+    /// only when they apply; "Closes #…" muxy asks for with the PR.
     static let defaultTemplate = """
-    {implement}GitHub issue {reference}: {title}
-
-    {url}
-
-    {labels}
+    {implement}{reference}: {title}
 
     {body}
 
     {note}
-
-    Work on this issue. When you open the pull request, write "Closes {reference}" in its description.
-
-    {plan}
-
-    {unattended}
     """
 
     static let templateKey = "issuePromptTemplate"

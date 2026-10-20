@@ -42,15 +42,14 @@ final class PlanTests: XCTestCase {
 final class PromptFieldTests: XCTestCase {
     private let issue = Issue(repo: "o/r", number: 9, title: "Fix it", url: "u", state: "OPEN", body: "The body.")
 
-    func testTheDefaultPromptShowsWhatItAdds() {
+    func testTheDefaultPromptIsTheIssueAndNothingElse() {
         let claude = Issues.prompt(for: issue, localRepo: "o/r", template: Issues.defaultTemplate, implement: true)
-        XCTAssertTrue(claude.hasPrefix("/implement GitHub issue #9: Fix it"))
+        XCTAssertEqual(claude, "/implement #9: Fix it\n\nThe body.")
         let plain = Issues.prompt(for: issue, localRepo: "o/r", template: Issues.defaultTemplate)
-        XCTAssertTrue(plain.hasPrefix("GitHub issue #9"), "no stray space or slash")
-        XCTAssertFalse(plain.contains("\n\n\n"))
-        XCTAssertTrue(plain.hasSuffix(#"write "Closes #9" in its description."#), "empty fields leave nothing at the end")
+        XCTAssertEqual(plain, "#9: Fix it\n\nThe body.")
 
         let queued = Issues.prompt(for: issue, localRepo: "o/r", template: Issues.defaultTemplate, plan: true, unattended: true)
+        XCTAssertTrue(queued.hasPrefix("#9: Fix it\n\nThe body.\n\n"))
         XCTAssertTrue(queued.contains(Flow.planNote))
         XCTAssertTrue(queued.hasSuffix(Queue.unattendedNote))
     }

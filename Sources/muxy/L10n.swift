@@ -679,7 +679,7 @@ enum German {
         "All": "Alle",
         "Prompt for issues": "Prompt für Issues",
         "Back to the default": "Zurück zum Standard",
-        "What the agent gets when you start it on an issue. Fields in braces are filled in; an empty one leaves no gap. {implement} is /implement for Claude where the repository has that skill, {plan} asks Codex for a plan first, {unattended} tells a queued agent nobody answers until it is done.": "Was der Agent bekommt, wenn du ihn mit einem Issue startest. Felder in Klammern werden ausgefüllt, ein leeres hinterlässt keine Lücke. {implement} ist /implement für Claude, wo das Repo diesen Skill hat, {plan} bittet Codex zuerst um einen Plan, {unattended} sagt einem Agent aus der Warteschlange, dass niemand antwortet, bis er fertig ist.",
+        "What the agent gets when you start it on an issue. Fields in braces are filled in; an empty one leaves no gap. {implement} is /implement for Claude where the repository has that skill. Queued agents also get a note that nobody answers, Codex asked to plan first a request for the plan.": "Was der Agent bekommt, wenn du ihn mit einem Issue startest. Felder in Klammern werden ausgefüllt, ein leeres hinterlässt keine Lücke. {implement} ist /implement für Claude, wo das Repo diesen Skill hat. Agents aus der Warteschlange bekommen zusätzlich den Hinweis, dass niemand antwortet, Codex beim Erst-planen die Bitte um einen Plan.",
         "Answer the agent": "Dem Agenten antworten",
         "Open a pull request": "Pull Request öffnen",
         "Fix %d findings": "%d Befunde fixen",
