@@ -62,6 +62,10 @@ struct TaskFeedback: Codable, Equatable, Identifiable {
     var text: String
     var head: String?
     var screenshot: String?
+
+    func isSameRequest(as other: TaskFeedback) -> Bool {
+        text == other.text && head == other.head && screenshot == other.screenshot
+    }
 }
 
 struct TaskRecord: Codable, Equatable {
@@ -74,9 +78,22 @@ struct TaskRecord: Codable, Equatable {
     var goal = ""
     var criteria: [TaskCriterion] = []
     var feedback: [TaskFeedback] = []
+    var pendingFeedback: TaskFeedback?
     var draft = ""
     var lastInspectedHead: String?
     var inspectedAt: Date?
+
+    mutating func stageFeedback(_ request: TaskFeedback) -> TaskFeedback {
+        if let pendingFeedback, pendingFeedback.isSameRequest(as: request) { return pendingFeedback }
+        pendingFeedback = request
+        return request
+    }
+
+    mutating func commitFeedback(_ receipt: TaskFeedback) {
+        guard pendingFeedback?.id == receipt.id else { return }
+        feedback.append(receipt)
+        pendingFeedback = nil
+    }
 
     mutating func synchronize(_ issue: Issue, previousTitle: String) {
         if customGoal != true, goal.isEmpty || goal == (issueTitle ?? previousTitle) {

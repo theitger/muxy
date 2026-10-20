@@ -55,6 +55,24 @@ final class TaskLedgerTests: XCTestCase {
         XCTAssertTrue(criteria.allSatisfy { $0.checkedHead == nil })
     }
 
+    func testStagedFeedbackSurvivesARetry() throws {
+        let file = try temp().appendingPathComponent("tasks.json")
+        let ledger = TaskLedger(file: file)
+        let request = TaskFeedback(text: "Keep the query string", head: "abc", screenshot: "/tmp/preview.png")
+        var first = request
+        XCTAssertTrue(ledger.update("o/r#7") { first = $0.stageFeedback(request) })
+
+        let restored = TaskLedger(file: file)
+        var retry = request
+        XCTAssertTrue(restored.update("o/r#7") { retry = $0.stageFeedback(request) })
+        XCTAssertEqual(retry.id, first.id)
+        XCTAssertTrue(restored.records["o/r#7"]?.feedback.isEmpty == true)
+
+        XCTAssertTrue(restored.update("o/r#7") { $0.commitFeedback(retry) })
+        XCTAssertEqual(restored.records["o/r#7"]?.feedback, [first])
+        XCTAssertNil(restored.records["o/r#7"]?.pendingFeedback)
+    }
+
     func testCorruptAndUnwritableFilesDoNotPretendToSave() throws {
         let folder = try temp()
         let corrupt = folder.appendingPathComponent("broken.json")

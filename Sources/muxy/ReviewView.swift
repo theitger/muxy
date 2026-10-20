@@ -162,12 +162,17 @@ final class ReviewModel: ObservableObject {
             repo: workspace.context.repo, pr: workspace.context.pr, newChat: existing == nil
         ) else { return false }
         let target = TaskTarget(workspace: workspace)
-        guard Queue.shared.followDecision(in: workspace, awaitingAgent: true) else { return false }
+        var receipt = TaskFeedback(text: message, head: workspace.context.prHead, screenshot: screenshot?.path)
         guard TaskLedger.shared.update(target.id, { record in
-            record.feedback.append(TaskFeedback(text: message, head: workspace.context.prHead, screenshot: screenshot?.path))
+            receipt = record.stageFeedback(receipt)
             record.draft = feedback
             record.lastInspectedHead = readiness.head ?? record.lastInspectedHead
             record.inspectedAt = Date()
+        }) else { return false }
+        guard Queue.shared.followDecision(in: workspace, awaitingAgent: true) else { return false }
+        guard TaskLedger.shared.update(target.id, { record in
+            record.commitFeedback(receipt)
+            record.draft = ""
         }) else { return false }
         inspectionBaseline = readiness.head ?? inspectionBaseline
         if case .sinceInspection = scope, let inspectionBaseline { scope = .sinceInspection(inspectionBaseline) }
@@ -195,7 +200,6 @@ final class ReviewModel: ObservableObject {
             Store.shared.sessionsChanged()
         }
         comments = []
-        TaskLedger.shared.update(target.id) { $0.draft = "" }
         Queue.shared.resume()
         return true
     }
