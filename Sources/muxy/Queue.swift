@@ -228,7 +228,7 @@ final class Queue: ObservableObject {
 
     func remove(_ item: Item) {
         guard !item.phase.isActive,
-              !items.contains(where: { ($0.dependencies ?? []).contains(item.id) && !merged.contains(item.id) }) else { return }
+              !items.contains(where: { ($0.dependencies ?? []).contains(item.id) && !merged.contains($0.id) }) else { return }
         items.removeAll { $0.id == item.id }
         save()
     }

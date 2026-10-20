@@ -120,8 +120,14 @@ final class Acceptance: ObservableObject {
               workspace.context.prHead?.lowercased() == head else { return .changed }
         guard await synchronizeCriteria(for: workspace) else { return .criteriaUnavailable }
         guard TaskLedger.shared.record(for: TaskTarget(workspace: workspace)).satisfied(at: head) else { return .criteriaPending }
-        heads[Self.key(repo: repo, pr: pr)] = head
+        let finalState = await Task.detached(priority: .userInitiated) {
+            Self.readiness(checkout: checkout, expected: expected)
+        }.value
+        guard case let .ready(finalHead) = finalState else { return finalState }
+        guard finalHead == head, workspace.context.repo == repo, workspace.context.pr == pr,
+              workspace.context.prHead?.lowercased() == finalHead else { return .changed }
+        heads[Self.key(repo: repo, pr: pr)] = finalHead
         defaults.set(heads, forKey: Self.storageKey)
-        return state
+        return finalState
     }
 }

@@ -197,7 +197,13 @@ final class AutomationBudgetTests: XCTestCase {
 
 @MainActor
 final class QueuePersistenceTests: XCTestCase {
-    func testDependenciesAndLimitsSurviveAndCannotBeRemovedUnderAWaitingTask() throws {
+    private struct SavedQueue: Codable {
+        var items: [Queue.Item]
+        var running: Bool
+        var merged: Set<String>?
+    }
+
+    func testDependenciesAndLimitsSurviveAndRemovalWaitsForDependentsToMerge() throws {
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: folder) }
         let file = folder.appendingPathComponent("queue.json")
@@ -214,6 +220,19 @@ final class QueuePersistenceTests: XCTestCase {
         again.remove(again.items[0])
         XCTAssertEqual(again.items.count, 2)
         XCTAssertNotNil(again.configure(again.items[0], dependencies: ["o/r#2"], limits: limits))
+
+        var saved = try JSONDecoder().decode(SavedQueue.self, from: Data(contentsOf: file))
+        saved.merged = [again.items[0].id]
+        try JSONEncoder().encode(saved).write(to: file, options: .atomic)
+        let mergedPrerequisite = Queue(file: file, restoreLegacy: false)
+        mergedPrerequisite.remove(mergedPrerequisite.items[0])
+        XCTAssertEqual(mergedPrerequisite.items.count, 2)
+
+        saved.merged = [again.items[1].id]
+        try JSONEncoder().encode(saved).write(to: file, options: .atomic)
+        let mergedDependent = Queue(file: file, restoreLegacy: false)
+        mergedDependent.remove(mergedDependent.items[0])
+        XCTAssertEqual(mergedDependent.items.count, 1)
     }
 }
 

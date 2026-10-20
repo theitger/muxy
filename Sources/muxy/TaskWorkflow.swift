@@ -96,7 +96,7 @@ struct TaskRecord: Codable, Equatable {
     }
 
     mutating func synchronize(_ issue: Issue, previousTitle: String) {
-        if customGoal != true, goal.isEmpty || goal == (issueTitle ?? previousTitle) {
+        if customGoal != true && (goal.isEmpty || goal == (issueTitle ?? previousTitle)) {
             goal = issue.title
         }
         // Older records imported checkboxes without tracking their origin.

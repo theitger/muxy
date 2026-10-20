@@ -36,6 +36,17 @@ final class TaskIssueSyncTests: XCTestCase {
         XCTAssertTrue(record.criteria.isEmpty)
     }
 
+    func testPreservesACustomGoalThatMatchesThePreviousIssueTitle() {
+        var record = TaskRecord()
+        record.goal = "Old title"
+        record.issueTitle = "Old title"
+        record.customGoal = true
+
+        record.synchronize(issue(), previousTitle: "Old title")
+
+        XCTAssertEqual(record.goal, "Old title")
+    }
+
     func testMigratesEarlierImportsAndPreservesEarlierCustomGoal() throws {
         let json = """
         {"goal":"My own goal","criteriaImported":true,"issueBody":"- [ ] Old","criteria":[{"id":"00000000-0000-0000-0000-000000000001","text":"Old"},{"id":"00000000-0000-0000-0000-000000000002","text":"Local"}],"feedback":[],"draft":""}
