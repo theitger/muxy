@@ -523,7 +523,8 @@ final class Store: ObservableObject {
     /// ⌘Q — one keystroke must never silently kill every agent.
     /// Always asks while any session is open — every agent ends with it.
     func shouldQuit() -> Bool {
-        guard !workspaces.isEmpty else {
+        // Nothing ends when every tab runs under muxyd: quit as is.
+        guard !workspaces.isEmpty, !workspaces.flatMap(\.sessions).allSatisfy(\.kept) else {
             saveSessions()
             return true
         }

@@ -60,6 +60,16 @@ cp "$REPO/Scripts/agent-hook.sh" "$APP/Contents/Resources/agent-hook.sh"
 mkdir -p "$APP/Contents/Resources/bin"
 cp "$REPO/Scripts/muxy" "$APP/Contents/Resources/bin/muxy"
 chmod 755 "$APP/Contents/Resources/bin/muxy"
+
+# muxyd keeps sessions running across quits (Settings → Agents).
+if command -v cargo >/dev/null 2>&1; then
+    echo "[muxy] muxyd …"
+    (cd "$REPO/Daemon" && { cargo build --release --offline --quiet 2>/dev/null || cargo build --release --quiet; })
+    cp "$REPO/Daemon/target/release/muxyd" "$APP/Contents/Resources/bin/muxyd"
+    chmod 755 "$APP/Contents/Resources/bin/muxyd"
+else
+    echo "[muxy] note: cargo not found — built without muxyd"
+fi
 if [ -f "$REMOTE/dist/index.html" ]; then
     cp "$REMOTE/dist/index.html" "$APP/Contents/Resources/remote.html"
 fi
@@ -110,9 +120,11 @@ if [ -n "$IDENTITY" ]; then
     sign "$SPARKLE/Autoupdate"
     sign "$SPARKLE/Updater.app"
     sign "$APP/Contents/Frameworks/Sparkle.framework"
+    [ -f "$APP/Contents/Resources/bin/muxyd" ] && sign "$APP/Contents/Resources/bin/muxyd"
     sign --entitlements "$REPO/Packaging/Muxy.entitlements" "$APP"
 else
     # Sparkle ships ad-hoc signed already; the app's own signature seals it.
+    [ -f "$APP/Contents/Resources/bin/muxyd" ] && codesign --force --sign - "$APP/Contents/Resources/bin/muxyd"
     codesign --force --sign - "$APP"
 fi
 codesign --verify --deep --strict "$APP"

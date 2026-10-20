@@ -179,8 +179,9 @@ enum Inventory {
 
     /// Compose projects with running containers: name → count.
     static func composeProjects() -> [String: Int] {
-        guard let docker = Shell.find("docker") else { return [:] }
+        guard let docker = Docker.available() else { return [:] }
         let result = Shell.execute(docker, ["compose", "ls", "--format", "json"], in: Paths.home, timeout: 10)
+        Docker.answered(result.status != -1)
         guard result.status == 0,
               let rows = try? JSONSerialization.jsonObject(with: Data(result.output.utf8)) as? [[String: Any]] else { return [:] }
         var found: [String: Int] = [:]
@@ -206,8 +207,9 @@ enum Inventory {
     /// environment, .env, the folder: all of Compose's own rules). nil
     /// without Docker or a Compose file: then nothing is torn down.
     static func composeName(of checkout: String) -> String? {
-        guard let docker = Shell.find("docker") else { return nil }
+        guard let docker = Docker.available() else { return nil }
         let result = Shell.execute(docker, ["compose", "config", "--format", "json"], in: checkout, timeout: 30)
+        Docker.answered(result.status != -1)
         guard result.status == 0,
               let json = try? JSONSerialization.jsonObject(with: Data(result.output.utf8)) as? [String: Any]
         else { return nil }
@@ -308,5 +310,27 @@ final class InventoryModel: ObservableObject {
                 self.scan()
             }
         }
+    }
+}
+
+/// Docker when it answers. A daemon that hangs (Docker Desktop asleep or
+/// stuck) costs every call its whole timeout: after one that timed out,
+/// docker isn't asked again for a few minutes.
+enum Docker {
+    private static let lock = NSLock()
+    nonisolated(unsafe) private static var quietUntil = Date.distantPast
+
+    static func available() -> String? {
+        lock.lock()
+        defer { lock.unlock() }
+        guard Date() >= quietUntil else { return nil }
+        return Shell.find("docker")
+    }
+
+    /// `false`: it timed out.
+    static func answered(_ answered: Bool) {
+        lock.lock()
+        defer { lock.unlock() }
+        quietUntil = answered ? .distantPast : Date().addingTimeInterval(300)
     }
 }
