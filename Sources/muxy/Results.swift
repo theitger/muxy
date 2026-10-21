@@ -46,9 +46,6 @@ final class Results: ObservableObject {
 
     @Published private(set) var bySession: [TerminalSession.ID: SessionResult] = [:]
     @Published private(set) var building: Set<TerminalSession.ID> = []
-    /// Windows with the result panel open.
-    @Published private(set) var panels: Set<WindowModel.ID> = []
-
     /// Each session's log as its hook reported it, for every agent (the
     /// remote reads `transcriptPath`, kept per session too).
     private var logs: [TerminalSession.ID: String] = [:]
@@ -71,19 +68,16 @@ final class Results: ObservableObject {
             ?? workspace.sessions.first { $0.kind != nil }
     }
 
-    func isPanelOpen(in window: WindowModel) -> Bool { panels.contains(window.id) }
+    func isPanelOpen(in window: WindowModel) -> Bool { window.destination == .workspace && window.workSection == .result }
 
     func togglePanel(in window: WindowModel) {
-        withAnimation(Theme.ease) {
-            if panels.remove(window.id) == nil {
-                panels.insert(window.id)
-                if let workspace = window.selectedWorkspace, let session = source(in: workspace) { refresh(session) }
-            }
-        }
+        guard let workspace = window.selectedWorkspace else { return }
+        window.showSection(isPanelOpen(in: window) ? .terminal : .result)
+        if let session = source(in: workspace) { refresh(session) }
     }
 
     func closePanel(in window: WindowModel) {
-        _ = withAnimation(Theme.ease) { panels.remove(window.id) }
+        window.showSection(.terminal)
     }
 
     /// The agent ended a turn: its log may still be catching up, so the

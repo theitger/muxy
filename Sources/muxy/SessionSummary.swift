@@ -85,6 +85,13 @@ struct SessionSummaryLine: View {
 }
 
 extension Workspace {
+    /// A shell is a useful workspace, but it must not look like an agent
+    /// waiting for a prompt. Reuse the same status in the header and Start.
+    var visibleStatus: SessionSummary {
+        sessionStatus ?? SessionSummary(text: isBusy ? L("Command running") : L("Shell session"),
+                                        tone: isBusy ? .active : .quiet, running: isBusy)
+    }
+
     var sessionStatus: SessionSummary? {
         let quorum = QuorumWatch.shared.status(for: self)
         let collisions = Radar.shared.collisions(for: context.checkout)
@@ -96,5 +103,23 @@ extension Workspace {
                                      prState: context.pr == nil ? nil : context.prState,
                                      checks: context.checks, mergeability: context.mergeability,
                                      collision: collision.map(Radar.shared.describe))
+    }
+}
+
+
+extension TerminalSession {
+    /// Tab state comes only from this process, never from a sibling agent.
+    var tabStatus: SessionSummary? {
+        Self.tabStatus(agent: agent, needsAttention: needsAttention, busy: isBusy, planning: planning)
+    }
+
+    static func tabStatus(agent: AgentState, needsAttention: Bool, busy: Bool, planning: Bool) -> SessionSummary? {
+        if agent == .blocked {
+            return SessionSummary(text: planning ? L("Plan ready for approval") : L("Needs your answer"), tone: .attention)
+        }
+        if agent == .failed { return SessionSummary(text: L("Error"), tone: .failure) }
+        if agent == .working || busy { return SessionSummary(text: L("Working"), tone: .active, running: true) }
+        if needsAttention { return SessionSummary(text: L("Done"), tone: .attention) }
+        return nil
     }
 }

@@ -20,6 +20,8 @@ final class Workspace: ObservableObject, Identifiable {
         self.windowID = windowID
     }
 
+    @Published var quorumReference: QuorumReference?
+
     @Published var sessions: [TerminalSession] = [] {
         didSet { resubscribe() }
     }

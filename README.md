@@ -18,25 +18,67 @@
 
 <br>
 
-## Real Ghostty, a calm frame
+## Start with your work
 
-Muxy embeds [libghostty](https://ghostty.org) and loads your own
-`~/.config/ghostty/config`: font, opacity, padding, keys, all of it.
-Around it sits one quiet neutral palette, greys with color only where
-it means something (waiting, running, failed), and the terminal wears
-the same neutral pair by default. Settings → Terminal colors gives you
-your Ghostty theme back, and Terminal font picks any monospaced font and
-size, or keeps Ghostty's.
+Muxy opens at **Start** (`⌘H`): decisions waiting for you, open tasks,
+branches and pull requests without an open session, and repositories. Starting the app does not create a shell.
+**New session** (`⌘N`) lets you choose a shell or an agent. An agent can start
+with a goal or a GitHub issue; a shell needs neither. **Open terminal** or `⌥⌘N` opens a shell directly.
 
-## A session is what used to be a window
+Every open task keeps one frame while you move between **Terminal** (agent and
+shell tabs, with an optional app preview), **App & code** (preview, code changes,
+and feedback), and **Quorum** (the live review and fix overview). Quorum
+appears when a run belongs to the session, including log sessions in a main
+checkout. Task notes, checks, history and queue limits are available from
+the details menu rather than permanent workspace tabs.
 
-`⌘N` opens one. `cd` somewhere and start your agent; `⌘T` opens a tab
-right there. The sidebar groups sessions by repository and shows branch
-and pull request on its own. Nothing to configure.
+The window bar holds the session title and branch. Repository tools act on the
+workspace; terminal tabs underneath are individual processes. Each tab shows
+its own running, blocked or failed state. Switching repository views preserves
+the selected terminal and all running processes. A shell outside a repository
+has only the terminal toolbar.
+**Focus terminal** (`⇧⌘↩`) hides the sidebar, task tools and status bar until
+you leave focus. On smaller windows, an app preview switches with the terminal;
+it only appears beside it when both have enough width. The split uses the
+terminal's current grid to account for your font and zoom.
 
-Drag a session out of the sidebar and drop it anywhere: it becomes its own
-window, right there. Drop it on another window's sidebar and it moves in.
-Running processes don't notice.
+Task cards share a common height and show all GitHub labels, wrapping as needed.
+Titles and references sit at the top, followed by badges and labels. Issue
+and PR descriptions fill the available space above a fixed bottom action area.
+Long metadata grows the shared height; descriptions never displace the actions.
+Initial GitHub requests, repository scans, issue lookups, review lists, diffs
+and result reads use placeholders shaped like their final content. Refreshes
+keep loaded content visible; reduced-motion settings disable placeholder animation.
+
+The search in Tasks matches titles, issue/PR numbers, repositories, branches and
+labels across active, paused, queued and review work; repository filters still apply.
+Plain shells stay in Sessions rather than appearing as tasks. Click a session’s
+× to close it. Clicking outside New session dismisses the dialog.
+
+The sidebar keeps Start, Tasks, Queue and Needs you above your sessions, with
+Reviews and Worktrees below. Selecting a task restores the tool you last
+used in it. A new window starts at Start too.
+
+## Real Ghostty, a readable terminal
+
+Muxy embeds [libghostty](https://ghostty.org) and loads
+`~/.config/ghostty/config`. With no saved Muxy color choice, an existing
+Ghostty config keeps its theme; a standalone installation starts with an
+adaptive light/dark palette, a 14-point font and terminal padding. Explicit
+Muxy font and color choices take precedence. Settings → Terminal lets you
+change them. The app's navigation uses one neutral palette; color marks
+activity, decisions and failures. Settings keeps both choices: **Muxy · neutral**
+for the neutral terminal palette, and **Your Ghostty theme** for your own colors.
+Font overrides are optional; clearing them returns to Ghostty's font and size.
+ANSI, 256-color and truecolor output remain available in both themes. Muxy clears
+color overrides inherited from its launcher so a coding agent's `NO_COLOR` does
+not disable colors in new interactive terminals. Your shell can still set its
+own color preferences.
+
+`⌘T` opens a shell tab in the current session's directory. Drag a task out of
+the sidebar to give it its own window, or drop it on another window's
+sidebar to move it there. Running processes continue across tool changes
+and window moves.
 
 ## Know which agent needs you
 
@@ -51,11 +93,10 @@ when Muxy is in the background a banner appears: answer it right there
 (a reply, or one of the choices the agent's prompt offers) or click it and
 you're in that session.
 
-The inbox (`⇧⌘J`, or the pill in the title bar) lists everything waiting on
-you across all windows: blocked agents first, then failed turns, then news,
-oldest first. Each row shows the last lines, the prompt's choices as
-buttons and a reply line, so you answer without leaving what you're in.
-
+**Needs you** (`⇧⌘J`) collects task decisions and agent updates across
+windows. Open a decision to answer the agent, inspect an implementation or
+handle a failure in the task's own context. Notifications from plain shells
+remain reachable here and on Start.
 
 ## See what it came to, and try it
 
@@ -77,7 +118,13 @@ working on it, red when they failed or the PR has conflicts, grey for
 drafts and PRs GitHub still holds back (review, out-of-date branch,
 required check missing). Green only when it could be merged right now.
 
-## Proven, not claimed
+The usual task flow is implementation → optional app/code inspection → pull
+request → Quorum → merge. Inspection and acceptance criteria record feedback;
+they do not gate PR creation, Quorum or landing. Marking an inspection does
+not authorize a merge. Quorum reviews stop before merging until you choose
+the merge action. Checks and review results still belong to exact commits.
+
+## Checks and reviews
 
 An agent saying "tests pass" is a claim. After every turn Muxy runs the
 repository's own checks on the agent's work itself, only those whose files
@@ -147,7 +194,7 @@ Muxy installs it for you (Settings → Review with quorum, in a terminal
 you can watch), sets what matters there (engines, effort, reviewers,
 posting, auto-merge, its background agent) without touching the rest of
 its config, shows each session's run on its card and the result, and
-lists every run in the hub's **Reviews**: running first, with findings,
+lists every run in the sidebar's **Reviews**: running first, with findings,
 the report, the PR and a second try.
 
 ## Land
@@ -168,9 +215,9 @@ work on the same task, each in its own worktree on its own branch. The
 hub shows them next to each other with their checks and collisions; **Keep**
 closes the other and removes its worktree, its branch stays.
 
-## The hub
+## Tasks and tools
 
-`⌘H` (or **Hub** in the title bar) puts all work on one board: the
+**Tasks** in the sidebar groups work into readable sections: the
 issues GitHub has assigned to you across your repositories (`ready-for-agent`
 first) and pull requests waiting for your review, then every session as it
 moves through working, in review and ready to land. An issue starts with
@@ -199,24 +246,24 @@ diff to read.
 
 ## One task from issue to merge
 
-**Task** in the session toolbar, an issue title on the board, or a queue
-entry opens the work's own page. Its overview keeps the goal, the issue,
-acceptance criteria and checks together. **Implementation** opens the app
-preview and code review with feedback beside them; **Reviews** shows quorum's
-steps, and **Activity** keeps feedback, inspected commits and evidence.
-Feedback drafts and task notes survive an app restart. A remembered inspected
-commit can be compared with the next version under **Since last inspection**.
-Criteria imported from issue checkboxes need your confirmation for the exact
-current PR commit; a later commit needs fresh confirmation.
+The workspace keeps **Terminal**, **App & code**, and a live **Quorum** view.
+App and code use the full workspace; feedback opens on request. There is no
+acceptance panel or checklist between looking at the app and opening a PR.
+The details menu contains the issue, task notes, checks and any existing
+history. Tasks without a checkout do not offer code tools; tasks without a
+review do not offer an empty Quorum tab. Feedback drafts and task notes
+survive an app restart.
 
-**Needs you** in the hub lists decisions: an agent's question, a plan waiting
-for approval, an implementation to inspect, a failure or a PR ready to land.
+**Needs you** in the sidebar lists decisions: an agent's question, a plan waiting
+for approval, a failure or a PR ready to land.
 Open the task, answer or inspect it, then move to the next decision.
 
 ## A queue for while you're away
 
-Put issues in line from the hub (**More → Queue for Claude/Codex**) and
-start it: a few at a time, each in its own worktree without permission
+Open **Queue** in the sidebar for waiting and running issues, decisions,
+finished work, parallel-agent limits, and start/stop controls. The page remains
+available when the queue is empty. Put issues in line from **Tasks → More →
+Queue for Claude/Codex** and start it: a few at a time, each in its own worktree without permission
 prompts, through the checks, the pull request and quorum's fix loop up to
 ready to land. Landing stays your click. Anything that needs you (a
 question, a failure, two quorum runs that didn't converge, eight hours)
@@ -331,6 +378,11 @@ git clone https://github.com/theitger/muxy && cd muxy
 ./Scripts/make-app.sh   # fetches the pinned GhosttyKit and Sparkle binaries, builds ~/Applications/Muxy.app
 ```
 
+For an isolated debug app, run `./Scripts/dev.sh`. It assembles and opens
+`.build/Muxy Dev.app` with its own identity, preferences and state in
+`.build/dev-state`; installed sessions are not restored into it. Use
+`./Scripts/dev.sh --build-only` to assemble it without opening a window.
+
 For a bare `swift build`, run `./Scripts/fetch-ghostty.sh` and
 `./Scripts/fetch-sparkle.sh` once. `MUXY_APP_DIR` builds the app elsewhere.
 
@@ -381,13 +433,14 @@ installed, its shell integration and terminfo are bundled into Muxy.
 | `⌘W` | close tab → the last tab closes the session → an empty window closes |
 | `⌘1…9` · `⌃Tab` | switch tab |
 | `⌃1…9` · `⌘⌥↑/↓` | switch session |
-| `⇧⌘J` | inbox: everything waiting on you, answerable in place |
-| `⌘I` | the session's result: proof, turns, collisions, quorum, land |
+| `⇧⌘J` | Needs you: task decisions and agent updates |
+| `⌘I` | the task's Result: proof, turns, collisions, quorum, land |
 | `⇧⌘D` | changes: last turn, whole branch or any turn, with line comments |
-| `⌘H` | the hub: issues, sessions in flight, worktrees |
+| `⌘H` | Start: continue work, make decisions, start a task |
 | `⌘F` · `⌘G` · `⇧⌘G` | find in the scrollback |
 | `⌘K` | search sessions |
 | `⌘B` | show/hide the sidebar (drag its edge to resize) |
+| `⇧⌘↩` | focus terminal: hide the surrounding task UI and sidebar |
 
 Closing a window ends its sessions (confirmed if something runs); `⌘Q`
 confirms too. Muxy keeps running without windows: click the Dock icon.

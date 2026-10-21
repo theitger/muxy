@@ -76,8 +76,9 @@ struct MuxyApp: App {
         // muxy would hand that agent's session markers to every tab, and
         // agents there would think they run nested. muxy's tabs are new
         // top-level terminals.
-        for name in ProcessInfo.processInfo.environment.keys
-            where name == "CLAUDECODE" || name == "CLAUDE_PID" || name.hasPrefix("CLAUDE_CODE_") {
+        // The launching coding tool may also disable ANSI colors for its
+        // captured output. New interactive terminals must detect color anew.
+        for name in TerminalEnvironment.inheritedKeysToRemove(ProcessInfo.processInfo.environment) {
             unsetenv(name)
         }
         // Tabs run your login shell, not whatever SHELL muxy inherited (a
@@ -120,7 +121,7 @@ struct MuxyApp: App {
             CommandGroup(after: .appInfo) {
                 CheckForUpdatesButton()
             }
-            // ⌘H opens the hub; hiding muxy stays in this menu, without it.
+            // ⌘H goes to Start; hiding muxy stays in this menu.
             CommandGroup(replacing: .appVisibility) {
                 Button(L("Hide muxy")) { NSApplication.shared.hide(nil) }
                 Button(L("Hide Others")) { NSApplication.shared.hideOtherApplications(nil) }
@@ -128,7 +129,7 @@ struct MuxyApp: App {
                 Button(L("Show All")) { NSApplication.shared.unhideAllApplications(nil) }
             }
             CommandGroup(replacing: .newItem) {
-                Button(L("New Session")) { store.newWorkspaceInFront() }
+                Button(L("New session")) { store.newWorkspaceInFront() }
                     .keyboardShortcut("n", modifiers: .command)
                 Button(L("New Shell")) { store.newShellInFront() }
                     .keyboardShortcut("n", modifiers: [.command, .option])
@@ -160,8 +161,10 @@ struct MuxyApp: App {
                     .keyboardShortcut("k", modifiers: .command)
                 Button(L("Inbox")) { store.toggleInbox() }
                     .keyboardShortcut("j", modifiers: [.command, .shift])
-                Button(L("Hub")) { store.activeWindow?.showHub.toggle() }
+                Button(L("Start")) { store.activeWindow?.goHome() }
                     .keyboardShortcut("h", modifiers: .command)
+                Button(L("Focus terminal")) { store.activeWindow?.toggleTerminalFocus() }
+                    .keyboardShortcut(.return, modifiers: [.command, .shift])
                 Button(L("Review Changes")) { store.activeWindow?.toggleReview() }
                     .keyboardShortcut("d", modifiers: [.command, .shift])
                 Divider()
@@ -176,10 +179,7 @@ struct MuxyApp: App {
                     store.toggleSidebar()
                 }
                 .keyboardShortcut("b", modifiers: .command)
-                Button(store.detailedWings ? L("Simple Sessions") : L("Detailed Sessions")) {
-                    store.toggleDetailedWings()
-                }
-                .keyboardShortcut("b", modifiers: [.command, .shift])
+
             }
             CommandGroup(after: .help) {
                 Button(L("Set Up muxy Again…")) { Onboarding.show() }

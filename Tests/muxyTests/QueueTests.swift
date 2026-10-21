@@ -42,9 +42,9 @@ final class QueueTests: XCTestCase {
         XCTAssertEqual(Queue.decide(item(babysits: 1), facts: facts(.land, hasPR: true), now: now), .finish(.ready))
     }
 
-    func testQueueWaitsForHumanAcceptanceBeforeQuorum() {
+    func testQueueContinuesToQuorumWithoutHumanAcceptance() {
         XCTAssertEqual(Queue.decide(item(), facts: facts(.accept, hasPR: true), now: now),
-                       .finish(.needsYou(L("Inspect and accept the implementation."))))
+                       .babysit)
     }
 
     func testFixLoopUsesDefaultRepairLimit() {
@@ -142,7 +142,7 @@ final class QueueTests: XCTestCase {
 
     func testUnattendedPromptSaysNobodyAnswers() {
         XCTAssertTrue(Queue.unattendedNote.contains("unattended"))
-        XCTAssertTrue(Queue.unattendedNote.contains("open the pull request yourself"))
+        XCTAssertTrue(Queue.unattendedNote.contains("open a regular (non-draft) pull request yourself"))
     }
 }
 

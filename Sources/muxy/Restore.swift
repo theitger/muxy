@@ -23,6 +23,7 @@ struct SavedSessions: Codable, Equatable {
     struct Workspace: Codable, Equatable {
         var tabs: [Tab]
         var selected: Int?
+        var quorumReference: QuorumReference?
     }
 
     struct Window: Codable, Equatable {
@@ -37,7 +38,7 @@ struct SavedSessions: Codable, Equatable {
     static let file: URL = {
         let folder = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("muxy", isDirectory: true)
-        if Paths.isTesting {
+        if Paths.isTesting || ProcessInfo.processInfo.environment["MUXY_STATE_DIR"]?.hasPrefix("/") == true {
             return URL(fileURLWithPath: StateDirectory.path).appendingPathComponent("sessions.json")
         }
         return folder.appendingPathComponent(Paths.isApp ? "sessions.json" : "sessions-dev.json")

@@ -254,6 +254,7 @@ final class InventoryModel: ObservableObject {
 
     @Published private(set) var worktrees: [WorktreeInfo] = []
     @Published private(set) var scanning = false
+    var hasScanned: Bool { scanned != nil }
     @Published private(set) var removing: Set<String> = []
     @Published private(set) var scanned: Date?
 

@@ -18,13 +18,13 @@ struct LandingReceipt: Codable, Equatable {
 
     enum Recovery: Equatable { case observe, check, inspect }
 
-    func recovery(accepted: Bool, agentWorking: Bool) -> Recovery {
+    func recovery(agentWorking: Bool) -> Recovery {
         switch step {
         case .reviewing: return quorumSince == nil ? .inspect : .observe
         case .merging: return provenHead == nil ? .inspect : .observe
         case .waitingForAgent: return agentWorking ? .observe : .inspect
         case .waitingForLanding: return .observe
-        case .preparing, .proving, .pushing: return accepted ? .check : .inspect
+        case .preparing, .proving, .pushing: return .check
         case .reviewed, .landed, .failed: return .observe
         }
     }

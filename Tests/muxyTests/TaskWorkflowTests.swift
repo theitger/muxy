@@ -132,22 +132,21 @@ final class LandingRecoveryTests: XCTestCase {
     }
 
     func testInFlightExternalOperationsAreObservedNotReplayed() {
-        XCTAssertEqual(receipt(.reviewing).recovery(accepted: false, agentWorking: false), .observe)
-        XCTAssertEqual(receipt(.merging("Waiting for GitHub")).recovery(accepted: false, agentWorking: false), .observe)
+        XCTAssertEqual(receipt(.reviewing).recovery(agentWorking: false), .observe)
+        XCTAssertEqual(receipt(.merging("Waiting for GitHub")).recovery(agentWorking: false), .observe)
         var unconfirmed = receipt(.reviewing)
         unconfirmed.quorumSince = nil
-        XCTAssertEqual(unconfirmed.recovery(accepted: true, agentWorking: false), .inspect)
+        XCTAssertEqual(unconfirmed.recovery(agentWorking: false), .inspect)
         unconfirmed = receipt(.merging("Sending"))
         unconfirmed.provenHead = nil
-        XCTAssertEqual(unconfirmed.recovery(accepted: true, agentWorking: false), .inspect)
+        XCTAssertEqual(unconfirmed.recovery(agentWorking: false), .inspect)
     }
 
-    func testNoRepeatedAgentRequestAndNoResumeAgainstAnUnacceptedHead() {
-        XCTAssertEqual(receipt(.waitingForAgent("Fix checks")).recovery(accepted: true, agentWorking: true), .observe)
-        XCTAssertEqual(receipt(.waitingForAgent("Fix checks")).recovery(accepted: true, agentWorking: false), .inspect)
+    func testRecoveryRechecksPreparationWithoutRequiringHumanAcceptance() {
+        XCTAssertEqual(receipt(.waitingForAgent("Fix checks")).recovery(agentWorking: true), .observe)
+        XCTAssertEqual(receipt(.waitingForAgent("Fix checks")).recovery(agentWorking: false), .inspect)
         for step in [Landing.Step.proving, .pushing, .preparing("Inspecting")] {
-            XCTAssertEqual(receipt(step).recovery(accepted: true, agentWorking: false), .check)
-            XCTAssertEqual(receipt(step).recovery(accepted: false, agentWorking: false), .inspect)
+            XCTAssertEqual(receipt(step).recovery(agentWorking: false), .check)
         }
     }
 

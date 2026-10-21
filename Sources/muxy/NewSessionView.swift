@@ -14,6 +14,7 @@ struct NewSessionView: View {
     @AppStorage("newSessionWorktree") private var useWorktree = true
     @State private var prompt = ""
     @State private var repos: [Repos.Repo] = []
+    @State private var reposLoading = true
     @State private var directory: String?
     @State private var branch = ""
     @StateObject private var issues = IssueField()
@@ -52,9 +53,11 @@ struct NewSessionView: View {
         VStack(alignment: .leading, spacing: 0) {
             header
             VStack(alignment: .leading, spacing: 18) {
-                section(L("Task"), keys: "#") {
-                    taskField
-                    IssueAccessory(field: issues, place: repo?.name ?? Paths.folderName(target), pick: pick)
+                if agent != nil {
+                    section(L("Task"), keys: "#") {
+                        taskField
+                        IssueAccessory(field: issues, place: repo?.name ?? Paths.folderName(target), pick: pick)
+                    }
                 }
                 section(L("Repository"), keys: "⌘1–6") { repoRow }
                 section(L("Agent"), keys: "⇥") { agentRow }
@@ -103,8 +106,8 @@ struct NewSessionView: View {
 
     private var header: some View {
         HStack {
-            Text(L("New Session"))
-                .font(.system(size: 15, weight: .semibold))
+            Text(L("New session"))
+                .font(UI.title)
                 .foregroundStyle(Theme.textPrimary)
             Spacer()
             Button { window.showNewSession = false } label: {
@@ -165,43 +168,51 @@ struct NewSessionView: View {
             .background(field(active: focused))
     }
 
-    private var repoRow: some View {
-        FlowRow(spacing: 6) {
-            ForEach(Array(repos.prefix(Self.chipCount).enumerated()), id: \.element.id) { index, repo in
-                Chip(selected: target == repo.path, help: Paths.abbreviate(repo.path)) {
-                    select(repo.path)
-                } label: {
-                    HStack(spacing: 6) {
-                        Text(repo.name).lineLimit(1)
-                        Text("⌘\(index + 1)")
-                            .font(.system(size: 10.5))
-                            .foregroundStyle(Theme.textFaint)
+    @ViewBuilder private var repoRow: some View {
+        if reposLoading, repos.isEmpty {
+            SkeletonGroup {
+                FlowRow(spacing: 6) {
+                    ForEach([120.0, 105, 135, 100, 115, 95], id: \.self) { SkeletonBar(width: $0, height: 30, radius: 7) }
+                }
+            }
+        } else {
+            FlowRow(spacing: 6) {
+                ForEach(Array(repos.prefix(Self.chipCount).enumerated()), id: \.element.id) { index, repo in
+                    Chip(selected: target == repo.path, help: Paths.abbreviate(repo.path)) {
+                        select(repo.path)
+                    } label: {
+                        HStack(spacing: 6) {
+                            Text(repo.name).lineLimit(1)
+                            Text("⌘\(index + 1)")
+                                .font(.system(size: 10.5))
+                                .foregroundStyle(Theme.textFaint)
+                        }
                     }
                 }
-            }
-            Menu {
-                ForEach(repos.dropFirst(Self.chipCount)) { repo in
-                    Button(repo.name) { select(repo.path) }
+                Menu {
+                    ForEach(repos.dropFirst(Self.chipCount)) { repo in
+                        Button(repo.name) { select(repo.path) }
+                    }
+                    if repos.count > Self.chipCount { Divider() }
+                    Button(L("Choose Folder…"), action: chooseFolder)
+                } label: {
+                    Text(chosenElsewhere ?? L("Other …"))
+                        .font(.system(size: 12, weight: .medium))
                 }
-                if repos.count > Self.chipCount { Divider() }
-                Button(L("Choose Folder…"), action: chooseFolder)
-            } label: {
-                Text(chosenElsewhere ?? L("Other …"))
-                    .font(.system(size: 12, weight: .medium))
+                .menuStyle(.borderlessButton)
+                .menuIndicator(.visible)
+                .fixedSize()
+                .padding(.horizontal, 10)
+                .frame(height: 28)
+                .background(
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .fill(chosenElsewhere != nil ? Theme.fillActive : .clear)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .strokeBorder(chosenElsewhere != nil ? Theme.textPrimary.opacity(0.3) : Theme.hairline, lineWidth: 1)
+                )
             }
-            .menuStyle(.borderlessButton)
-            .menuIndicator(.visible)
-            .fixedSize()
-            .padding(.horizontal, 10)
-            .frame(height: 28)
-            .background(
-                RoundedRectangle(cornerRadius: 7, style: .continuous)
-                    .fill(chosenElsewhere != nil ? Theme.fillActive : .clear)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 7, style: .continuous)
-                    .strokeBorder(chosenElsewhere != nil ? Theme.textPrimary.opacity(0.3) : Theme.hairline, lineWidth: 1)
-            )
         }
     }
 
@@ -298,7 +309,7 @@ struct NewSessionView: View {
     }
 
     /// The issue the task names, once found.
-    private var issue: Issue? { issues.resolved?.issue }
+    private var issue: Issue? { agent == nil ? nil : issues.resolved?.issue }
     /// An issue names its own branch.
     private var issueBranch: String? { issue.map(Issues.branchName) }
 
@@ -359,13 +370,14 @@ struct NewSessionView: View {
     /// when there is any repository to offer.
     private func prepare() {
         focused = true
-        let current = window.selectedWorkspace?.context.root
+        let current = window.newTaskDirectory ?? window.selectedWorkspace?.context.root
         let open = ([current] + store.orderedWorkspaces.map(\.context.root)).compactMap { $0 }
         if let current { directory = current }
         Task.detached(priority: .userInitiated) {
             let found = Repos.load(open: open)
             await MainActor.run {
                 repos = found
+                reposLoading = false
                 if directory == nil { directory = found.first?.path }
             }
         }
@@ -403,6 +415,13 @@ struct NewSessionView: View {
     }
 
     private func start() {
+        if agent == nil {
+            store.launch(SessionSpec(directory: target, agent: nil, prompt: "",
+                                     worktree: worktree, branch: typedBranch), in: window)
+            window.newTaskDirectory = nil
+            window.showNewSession = false
+            return
+        }
         if issues.isLoading {
             waitingToStart = true
             return
@@ -432,6 +451,7 @@ struct NewSessionView: View {
         if resolved != nil { spec.autoName = false }
         spec.issue = resolved?.issue
         store.launch(spec, in: window)
+        window.newTaskDirectory = nil
         window.showNewSession = false
     }
 
@@ -474,52 +494,5 @@ private struct Chip<Label: View>: View {
         .buttonStyle(.plain)
         .help(help)
         .onHover { hovered = $0 }
-    }
-}
-
-/// Chips left to right, wrapping onto the next line when they run out.
-private struct FlowRow: Layout {
-    var spacing: CGFloat = 6
-
-    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache _: inout ()) -> CGSize {
-        let rows = arrange(width: proposal.width ?? .infinity, subviews: subviews)
-        let height = rows.last.map { $0.y + $0.height } ?? 0
-        let width = rows.map(\.width).max() ?? 0
-        return CGSize(width: proposal.width ?? width, height: height)
-    }
-
-    func placeSubviews(in bounds: CGRect, proposal _: ProposedViewSize, subviews: Subviews, cache _: inout ()) {
-        for row in arrange(width: bounds.width, subviews: subviews) {
-            var x = bounds.minX
-            for index in row.items {
-                let size = subviews[index].sizeThatFits(.unspecified)
-                subviews[index].place(at: CGPoint(x: x, y: bounds.minY + row.y), proposal: ProposedViewSize(size))
-                x += size.width + spacing
-            }
-        }
-    }
-
-    private struct Row {
-        var items: [Int] = []
-        var y: CGFloat = 0
-        var width: CGFloat = 0
-        var height: CGFloat = 0
-    }
-
-    private func arrange(width: CGFloat, subviews: Subviews) -> [Row] {
-        var rows = [Row()]
-        for index in subviews.indices {
-            let size = subviews[index].sizeThatFits(.unspecified)
-            if !rows[rows.count - 1].items.isEmpty, rows[rows.count - 1].width + spacing + size.width > width {
-                let last = rows[rows.count - 1]
-                rows.append(Row(y: last.y + last.height + spacing))
-            }
-            var row = rows[rows.count - 1]
-            row.width += (row.items.isEmpty ? 0 : spacing) + size.width
-            row.height = max(row.height, size.height)
-            row.items.append(index)
-            rows[rows.count - 1] = row
-        }
-        return rows
     }
 }

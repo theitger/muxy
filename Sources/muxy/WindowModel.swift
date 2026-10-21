@@ -8,6 +8,14 @@ final class WindowModel: ObservableObject, Identifiable {
     let id = UUID()
 
     @Published var selectedWorkspaceID: Workspace.ID?
+    @Published var destination: WindowDestination = .home
+    @Published var workSection: WorkSection = .terminal
+    @Published var terminalFocus = false
+    var isTerminalFocused: Bool { terminalFocus && destination == .workspace && workSection == .terminal }
+    @Published var libraryPage = "board"
+    /// A repository explicitly picked on Start wins over the previous task.
+    @Published var newTaskDirectory: String?
+    private var sections: [Workspace.ID: WorkSection] = [:]
     @Published var showSwitcher = false {
         didSet {
             if oldValue, !showSwitcher { focusTerminal() }
@@ -23,10 +31,45 @@ final class WindowModel: ObservableObject, Identifiable {
     /// ⇧⌘D: what the session in front changed (see ReviewView).
     @Published private(set) var review: ReviewModel?
     /// The hub over the stage: issues, sessions, worktrees (⌘H).
-    @Published var showHub = false {
-        didSet {
-            if oldValue, !showHub { focusTerminal() }
+    var showHub: Bool {
+        get { destination == .library }
+        set {
+            destination = newValue ? .library : (selectedWorkspace == nil ? .home : .workspace)
+            if !newValue { focusTerminal() }
         }
+    }
+
+    func goHome() {
+        review = nil
+        taskTarget = nil
+        reviewRun = nil
+        destination = .home
+    }
+
+    func openLibrary(_ page: String = "board") {
+        review = nil
+        taskTarget = nil
+        reviewRun = nil
+        libraryPage = page
+        destination = .library
+    }
+
+    func newTask(in directory: String? = nil) {
+        newTaskDirectory = directory
+        showNewSession = true
+    }
+
+    func showSection(_ section: WorkSection) {
+        workSection = section
+        if let selectedWorkspaceID { sections[selectedWorkspaceID] = section }
+        if selectedWorkspace != nil { destination = .workspace }
+        if section == .terminal { focusTerminal() }
+    }
+
+    func toggleTerminalFocus() {
+        guard selectedWorkspace != nil else { return }
+        showSection(.terminal)
+        terminalFocus.toggle()
     }
 
     func openReview(_ workspace: Workspace? = nil, scope: ReviewModel.Scope = .lastTurn) {
@@ -36,7 +79,7 @@ final class WindowModel: ObservableObject, Identifiable {
             return
         }
         if workspace.id != selectedWorkspaceID { select(workspace) }
-        showHub = false
+        showSection(.inspect)
         withAnimation(Theme.ease) { review = model }
     }
 
@@ -55,6 +98,17 @@ final class WindowModel: ObservableObject, Identifiable {
     func openTask(_ target: TaskTarget, section: String = "overview") {
         review = nil
         reviewRun = nil
+        if let workspace = TaskResolver.workspace(for: target) {
+            if workspace.windowID != id, let owner = store.window(of: workspace) {
+                owner.openTask(target, section: section)
+                owner.bringToFront()
+                return
+            }
+            select(workspace)
+            taskSection = section
+            showSection(section == "implementation" ? .inspect : section == "reviews" ? .quorum : section == "activity" ? .activity : .overview)
+            return
+        }
         taskTarget = target
         taskSection = section
         showHub = true
@@ -65,13 +119,13 @@ final class WindowModel: ObservableObject, Identifiable {
     func openQuorumRun(_ status: QuorumStatus) {
         taskTarget = nil
         reviewRun = status
-        UserDefaults.standard.set("reviews", forKey: "hubPage")
+        libraryPage = "reviews"
         showHub = true
     }
 
     func closeReview() {
         withAnimation(Theme.ease) { review = nil }
-        focusTerminal()
+        showSection(.terminal)
     }
 
     func toggleReview() {
@@ -146,8 +200,12 @@ final class WindowModel: ObservableObject, Identifiable {
     }
 
     func select(_ workspace: Workspace) {
+        if let selectedWorkspaceID { sections[selectedWorkspaceID] = workSection }
         selectedWorkspaceID = workspace.id
-        showHub = false
+        workSection = sections[workspace.id] ?? .terminal
+        taskTarget = nil
+        reviewRun = nil
+        destination = .workspace
         // Another session in front: its own changes, not the last one's.
         if let review, review.workspace.id != workspace.id { self.review = nil }
     }
@@ -170,6 +228,8 @@ final class WindowModel: ObservableObject, Identifiable {
         guard selectedWorkspace == nil else { return }
         let remaining = orderedWorkspaces
         selectedWorkspaceID = remaining.isEmpty ? nil : remaining[min(max(index, 0), remaining.count - 1)].id
+        if remaining.isEmpty { goHome() }
+        else { workSection = selectedWorkspaceID.flatMap { sections[$0] } ?? .terminal }
     }
 
     // MARK: - Tabs
@@ -182,12 +242,14 @@ final class WindowModel: ObservableObject, Identifiable {
         }
         let directory = workspace.selectedSession?.cwd ?? workspace.directory
         store.add(TerminalSession(directory: directory), to: workspace)
+        showSection(.terminal)
     }
 
     func selectTab(index: Int) {
         guard let workspace = selectedWorkspace,
               workspace.sessions.indices.contains(index) else { return }
         workspace.selectedSessionID = workspace.sessions[index].id
+        showSection(.terminal)
     }
 
     func selectTab(offset: Int) {
@@ -195,11 +257,16 @@ final class WindowModel: ObservableObject, Identifiable {
         let count = workspace.sessions.count
         let current = workspace.sessions.firstIndex { $0.id == workspace.selectedSessionID } ?? 0
         workspace.selectedSessionID = workspace.sessions[(current + offset + count) % count].id
+        showSection(.terminal)
     }
 
     /// ⌘W — close the current tab; the last tab closes the session.
     /// An empty window closes, like Ghostty's last tab.
     func closeCurrent() {
+        if destination != .workspace {
+            store.requestCloseWindow(self)
+            return
+        }
         guard let workspace = selectedWorkspace else {
             store.requestCloseWindow(self)
             return
@@ -220,6 +287,8 @@ final class WindowModel: ObservableObject, Identifiable {
 
     /// Hand keyboard focus back to the visible terminal (after the switcher).
     func focusTerminal() {
+        guard destination == .workspace, workSection == .terminal,
+              !showSwitcher, !showNewSession else { return }
         guard let view = selectedWorkspace?.selectedSession?.terminalView else { return }
         DispatchQueue.main.async {
             view.window?.makeFirstResponder(view)

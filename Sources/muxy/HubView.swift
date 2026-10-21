@@ -6,8 +6,6 @@ import SwiftUI
 struct HubView: View {
     @ObservedObject var store: Store
     @ObservedObject var window: WindowModel
-    /// Shown without the sidebar: the window's own buttons sit top left.
-    var sidebarFolded = false
     @ObservedObject private var hub = HubModel.shared
     @ObservedObject private var inventory = InventoryModel.shared
     @ObservedObject private var radar = Radar.shared
@@ -16,25 +14,32 @@ struct HubView: View {
     @ObservedObject private var landing = Landing.shared
     @ObservedObject private var queue = Queue.shared
     @ObservedObject private var work = WorkLedger.shared
-    @AppStorage("hubPage") private var page = "board"
+    private var page: String {
+        get { window.libraryPage }
+        nonmutating set { window.libraryPage = newValue }
+    }
     /// Board filters: an organization, a repository (both "" for all), and
     /// only issues an agent can take on its own.
     @AppStorage("hubOrg") private var org = ""
     @AppStorage("hubRepo") private var repo = ""
     @AppStorage("hubReadyOnly") private var readyOnly = false
+    @State private var cardHeight: CGFloat = 180
+    @State private var taskSearch = ""
 
     var body: some View {
         VStack(spacing: 0) {
             header
             Rectangle().fill(Theme.hairline).frame(height: 1).padding(.horizontal, 14)
             if page == "board", window.reviewRun == nil, window.taskTarget == nil {
-                filterBar
+                if hub.awaitingFirstResponse { SkeletonFilters() } else { filterBar }
                 Rectangle().fill(Theme.hairline).frame(height: 1).padding(.horizontal, 14)
             }
             if let target = window.taskTarget {
                 TaskPage(target: target, window: window).id(target.id)
             } else if let run = window.reviewRun {
                 QuorumRunPage(status: run) { window.reviewRun = nil }
+            } else if page == "queue" {
+                queuePage
             } else if page == "worktrees" {
                 WorktreesPage(window: window)
             } else if page == "attention" {
@@ -50,6 +55,14 @@ struct HubView: View {
             hub.refresh()
             if page == "worktrees" { inventory.scan() }
         }
+        .onChange(of: page) {
+            if page == "worktrees" { inventory.scan() }
+        }
+        #if DEBUG
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("muxy.debug.taskSearch"))) {
+            taskSearch = $0.object as? String ?? ""
+        }
+        #endif
         .onExitCommand {
             if window.taskTarget != nil { window.taskTarget = nil }
             else if window.reviewRun != nil { window.reviewRun = nil }
@@ -59,27 +72,62 @@ struct HubView: View {
 
     private var header: some View {
         HStack(spacing: 12) {
-            if sidebarFolded {
-                Color.clear.frame(width: 66)
-                IconButton(symbol: "sidebar.left", help: L("Sidebar (⌘B)")) { store.toggleSidebar() }
-            }
-            Segments(selection: $page, options: [("board", L("Board")), ("attention", L("Needs you")), ("reviews", L("Reviews")), ("worktrees", L("Worktrees"))])
-            .onChange(of: page) {
-                window.taskTarget = nil
-                if page != "reviews" { window.reviewRun = nil }
-                if page == "worktrees" { inventory.scan() }
+            if store.sidebarVisible {
+                Text(pageTitle).font(UI.title).foregroundStyle(Theme.textPrimary)
+            } else {
+                Menu {
+                    Button(L("Tasks")) { window.openLibrary() }
+                    Button(L("Queue")) { window.openLibrary("queue") }
+                    Button(L("Needs you")) { window.openLibrary("attention") }
+                    Button(L("Reviews")) { window.openLibrary("reviews") }
+                    Button(L("Worktrees")) { window.openLibrary("worktrees") }
+                } label: { Text(pageTitle).font(UI.heading) }
+                .menuStyle(.borderlessButton).fixedSize()
             }
             Spacer()
+            if page == "board", window.taskTarget == nil, window.reviewRun == nil {
+                searchField
+            }
             account
             IconButton(symbol: "arrow.clockwise", help: L("Refresh")) {
                 hub.refresh()
                 radar.scan()
                 if page == "worktrees" { inventory.scan() }
             }
-            IconButton(symbol: "xmark", help: L("Close hub (esc)")) { window.showHub = false }
+
         }
         .padding(.horizontal, 14)
-        .frame(height: sidebarFolded ? StageMetrics.topBar : 46)
+        .frame(height: 64)
+    }
+
+    private var searchField: some View {
+        HStack(spacing: 8) {
+            Icon("magnifyingglass", size: 13).foregroundStyle(Theme.textMuted)
+            TextField(L("Search tasks, repositories, labels …"), text: $taskSearch)
+                .textFieldStyle(.plain).font(UI.control)
+                .onExitCommand { taskSearch = "" }
+            if !taskSearch.isEmpty {
+                IconButton(symbol: "xmark", help: L("Clear search")) { taskSearch = "" }
+            }
+        }
+        .padding(.horizontal, 10).frame(height: 34)
+        .frame(minWidth: 180, maxWidth: 360)
+        .background(RoundedRectangle(cornerRadius: 8).fill(Theme.fillHover))
+        .accessibilityLabel(L("Search tasks"))
+    }
+
+    private var hasQuery: Bool { !taskSearch.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+
+    private var pageTitle: String {
+        if window.taskTarget != nil { return L("Task") }
+        if window.reviewRun != nil { return L("Review") }
+        switch page {
+        case "queue": return L("Queue")
+        case "attention": return L("Needs you")
+        case "reviews": return L("Reviews")
+        case "worktrees": return L("Worktrees")
+        default: return L("Tasks")
+        }
     }
 
     @ViewBuilder
@@ -110,110 +158,177 @@ struct HubView: View {
             .help(L("Signed in to GitHub through gh. Opens your profile."))
         } else if let problem = hub.account.problem {
             HStack(spacing: 8) {
-                Text(problem).font(.system(size: 12)).foregroundStyle(Theme.orange.strong)
+                Text(problem).font(UI.metadata).foregroundStyle(Theme.orange.strong)
                 SmallButton(title: L("Sign in to GitHub"), prominent: true) {
                     hub.signIn(in: window)
                 }
             }
-        } else if hub.loading {
-            ProgressView().controlSize(.small)
+        } else if hub.awaitingFirstResponse {
+            SkeletonAccount()
         }
     }
 
     // MARK: Board
 
     private var board: some View {
-        let sessions = store.orderedWorkspaces.filter(visible)
-        let working = sessions.filter { column(of: $0) == .working }
+        let sessions = store.orderedWorkspaces.filter {
+            visible($0) && searches($0) && ($0.agent != .none || $0.context.pr != nil || $0.sessions.contains { $0.issue != nil })
+        }
+        let working = sessions.filter { column(of: $0) == .working || column(of: $0) == .none }
         let review = sessions.filter { column(of: $0) == .review }
         let ready = sessions.filter { column(of: $0) == .ready }
-        return GeometryReader { geometry in
-        // Four columns share the width: never sideways scrolling.
-        // (each column adds 10 pt of padding on either side)
-        let width = max(150, (geometry.size.width - 28 - 30) / 4 - 20)
-        HStack(alignment: .top, spacing: 10) {
-                Column(title: L("For you"), count: openIssues.count + hub.reviews.filter { matches($0.repo) }.count) {
-                    if !queue.items.isEmpty {
-                        QueueSection(queue: queue, window: window)
-                            .padding(.bottom, 6)
-                    }
-                    let groups = issueGroups
-                    ForEach(groups, id: \.repo) { group in
-                        // One repository: no heading needed.
-                        if groups.count > 1 {
-                            HStack(spacing: 6) {
-                                SectionLabel(group.repo.split(separator: "/").last.map(String.init) ?? group.repo, tone: Theme.textMuted)
-                                Text(String(group.issues.count)).font(Theme.label(size: 11)).foregroundStyle(Theme.textDim)
-                                Rectangle().fill(Theme.hairline).frame(height: 1)
-                            }
-                            .padding(.top, group.repo == groups.first?.repo ? 0 : 8)
-                            .help(group.repo)
-                        }
-                        ForEach(group.issues, id: \.self) { issue in
-                            IssueCard(issue: issue, local: hub.checkout(of: issue.repo) != nil, showsRepo: groups.count <= 1,
-                                      inspect: { window.openTask(TaskTarget(issue: issue)) },
-                                      queue: { queue.add(issue, agent: $0, plan: $1) },
-                                      plan: { hub.start(issue, agents: [$0], in: window, plan: true) },
-                                      startTerminal: { hub.startTerminal(issue, in: window) }) { agents in
-                                hub.start(issue, agents: agents, in: window)
-                            }
-                        }
-                    }
-                    if !hub.reviews.isEmpty {
-                        SectionLabel(L("Reviews for you"))
-                            .padding(.top, 6)
-                        ForEach(hub.reviews.filter { matches($0.repo) }) { request in
-                            ReviewRequestCard(request: request, local: hub.checkout(of: request.repo)) {
-                                reviewWithQuorum(request)
-                            }
-                        }
-                    }
-                    if openIssues.isEmpty, hub.reviews.isEmpty {
-                        Text(hub.loading ? L("Asking GitHub …") : L("Nothing assigned to you."))
-                            .font(.system(size: 12)).foregroundStyle(Theme.textDim).padding(.vertical, 8)
+        return ScrollView {
+            VStack(alignment: .leading, spacing: 28) {
+                if !working.isEmpty {
+                    taskGroup(L("Working"), count: working.count) {
+                        ForEach(working) { SessionCard(workspace: $0, window: window) }
                     }
                 }
-                Column(title: L("Working"), count: working.count + paused.count) {
-                    ForEach(working) { SessionCard(workspace: $0, window: window) }
-                    if !paused.isEmpty {
-                        // Work whose session is closed, before it has a PR.
-                        SectionLabel(L("Paused"))
-                            .padding(.top, working.isEmpty ? 0 : 6)
-                        ForEach(paused) { item in
-                            PausedCard(item: item) { work.resume(item, in: window) }
-                        }
+                if !review.isEmpty {
+                    taskGroup(L("In review"), count: review.count) {
+                        ForEach(review) { SessionCard(workspace: $0, window: window) }
                     }
                 }
-                Column(title: L("In review"), count: review.count + pulls.count) {
-                    ForEach(review) { SessionCard(workspace: $0, window: window) }
-                    if !pulls.isEmpty {
-                        // Work left elsewhere: a terminal outside muxy, a
-                        // worktree an agent made itself, a closed session.
-                        SectionLabel(L("Your PRs without a session"))
-                            .padding(.top, review.isEmpty ? 0 : 6)
+                if !ready.isEmpty {
+                    taskGroup(L("Ready to land"), count: ready.count) {
+                        ForEach(ready) { SessionCard(workspace: $0, window: window) }
+                    }
+                }
+                if !paused.isEmpty {
+                    taskGroup(L("Without an open session"), count: paused.count) {
+                        ForEach(paused) { item in PausedCard(item: item) { work.resume(item, in: window) } }
+                    }
+                }
+                if !pulls.isEmpty {
+                    taskGroup(L("Your PRs without a session"), count: pulls.count) {
                         ForEach(pulls) { pull in
                             let item = workItem(for: pull)
                             PullCard(pull: pull, local: hub.checkout(of: pull.repo) != nil, item: item,
-                                     resume: item?.conversation == nil ? nil : { work.resume(item!, in: window) },
+                                     resume: item?.conversation == nil ? nil : { if let item { work.resume(item, in: window) } },
                                      inspect: { hub.open(pull, agent: nil, in: window, inspect: true) }) { agent in
                                 hub.open(pull, agent: agent, in: window)
                             }
                         }
                     }
                 }
-                Column(title: L("Ready to land"), count: ready.count) {
-                    ForEach(ready) { SessionCard(workspace: $0, window: window) }
+                if !queuedMatches.isEmpty {
+                    Button { window.openLibrary("queue") } label: {
+                        HStack {
+                            Text(L("Queue")).font(UI.heading)
+                            Text(String(queuedMatches.count)).font(UI.metadata)
+                            Spacer()
+                            Text(L("Open")).font(UI.control)
+                            Icon("arrow.right", size: 12)
+                        }.foregroundStyle(Theme.textBody).padding(14)
+                            .background(RoundedRectangle(cornerRadius: 9).fill(Theme.fillHover))
+                    }.buttonStyle(.plain)
+                    if hasQuery {
+                        VStack(spacing: 8) {
+                            ForEach(queuedMatches) { item in
+                                QueueRow(item: item, remove: { queue.remove(item) }, open: {
+                                    window.openTask(TaskTarget(issue: item.issue))
+                                })
+                            }
+                        }.modifier(CardBackground())
+                    }
+                }
+                ForEach(issueGroups, id: \.repo) { group in
+                    taskGroup(group.repo, count: group.issues.count) {
+                        ForEach(group.issues, id: \.self) { issue in
+                            IssueCard(issue: issue, local: hub.checkout(of: issue.repo) != nil, showsRepo: false,
+                                      inspect: { window.openTask(TaskTarget(issue: issue)) },
+                                      queue: { queue.add(issue, agent: $0, plan: $1) },
+                                      plan: { hub.start(issue, agents: [$0], in: window, hideHub: true, plan: true) },
+                                      startTerminal: { hub.startTerminal(issue, in: window, hideHub: true) }) { agents in
+                                hub.start(issue, agents: agents, in: window, hideHub: true)
+                            }
+                        }
+                    }
+                }
+                let requests = hub.reviews.filter { matches($0.repo) && TaskSearch.matches(taskSearch, fields: [$0.title, $0.repo, "#\($0.number)", $0.author] + $0.labels) }
+                if !requests.isEmpty {
+                    taskGroup(L("Reviews for you"), count: requests.count) {
+                        ForEach(requests) { request in
+                            ReviewRequestCard(request: request, local: hub.checkout(of: request.repo)) { reviewWithQuorum(request) }
+                        }
+                    }
+                }
+                if hub.awaitingFirstResponse {
+                    SkeletonTaskSection(cardHeight: cardHeight)
+                }
+                if !hub.awaitingFirstResponse, sessions.isEmpty, paused.isEmpty, pulls.isEmpty, openIssues.isEmpty, requests.isEmpty, queuedMatches.isEmpty {
+                    PageHeading(title: hasQuery ? L("No matching tasks") : L("No tasks here yet"),
+                                subtitle: hasQuery ? L("Try another search or clear the filters.")
+                                    : L("Start a task or choose another repository filter."))
+                    if hasQuery {
+                        ActionButton(title: L("Clear search"), symbol: "xmark") { taskSearch = "" }
+                    } else {
+                        ActionButton(title: L("New session"), symbol: "plus", primary: true) { window.newTask() }
+                    }
                 }
             }
-            .environment(\.columnWidth, width)
-            .padding(14)
-            .frame(width: geometry.size.width, height: geometry.size.height, alignment: .topLeading)
+            .padding(24)
+            .environment(\.taskCardHeight, cardHeight)
+            .onPreferenceChange(TaskCardHeightPreference.self) { cardHeight = max(180, $0) }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private var queuePage: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+                HStack(spacing: 14) {
+                    queueCount(L("Queued"), count: queue.items.filter { $0.phase == .queued }.count)
+                    queueCount(L("Working"), count: queue.items.filter { $0.phase.isActive }.count)
+                    queueCount(L("Needs you"), count: queue.items.filter {
+                        if case .needsYou = $0.phase { return true }
+                        if case .failed = $0.phase { return true }
+                        return $0.phase == .planReady
+                    }.count)
+                    queueCount(L("Ready to land"), count: queue.items.filter { $0.phase == .ready }.count)
+                }
+                QueueSection(queue: queue, window: window)
+                if queue.items.isEmpty {
+                    Text(L("Add issues from Tasks to the queue using More → Queue for Claude or Codex."))
+                        .font(UI.body).foregroundStyle(Theme.textMuted)
+                    ActionButton(title: L("Tasks"), symbol: "list.bullet") { window.openLibrary() }
+                }
+                if let problem = queue.problem {
+                    Text(problem).font(UI.body).foregroundStyle(Theme.redTone.strong)
+                }
+            }
+            .padding(24).frame(maxWidth: 1200, alignment: .leading)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private func queueCount(_ title: String, count: Int) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(String(count)).font(UI.title).foregroundStyle(Theme.textPrimary)
+            Text(title).font(UI.metadata).foregroundStyle(Theme.textMuted)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading).padding(14)
+        .background(RoundedRectangle(cornerRadius: 9).fill(Theme.fillHover))
+    }
+
+    private func taskGroup<Content: View>(_ title: String, count: Int, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                Text(title).font(UI.heading).foregroundStyle(Theme.textPrimary)
+                Text(String(count)).font(UI.metadata).foregroundStyle(Theme.textMuted)
+            }
+            TaskCardGrid {
+                content()
+            }
         }
     }
 
     /// Work whose session was closed before it got a PR, filtered.
     private var paused: [WorkItem] {
-        work.withoutSession.filter { $0.pr == nil && matches($0.repo ?? "") }
+        work.withoutSession.filter {
+            $0.pr == nil && matches($0.repo ?? "")
+                && TaskSearch.matches(taskSearch, fields: [$0.title, $0.repo ?? "", $0.branch] + ($0.issue.map(TaskSearch.fields) ?? []))
+        }
     }
 
     private func workItem(for pull: HubModel.OwnPull) -> WorkItem? {
@@ -223,13 +338,17 @@ struct HubView: View {
 
     /// Your open PRs no session works on, filtered, latest change first.
     private var pulls: [HubModel.OwnPull] {
-        hub.pullsWithoutSession.filter { matches($0.repo) }
+        hub.pullsWithoutSession.filter {
+            matches($0.repo) && TaskSearch.matches(taskSearch, fields: [$0.title, $0.repo, $0.branch ?? "", "#\($0.number)"]
+                                                  + $0.labels + (workItem(for: $0)?.issue.map(TaskSearch.fields) ?? []))
+        }
     }
 
     /// Assigned issues no session works on yet, filtered, newest first.
     private var openIssues: [Issue] {
         hub.issues.filter { issue in
             hub.session(for: issue) == nil && !queue.contains(issue) && matches(issue.repo)
+                && TaskSearch.matches(taskSearch, fields: TaskSearch.fields(issue))
                 && (!readyOnly || issue.labels.contains("ready-for-agent"))
         }
         .sorted { ($0.created ?? .distantPast, $0.number) > ($1.created ?? .distantPast, $1.number) }
@@ -244,6 +363,18 @@ struct HubView: View {
             groups[issue.repo, default: []].append(issue)
         }
         return order.map { ($0, groups[$0] ?? []) }
+    }
+
+    private var queuedMatches: [Queue.Item] {
+        queue.items.filter { matches($0.issue.repo) && TaskSearch.matches(taskSearch, fields: TaskSearch.fields($0.issue)) }
+    }
+
+    private func searches(_ workspace: Workspace) -> Bool {
+        let context = workspace.context
+        let issues = workspace.sessions.compactMap(\.issue).flatMap(TaskSearch.fields)
+        let pull = hub.pulls.first { $0.number == context.pr && hub.checkout(of: $0.repo) == context.root }
+        return TaskSearch.matches(taskSearch, fields: [workspace.title, slug(of: workspace) ?? "", context.branch ?? "",
+                                                       context.pr.map { "#\($0)" } ?? ""] + issues + (pull?.labels ?? []))
     }
 
     private func matches(_ slug: String) -> Bool {
@@ -325,64 +456,11 @@ struct HubView: View {
 
 // MARK: Pieces
 
-private struct ColumnWidthKey: EnvironmentKey {
-    static let defaultValue: CGFloat = 300
-}
-
-extension EnvironmentValues {
-    var columnWidth: CGFloat {
-        get { self[ColumnWidthKey.self] }
-        set { self[ColumnWidthKey.self] = newValue }
-    }
-}
-
-private struct Column<Content: View>: View {
-    @Environment(\.columnWidth) private var width
-    let title: String
-    let count: Int
-    @ViewBuilder let content: Content
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 6) {
-                SectionLabel(title, tone: Theme.textMuted)
-                Text(String(count)).font(Theme.label(size: 10.5)).foregroundStyle(Theme.textDim)
-                Spacer()
-            }
-            .foregroundStyle(Theme.textPrimary)
-            .frame(height: 24)
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 8) { content }
-                    .padding(.bottom, 20)
-            }
-            .scrollIndicators(.never)
-        }
-        .frame(width: width)
-        .frame(maxHeight: .infinity, alignment: .top)
-        .padding(10)
-        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Theme.textPrimary.opacity(0.025)))
-        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Theme.hairline, lineWidth: 1))
-    }
-}
-
 private struct CardBackground: ViewModifier {
-    var highlighted = false
-    @State private var hovered = false
-
     func body(content: Content) -> some View {
-        content
-            .padding(10)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(Theme.surfaceActive))
-            .overlay(
-                RoundedRectangle(cornerRadius: 9, style: .continuous)
-                    .strokeBorder(highlighted ? Theme.orange.strong.opacity(0.6) : Theme.hairline, lineWidth: 1)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 9, style: .continuous)
-                    .strokeBorder(Theme.textPrimary.opacity(hovered ? 0.22 : 0), lineWidth: 1)
-            )
-            .onHover { hovered = $0 }
+        content.padding(14).frame(maxWidth: .infinity, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: 9).fill(Theme.surfaceActive))
+            .overlay(RoundedRectangle(cornerRadius: 9).strokeBorder(Theme.hairline))
     }
 }
 
@@ -398,45 +476,39 @@ private struct IssueCard: View {
     @AppStorage(AgentKind.defaultKey) private var preferred = AgentKind.preferredChoice()
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 7) {
-            HStack(spacing: 6) {
-                if showsRepo {
-                    SectionLabel(issue.repo.split(separator: "/").last.map(String.init) ?? issue.repo)
-                }
-                Text("#" + String(issue.number)).font(Theme.label(size: 10.5)).foregroundStyle(Theme.textDim)
-                if let created = issue.created {
-                    Text(WorktreeRow.ago(Date().timeIntervalSince(created)))
-                        .font(Theme.label(size: 10.5)).foregroundStyle(Theme.textFaint)
-                        .help(created.formatted(date: .abbreviated, time: .shortened))
-                }
-                Spacer()
-                Button {
-                    if let url = URL(string: issue.url) { NSWorkspace.shared.open(url) }
-                } label: {
-                    Icon("arrow.up.right", size: 9.5).foregroundStyle(Theme.textDim)
-                }
-                .buttonStyle(.plain)
-                .help(L("Open on GitHub"))
-            }
-            Button(action: inspect) {
-                Text(issue.title).font(.system(size: 12.5, weight: .medium)).foregroundStyle(Theme.textPrimary)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
-            }.buttonStyle(.plain)
-            if !issue.labels.isEmpty {
-                HStack(spacing: 4) {
-                    ForEach(issue.labels.prefix(3), id: \.self) { label in
-                        Badge(text: label, tone: label == "ready-for-agent" ? Theme.greenTone : (label.contains("priority") ? Theme.orange : Theme.neutral))
+        TaskCardFrame(description: issue.body) {
+            VStack(alignment: .leading, spacing: 7) {
+                HStack(spacing: 6) {
+                    if showsRepo {
+                        SectionLabel(issue.repo.split(separator: "/").last.map(String.init) ?? issue.repo).lineLimit(1)
                     }
-                }
+                    Text("#" + String(issue.number)).font(Theme.label(size: 10.5)).foregroundStyle(Theme.textDim)
+                    if let created = issue.created {
+                        Text(WorktreeRow.ago(Date().timeIntervalSince(created)))
+                            .font(Theme.label(size: 10.5)).foregroundStyle(Theme.textFaint)
+                            .help(created.formatted(date: .abbreviated, time: .shortened))
+                    }
+                    Spacer()
+                }.frame(height: 14)
+                Button(action: inspect) {
+                    Text(issue.title).font(UI.control).foregroundStyle(Theme.textPrimary)
+                        .lineLimit(2, reservesSpace: true)
+                    .frame(minHeight: 32, alignment: .topLeading)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
+                }.buttonStyle(.plain).help(issue.title)
+                TaskLabels(labels: issue.labels)
             }
-            HStack(spacing: 6) {
-                let agent = AgentKind(rawValue: preferred)
-                SmallButton(title: agent.map { L("Start %@", $0.name) } ?? L("Open terminal"), prominent: true) {
-                    if let agent { start([agent]) } else { startTerminal() }
-                }
-                    .disabled(!local)
-                Menu {
+        } actions: {
+            let agent = AgentKind(rawValue: preferred)
+            TaskCardFooter(title: agent.map { L("Start %@", $0.name) } ?? L("Open terminal"),
+                           url: issue.url, disabled: !local) {
+                if let agent { start([agent]) } else { startTerminal() }
+            } more: {
+                Button(L("Task"), action: inspect)
+                Divider()
+
+                Group {
                     ForEach(AgentKind.allCases) { kind in
                         Button(L("Start %@", kind.name)) { start([kind]) }
                     }
@@ -452,19 +524,9 @@ private struct IssueCard: View {
                     ForEach(AgentKind.allCases) { kind in
                         Button(L("Queue for %@, plan first", kind.name)) { queue(kind, true) }
                     }
-                } label: {
-                    Text(L("More")).font(.system(size: 11.5, weight: .medium))
-                }
-                .menuStyle(.borderlessButton)
-                .fixedSize()
-                .disabled(!local)
-                Spacer()
-                if !local {
-                    Text(L("Not cloned here")).font(.system(size: 10.5)).foregroundStyle(Theme.textDim)
-                }
+                }.disabled(!local)
             }
         }
-        .modifier(CardBackground())
     }
 }
 
@@ -474,27 +536,33 @@ private struct ReviewRequestCard: View {
     let review: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 6) {
-                Icon("arrow.triangle.pull", size: 10).foregroundStyle(Theme.textDim)
-                Text("#" + String(request.number)).font(.system(size: 11, weight: .medium)).foregroundStyle(Theme.textDim)
-                Text(request.author).font(.system(size: 11)).foregroundStyle(Theme.textFaint)
-                Spacer()
+        TaskCardFrame(description: request.body) {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 6) {
+                    Icon("arrow.triangle.pull", size: 10).foregroundStyle(Theme.textDim)
+                    Text("#" + String(request.number)).font(.system(size: 11, weight: .medium)).foregroundStyle(Theme.textDim)
+                    Text(request.author).font(.system(size: 11)).foregroundStyle(Theme.textFaint)
+                    Spacer()
+                }.frame(height: 14)
+                Text(request.title)
+                    .help(request.title)
+                    .font(UI.control)
+                    .lineLimit(2, reservesSpace: true)
+                    .frame(minHeight: 32, alignment: .topLeading)
+                    .foregroundStyle(Theme.textPrimary)
+                    .fixedSize(horizontal: false, vertical: true)
+                TaskLabels(labels: request.labels)
             }
-            Text(request.title)
-                .font(.system(size: 12.5, weight: .medium))
-                .foregroundStyle(Theme.textPrimary)
-                .fixedSize(horizontal: false, vertical: true)
-            HStack(spacing: 6) {
-                if local != nil, Quorum.isInstalled {
-                    SmallButton(title: L("Review with quorum"), action: review)
-                }
-                SmallButton(title: L("Open"), symbol: "arrow.up.right") {
+        } actions: {
+            TaskCardFooter(title: local != nil && Quorum.isInstalled ? L("Run quorum") : L("Open on GitHub"), url: request.url) {
+                if local != nil, Quorum.isInstalled { review() }
+                else if let url = URL(string: request.url) { NSWorkspace.shared.open(url) }
+            } more: {
+                Button(L("Open on GitHub")) {
                     if let url = URL(string: request.url) { NSWorkspace.shared.open(url) }
                 }
             }
         }
-        .modifier(CardBackground())
     }
 }
 
@@ -517,6 +585,16 @@ private struct QueueSection: View {
                         .buttonStyle(.plain)
                         .font(.system(size: 11)).foregroundStyle(Theme.textDim)
                 }
+            }
+            HStack(spacing: 10) {
+                Text(L("Parallel agents")).font(UI.control).foregroundStyle(Theme.textBody)
+                Picker(L("Parallel agents"), selection: $parallel) {
+                    ForEach(1 ... 5, id: \.self) { Text(String($0)).tag($0) }
+                }.labelsHidden().frame(width: 80)
+                Spacer()
+            }
+            if queue.items.isEmpty {
+                Text(L("Nothing waits.")).font(UI.body).foregroundStyle(Theme.textMuted).padding(.vertical, 12)
             }
             VStack(alignment: .leading, spacing: 0) {
                 ForEach(queue.items) { item in
@@ -560,10 +638,11 @@ private struct QueueRow: View {
                     Text(item.issue.title).font(.system(size: 12, weight: .medium))
                         .foregroundStyle(Theme.textPrimary).lineLimit(2)
                 }.buttonStyle(.plain)
-                Text("#" + String(item.issue.number) + " · " + (Queue.shared.reason(for: item) ?? status.text))
+                Text(detail)
                     .font(.system(size: 10.5))
                     .foregroundStyle(status.color)
-                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+                TaskLabels(labels: item.issue.labels)
             }
             Spacer(minLength: 4)
             if item.phase == .planReady {
@@ -583,6 +662,11 @@ private struct QueueRow: View {
             }
         }
         .padding(.vertical, 6)
+    }
+
+    private var detail: String {
+        let reason = Queue.shared.reason(for: item) ?? status.text
+        return "\(item.issue.repo) #\(item.issue.number) · \(reason)"
     }
 
     private var status: (text: String, color: Color) {
@@ -609,7 +693,6 @@ private struct PullCard: View {
     let open: (AgentKind?) -> Void
     @AppStorage(AgentKind.defaultKey) private var preferred = AgentKind.preferredChoice()
     @ObservedObject private var quorum = QuorumWatch.shared
-    @ObservedObject private var acceptance = Acceptance.shared
     @State private var starting = false
     /// Why quorum couldn't start, until the next try.
     @State private var problem: String?
@@ -620,132 +703,97 @@ private struct PullCard: View {
     /// again after a run that stopped.
     private var quorumStep: NextStep? {
         guard local, !starting else { return nil }
-        if !acceptance.covers(repo: pull.repo, pr: pull.number, head: pull.head) { return .accept }
         guard let step = Flow.quorumStep(status, installed: Quorum.isInstalled, head: pull.head) else { return nil }
         if case .reviewing = step { return nil }
         return step
     }
 
+    private var cardStatus: SessionSummary? {
+        guard let status else { return nil }
+        return SessionSummary.completedQuorum(status, head: pull.head)
+            ?? SessionSummary.resolve(agent: .none, next: quorumStep ?? .none,
+                                      quorumRunning: status.running, quorumPhase: status.phase, prState: .open)
+    }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 7) {
-            HStack(spacing: 6) {
-                SectionLabel(pull.repo.split(separator: "/").last.map(String.init) ?? pull.repo)
-                Text("#" + String(pull.number)).font(Theme.label(size: 10.5)).foregroundStyle(Theme.textDim)
-                if let updated = pull.updated {
-                    Text(WorktreeRow.ago(Date().timeIntervalSince(updated)))
-                        .font(Theme.label(size: 10.5)).foregroundStyle(Theme.textFaint)
-                        .help(updated.formatted(date: .abbreviated, time: .shortened))
-                }
-                if pull.draft { Badge(text: L("Draft"), tone: Theme.neutral) }
-                Spacer()
-                if let item {
-                    SmallButton(title: L("Task")) { (Store.shared.activeWindow ?? Store.shared.windows.first)?.openTask(TaskTarget(work: item)) }
-                    if !item.evidence.isEmpty { EvidenceButton(item: item) }
-                }
-                Button {
-                    if let url = URL(string: pull.url) { NSWorkspace.shared.open(url) }
-                } label: {
-                    Icon("arrow.up.right", size: 9.5).foregroundStyle(Theme.textDim)
-                }
-                .buttonStyle(.plain)
-                .help(L("Open on GitHub"))
-            }
-            Text(pull.title)
-                .font(.system(size: 12.5, weight: .medium))
-                .foregroundStyle(Theme.textPrimary)
-                .fixedSize(horizontal: false, vertical: true)
-            if let branch = pull.branch {
-                Text(branch).font(Theme.label(size: 10.5)).foregroundStyle(Theme.textDim)
-                    .lineLimit(1).truncationMode(.middle)
-            }
-            if let status {
+        TaskCardFrame(description: pull.body ?? HubModel.shared.description(for: item?.issue)) {
+            VStack(alignment: .leading, spacing: 7) {
                 HStack(spacing: 6) {
-                    if let current = SessionSummary.completedQuorum(status, head: pull.head)
-                        ?? SessionSummary.resolve(agent: .none, next: quorumStep ?? .none,
-                                                  quorumRunning: status.running, quorumPhase: status.phase,
-                                                  prState: .open) {
-                        SessionSummaryLine(status: current)
+                    SectionLabel(pull.repo.split(separator: "/").last.map(String.init) ?? pull.repo).lineLimit(1)
+                    Text("#" + String(pull.number)).font(Theme.label(size: 10.5)).foregroundStyle(Theme.textDim)
+                    if let updated = pull.updated {
+                        Text(WorktreeRow.ago(Date().timeIntervalSince(updated)))
+                            .font(Theme.label(size: 10.5)).foregroundStyle(Theme.textFaint)
+                            .help(updated.formatted(date: .abbreviated, time: .shortened))
                     }
-                    Spacer(minLength: 4)
-                    if status.runDirectory != nil {
-                        QuorumDetailsButton(status: status)
-                    }
-                    if let log = Quorum.latestLog(pr: pull.number) {
-                        Button(L("Log")) {
-                            let directory = pull.branch.flatMap { branch in
-                                HubModel.shared.checkout(of: pull.repo).flatMap { HubModel.worktree(of: branch, root: $0) ?? $0 }
-                            } ?? Paths.home
-                            Quorum.showLog(log, in: directory)
-                        }
-                        .help(L("quorum's output in a terminal, live"))
-                            .buttonStyle(.plain)
-                            .font(.system(size: 11)).foregroundStyle(Theme.textDim)
-                    }
-                }
-            }
-            if starting {
-                HStack(spacing: 6) {
-                    ProgressView().controlSize(.mini).frame(width: 12)
-                    Text(L("Getting the branch ready for quorum"))
-                        .font(.system(size: 11)).foregroundStyle(Theme.textMuted)
-                }
-            } else if let step = quorumStep, let root = HubModel.shared.checkout(of: pull.repo), let branch = pull.branch {
+                    Spacer()
+                }.frame(height: 14)
+                Text(pull.title)
+                    .help(pull.title + (pull.branch.map { "\n" + $0 } ?? ""))
+                    .font(UI.control)
+                    .lineLimit(2, reservesSpace: true)
+                    .frame(minHeight: 32, alignment: .topLeading)
+                    .foregroundStyle(Theme.textPrimary)
+                    .fixedSize(horizontal: false, vertical: true)
+                TaskLabels(labels: (pull.draft ? [L("Draft")] : []) + pull.labels + (item?.issue?.labels ?? [])
+                           + (!local ? [L("Not cloned here")] : pull.branch == nil ? [L("From a fork")] : []),
+                           status: cardStatus)
                 if let problem {
-                    Text(problem)
-                        .font(.system(size: 11)).foregroundStyle(Theme.orange.strong)
+                    Text(problem).font(UI.metadata).foregroundStyle(Theme.orange.strong)
                         .fixedSize(horizontal: false, vertical: true)
                 }
-                SmallButton(title: step.title) {
-                    if step == .accept { inspect() }
-                    else { startQuorum(branch: branch, root: root) }
-                }
             }
-            HStack(spacing: 6) {
-                let agent = AgentKind(rawValue: preferred)
-                let ready = local && pull.branch != nil
-                if let resume, let item {
-                    SmallButton(title: L("Continue with %@", (item.agent ?? agent ?? .claude).name), prominent: true, action: resume)
-                        .help(L("Its agent's conversation, where it left off"))
-                } else {
-                    SmallButton(title: agent.map { L("New %@ chat", $0.name) } ?? L("Open terminal"), prominent: true) { open(agent) }
-                        .help(agent == nil ? L("A terminal in the worktree with the PR's branch") : L("A new chat in the worktree with the PR's branch"))
-                        .disabled(!ready)
-                }
-                Menu {
-                    ForEach(AgentKind.allCases) { kind in
-                        Button(L("New %@ chat", kind.name)) { open(kind) }
+        } actions: {
+            let agent = AgentKind(rawValue: preferred)
+            TaskCardFooter(title: status?.running == true ? L("Open quorum") : quorumStep != nil ? L("Run quorum") : (resume != nil ? L("Continue") : L("Open session")),
+                           url: pull.url, disabled: status?.running == true ? false : (!local || pull.branch == nil), busy: starting) {
+                if let status, status.running {
+                    (Store.shared.activeWindow ?? Store.shared.windows.first)?.openQuorumRun(status)
+                } else if let branch = pull.branch, let root = HubModel.shared.checkout(of: pull.repo), quorumStep != nil {
+                    startQuorum(branch: branch, root: root)
+                } else if let resume { resume() }
+                else { open(agent) }
+            } more: {
+                if let branch = pull.branch { Text(branch); Divider() }
+                Button(L("App & code"), action: inspect).disabled(!local || pull.branch == nil)
+                if let item {
+                    Button(L("Task")) { (Store.shared.activeWindow ?? Store.shared.windows.first)?.openTask(TaskTarget(work: item)) }
+                    if !item.evidence.isEmpty {
+                        Button(L("Evidence")) { (Store.shared.activeWindow ?? Store.shared.windows.first)?.openTask(TaskTarget(work: item), section: "activity") }
                     }
-                    Divider()
-                    Button(L("Terminal only")) { open(nil) }
-                } label: {
-                    Text(L("More")).font(.system(size: 11.5, weight: .medium))
                 }
-                .menuStyle(.borderlessButton)
-                .fixedSize()
-                .disabled(!ready)
-                Spacer()
-                if !local {
-                    Text(L("Not cloned here")).font(.system(size: 10.5)).foregroundStyle(Theme.textDim)
-                } else if pull.branch == nil {
-                    Text(L("From a fork")).font(.system(size: 10.5)).foregroundStyle(Theme.textDim)
+                if let status, status.runDirectory != nil {
+                    Button(L("Quorum details")) { (Store.shared.activeWindow ?? Store.shared.windows.first)?.openQuorumRun(status) }
                 }
+                if let log = Quorum.latestLog(pr: pull.number) {
+                    Button(L("Log")) {
+                        let root = HubModel.shared.checkout(of: pull.repo)
+                        let directory = pull.branch.flatMap { branch in root.flatMap { HubModel.worktree(of: branch, root: $0) ?? $0 } } ?? Paths.home
+                        Quorum.showLog(log, in: directory, reference: QuorumReference(root: root ?? directory, number: pull.number, repo: pull.repo, log: log))
+                    }
+                }
+                Divider()
+                if let resume { Button(L("Continue"), action: resume) }
+                ForEach(AgentKind.allCases) { kind in
+                    Button(L("New %@ chat", kind.name)) { open(kind) }.disabled(!local || pull.branch == nil)
+                }
+                Button(L("Terminal only")) { open(nil) }.disabled(!local || pull.branch == nil)
             }
         }
-        .modifier(CardBackground())
     }
 
     /// The branch made ready (babysit refuses otherwise), then quorum.
     private func startQuorum(branch: String, root: String) {
         starting = true
         problem = nil
-        let number = pull.number, repo = pull.repo
-        guard let accepted = Acceptance.shared.acceptedHead(repo: repo, pr: number) else {
-            problem = Acceptance.Readiness.changed.message
+        let number = pull.number
+        guard let expectedHead = pull.head else {
+            problem = L("Could not verify the commit. Try reloading.")
             starting = false
             return
         }
         Task.detached(priority: .userInitiated) {
-            let blocked = Quorum.prepare(branch: branch, root: root, accepted: accepted)
+            let blocked = Quorum.prepare(branch: branch, root: root, accepted: expectedHead)
             let live = blocked == nil ? Git.pullRequest(in: root, number: number) : .unknown
             await MainActor.run {
                 if let blocked {
@@ -753,12 +801,10 @@ private struct PullCard: View {
                     starting = false
                     return
                 }
-                guard let current = Acceptance.acceptedOpenPullRequest(
-                    live, number: number, acceptedHead: Acceptance.shared.acceptedHead(repo: repo, pr: number)
-                ) else {
+                guard let current = Quorum.openPullRequest(live, number: number, expectedHead: expectedHead) else {
                     problem = switch live {
                     case .unknown: Acceptance.Readiness.unavailable.message
-                    case .none, .found: Acceptance.Readiness.changed.message
+                    case .none, .found: L("The pull request changed. Refresh and try again.")
                     }
                     HubModel.shared.refresh()
                     starting = false
@@ -783,33 +829,37 @@ private struct PausedCard: View {
     let resume: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 7) {
-            HStack(spacing: 6) {
-                SectionLabel(item.repo?.split(separator: "/").last.map(String.init) ?? Paths.folderName(item.root))
-                Text(WorktreeRow.ago(Date().timeIntervalSince(item.touched)))
-                    .font(Theme.label(size: 10.5)).foregroundStyle(Theme.textFaint)
-                Spacer()
-                if !item.evidence.isEmpty { EvidenceButton(item: item) }
-                Button { WorkLedger.shared.drop(item) } label: {
-                    Icon("xmark", size: 9).foregroundStyle(Theme.textDim)
-                }
-                .buttonStyle(.plain)
-                .help(L("Off the board: the branch and its checkout stay"))
+        TaskCardFrame(description: HubModel.shared.description(for: item.issue)) {
+            VStack(alignment: .leading, spacing: 7) {
+                HStack(spacing: 6) {
+                    SectionLabel(item.repo?.split(separator: "/").last.map(String.init) ?? Paths.folderName(item.root)).lineLimit(1)
+                    Text(WorktreeRow.ago(Date().timeIntervalSince(item.touched)))
+                        .font(Theme.label(size: 10.5)).foregroundStyle(Theme.textFaint)
+                    Spacer()
+                }.frame(height: 14)
+                Text(item.title)
+                    .help(item.title + "\n" + item.branch)
+                    .font(UI.control)
+                    .lineLimit(2, reservesSpace: true)
+                    .frame(minHeight: 32, alignment: .topLeading)
+                    .foregroundStyle(Theme.textPrimary)
+                    .fixedSize(horizontal: false, vertical: true)
+                TaskLabels(labels: item.issue?.labels ?? [])
             }
-            Text(item.title)
-                .font(.system(size: 12.5, weight: .medium))
-                .foregroundStyle(Theme.textPrimary)
-                .fixedSize(horizontal: false, vertical: true)
-            Text(item.branch).font(Theme.label(size: 10.5)).foregroundStyle(Theme.textDim)
-                .lineLimit(1).truncationMode(.middle)
-            HStack(spacing: 6) {
-                let agent = item.agent ?? .claude
-                SmallButton(title: item.conversation == nil ? L("New %@ chat", agent.name) : L("Continue with %@", agent.name),
-                            prominent: true, action: resume)
-                Spacer()
+        } actions: {
+            let agent = item.agent ?? .claude
+            TaskCardFooter(title: item.conversation == nil ? L("New %@ chat", agent.name) : L("Continue with %@", agent.name),
+                           url: item.issue?.url, action: resume) {
+                Text(item.branch)
+                Divider()
+                Button(L("Task")) { (Store.shared.activeWindow ?? Store.shared.windows.first)?.openTask(TaskTarget(work: item)) }
+                if !item.evidence.isEmpty {
+                    Button(L("Evidence")) { (Store.shared.activeWindow ?? Store.shared.windows.first)?.openTask(TaskTarget(work: item), section: "activity") }
+                }
+                Divider()
+                Button(L("Remove from board")) { WorkLedger.shared.drop(item) }
             }
         }
-        .modifier(CardBackground())
     }
 }
 
@@ -832,7 +882,7 @@ struct EvidenceButton: View {
                             StateMark(word: "", tone: fact.ok == true ? Theme.greenTone.strong
                                 : fact.ok == false ? Theme.orange.strong : Theme.textDim, size: 12, dot: true)
                             VStack(alignment: .leading, spacing: 1) {
-                                Text(fact.text).font(.system(size: 12)).foregroundStyle(Theme.textBody)
+                                Text(fact.text).font(UI.metadata).foregroundStyle(Theme.textBody)
                                     .fixedSize(horizontal: false, vertical: true)
                                 Text(fact.date.formatted(date: .abbreviated, time: .shortened)
                                      + (fact.ref.map { " · " + $0.prefix(12) } ?? ""))
@@ -874,65 +924,70 @@ private struct SessionCard: View {
     @ObservedObject private var quorum = QuorumWatch.shared
     @ObservedObject private var landing = Landing.shared
     @ObservedObject private var work = WorkLedger.shared
+    @ObservedObject private var hub = HubModel.shared
     @State private var message = ""
+    @State private var messaging = false
     @FocusState private var typing: Bool
+
+    private var labels: [String] {
+        let linked = workspace.sessions.compactMap(\.issue).flatMap { issue in
+            (hub.issues.first { $0.repo.lowercased() == issue.repo.lowercased() && $0.number == issue.number } ?? issue).labels
+        }
+        guard let root = workspace.context.root else { return linked }
+        let pull = hub.pulls.first {
+            hub.checkout(of: $0.repo) == root
+                && ($0.number == workspace.context.pr || ($0.branch != nil && $0.branch == workspace.context.branch))
+        }
+        return linked + (pull?.labels ?? [])
+    }
+
+    private var description: String? {
+        let context = workspace.context
+        let issue = workspace.sessions.compactMap(\.issue).first
+        if let text = hub.description(for: issue), !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return text }
+        guard let root = context.root else { return nil }
+        return hub.pulls.first {
+            hub.checkout(of: $0.repo) == root
+                && ($0.number == context.pr || ($0.branch != nil && $0.branch == context.branch))
+        }?.body
+    }
 
     var body: some View {
         let context = workspace.context
         let next = Flow.next(for: workspace)
-        VStack(alignment: .leading, spacing: 7) {
-            HStack(spacing: 8) {
-                SessionTile(agent: workspace.agent, attention: workspace.needsAttention, isGit: true, kind: workspace.agentTab?.kind, size: 20)
-                Text(workspace.title)
-                    .font(.system(size: 12.5, weight: .semibold))
-                    .foregroundStyle(Theme.textPrimary)
-                    .lineLimit(2)
-                Spacer(minLength: 4)
-                Button {
-                    if let url = workspace.pullRequestURL { NSWorkspace.shared.open(url) }
-                } label: {
-                    PRBadge(pr: context.pr, status: workspace.prStatus)
-                }
-                .buttonStyle(.plain)
-                .help(L("Open the pull request on GitHub"))
-            }
-            HStack(spacing: 6) {
-                if let branch = context.branch, branch != workspace.title {
-                    Text(branch).font(Theme.mono(size: 10.5)).foregroundStyle(Theme.textDim).lineLimit(1).truncationMode(.middle)
-                }
-                Spacer(minLength: 4)
-                if let item = work.item(for: workspace), !item.evidence.isEmpty { EvidenceButton(item: item) }
-            }
-            if let status = workspace.sessionStatus {
-                Button { window.openTask(TaskTarget(workspace: workspace)) } label: {
-                    SessionSummaryLine(status: status)
-                }.buttonStyle(.plain).help(L("Open task details"))
-            }
-            nextStep(next)
-            if workspace.agentTab != nil {
-                // Say something to the agent without going there.
+        TaskCardFrame(description: description, highlighted: workspace.agent == .blocked) {
+            VStack(alignment: .leading, spacing: 7) {
                 HStack(spacing: 6) {
-                    TextField(L("Message the agent …"), text: $message)
-                        .textFieldStyle(.plain)
-                        .font(.system(size: 12))
-                        .focused($typing)
-                        .onSubmit(send)
-                    if !message.trimmingCharacters(in: .whitespaces).isEmpty {
-                        IconButton(symbol: "paperplane.fill", help: L("Send (↩)"), action: send)
+                    SessionTile(agent: workspace.agent, attention: workspace.needsAttention, isGit: true, kind: workspace.agentTab?.kind, size: 12)
+                    SectionLabel(context.repo ?? L("Terminal")).lineLimit(1)
+                    if let pr = context.pr {
+                        Text("#" + String(pr)).font(Theme.label(size: 10.5)).foregroundStyle(Theme.textDim)
                     }
-                }
-                .padding(.horizontal, 8)
-                .frame(height: 28)
-                .background(
-                    RoundedRectangle(cornerRadius: 7, style: .continuous)
-                        .strokeBorder(typing ? Theme.textPrimary.opacity(0.35) : Theme.border, lineWidth: 1)
-                )
+                    Spacer()
+                }.frame(height: 14)
+                Text(workspace.title).font(UI.control).foregroundStyle(Theme.textPrimary)
+                    .lineLimit(2, reservesSpace: true)
+                    .frame(minHeight: 32, alignment: .topLeading)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .help(workspace.title + (context.branch.map { "\n" + $0 } ?? ""))
+                TaskLabels(labels: labels + (context.isDraft ? [L("Draft")] : []), status: workspace.sessionStatus)
+
             }
+        } actions: {
+            nextStep(next)
         }
-        .modifier(CardBackground(highlighted: workspace.agent == .blocked))
+        .popover(isPresented: $messaging) {
+            HStack(spacing: 8) {
+                TextField(L("Message the agent …"), text: $message)
+                    .textFieldStyle(.plain).font(UI.body).focused($typing).onSubmit(send)
+                IconButton(symbol: "paperplane.fill", help: L("Send (↩)"), action: send)
+            }
+            .padding(14).frame(width: 320)
+            .onAppear { typing = true }
+        }
         .contentShape(Rectangle())
         // The card is the way in: one click and you're in its terminal.
-        .onTapGesture(count: 2) { open() }
+        .onTapGesture { open() }
         .contextMenu {
             Button(L("Open")) { open() }
             if context.checkout != nil {
@@ -947,27 +1002,38 @@ private struct SessionCard: View {
     /// The suggested step as a button, or what it waits for; plus the
     /// way into the session and its changes.
     private func nextStep(_ next: NextStep) -> some View {
-        HStack(spacing: 6) {
-            switch next {
-            case .wait, .reviewing, .landing:
-                EmptyView()
-            case .none:
-                EmptyView()
-            default:
-                SmallButton(title: next.title, prominent: true) {
-                    if !Flow.take(next, in: workspace, window: window) {
-                        window.show(L("The request could not be delivered. Check the terminal and try again."))
-                    }
+        let actionable: Bool = switch next {
+        case .wait, .reviewing, .landing, .none: false
+        default: true
+        }
+        let reviewing = quorum.status(for: workspace)?.running == true
+        let title = reviewing ? L("Open quorum") : next == .review ? L("Run quorum") : (actionable ? next.title : L("Open session"))
+        return TaskCardFooter(title: title, url: workspace.pullRequestURL?.absoluteString) {
+            if reviewing { window.showSection(.quorum) }
+            else if actionable {
+                if !Flow.take(next, in: workspace, window: window) {
+                    window.show(L("The request could not be delivered. Check the terminal and try again."))
                 }
+            } else { open() }
+        } more: {
+            if let branch = context.branch { Text(branch); Divider() }
+            if quorum.status(for: workspace) != nil {
+                Button(L("Quorum details")) { window.select(workspace); window.showSection(.quorum) }
             }
-            Spacer(minLength: 4)
-            SmallButton(title: L("Task")) { window.openTask(TaskTarget(workspace: workspace)) }
-            SmallButton(title: L("Terminal")) { open() }
-            if context.checkout != nil, next != .answer {
-                SmallButton(title: L("Changes")) { window.openReview(workspace, scope: .branch) }
+            Button(L("Task")) { window.openTask(TaskTarget(workspace: workspace)) }
+            Button(L("Terminal")) { open() }
+            if context.checkout != nil {
+                Button(L("App & code")) { window.select(workspace); window.showSection(.inspect) }
+                Button(L("Changes")) { window.openReview(workspace, scope: .branch) }
+            }
+            if let item = work.item(for: workspace), !item.evidence.isEmpty {
+                Button(L("Evidence")) { window.openTask(TaskTarget(workspace: workspace), section: "activity") }
+            }
+            if workspace.agentTab != nil {
+                Button(L("Message the agent …")) { messaging = true }
             }
             if workspace.variantGroup != nil {
-                SmallButton(title: L("Keep")) { FanOut.confirmKeep(workspace) }
+                Button(L("Keep This Variant")) { FanOut.confirmKeep(workspace) }
             }
         }
     }
@@ -988,6 +1054,7 @@ private struct SessionCard: View {
             return
         }
         message = ""
+        messaging = false
     }
 }
 
@@ -1003,12 +1070,11 @@ private struct WorktreesPage: View {
         let finished = list.filter { $0.isFinished && $0.owner != .quorum && !inventory.hasSession($0) }
         VStack(spacing: 0) {
             HStack(spacing: 10) {
-                if inventory.scanning {
-                    ProgressView().controlSize(.small)
-                    Text(L("Looking at every worktree …")).font(.system(size: 12)).foregroundStyle(Theme.textDim)
+                if !inventory.hasScanned {
+                    SkeletonGroup { SkeletonBar(width: 160, height: 12) }
                 } else {
                     Text(L("%d worktrees · %d finished", list.filter { $0.owner != .main }.count, finished.count))
-                        .font(.system(size: 12)).foregroundStyle(Theme.textMuted)
+                        .font(UI.metadata).foregroundStyle(Theme.textMuted)
                 }
                 Spacer()
                 if list.contains(where: { $0.owner == .quorum }), Quorum.isInstalled {
@@ -1027,6 +1093,10 @@ private struct WorktreesPage: View {
             .frame(height: 40)
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 14) {
+                    if !inventory.hasScanned, list.isEmpty {
+                        SkeletonGroup { SkeletonBar(width: 110, height: 11) }
+                        SkeletonList(kind: .worktrees)
+                    }
                     ForEach(Dictionary(grouping: list, by: \.root).keys.sorted(), id: \.self) { root in
                         VStack(alignment: .leading, spacing: 4) {
                             SectionLabel((root as NSString).lastPathComponent)
@@ -1097,7 +1167,7 @@ private struct WorktreeRow: View {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
                     Text(info.branch ?? L("detached"))
-                        .font(.system(size: 12.5, weight: .medium))
+                        .font(UI.control)
                         .foregroundStyle(Theme.textPrimary)
                         .lineLimit(1)
                     if let pr = info.pr {
@@ -1117,7 +1187,7 @@ private struct WorktreeRow: View {
             }
             Spacer(minLength: 8)
             Text(status)
-                .font(.system(size: 11.5))
+                .font(UI.metadata)
                 .foregroundStyle(info.isFinished ? Theme.greenTone.strong : Theme.textMuted)
                 .lineLimit(1)
             if let age = info.age {
@@ -1195,6 +1265,7 @@ private struct ReviewsPage: View {
     @ObservedObject private var hub = HubModel.shared
     @State private var lookup = ReviewHistory.Lookup()
     @State private var checking = true
+    @State private var hasChecked = false
     @State private var showCompleted = false
 
     var body: some View {
@@ -1203,22 +1274,18 @@ private struct ReviewsPage: View {
         let request = ReviewHistory.Request(keys: runs.map(\.key).sorted(), refreshed: hub.updated)
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 6) {
-                if checking {
-                    HStack(spacing: 8) {
-                        ProgressView().controlSize(.mini)
-                        Text(L("Checking pull requests …"))
-                    }
-                    .font(.system(size: 12)).foregroundStyle(Theme.textDim)
+                if !hasChecked {
+                    SkeletonList(kind: .reviews)
                 } else if lookup.incomplete {
                     Text(L("Some pull request states could not be checked. Those runs remain visible."))
-                        .font(.system(size: 12)).foregroundStyle(Theme.textDim)
+                        .font(UI.metadata).foregroundStyle(Theme.textDim)
                 }
                 if groups.active.isEmpty, !checking {
                     Text(L("No reviews for open pull requests."))
-                        .font(.system(size: 12.5)).foregroundStyle(Theme.textDim)
+                        .font(UI.body).foregroundStyle(Theme.textDim)
                         .padding(.vertical, 16)
                 }
-                if !checking {
+                if hasChecked {
                     ForEach(groups.active, id: \.key) { status in
                         ReviewRunRow(status: status, local: hub.checkout(of: status.repo), window: window)
                     }
@@ -1230,7 +1297,7 @@ private struct ReviewsPage: View {
                         }
                     } label: {
                         Text(L("Completed · last 30 days") + " (\(groups.completed.count))")
-                            .font(.system(size: 12)).foregroundStyle(Theme.textDim)
+                            .font(UI.metadata).foregroundStyle(Theme.textDim)
                     }
                     .padding(.top, 12)
                 }
@@ -1242,6 +1309,7 @@ private struct ReviewsPage: View {
             let result = await Task.detached(priority: .utility) { ReviewHistory.load(keys: request.keys) }.value
             guard !Task.isCancelled else { return }
             lookup = result
+            hasChecked = true
             checking = false
         }
     }
@@ -1276,7 +1344,7 @@ private struct ReviewRunRow: View {
                             }
                         }
                         Text(status.title ?? status.summary)
-                            .font(.system(size: 12.5, weight: .medium))
+                            .font(UI.control)
                             .foregroundStyle(Theme.textPrimary)
                             .lineLimit(1)
                         if let reason = status.reason, !status.running, !status.succeeded {
@@ -1338,14 +1406,12 @@ private struct ReviewRunRow: View {
         Task.detached(priority: .userInitiated) {
             let live = Git.pullRequest(in: root, number: number)
             await MainActor.run {
-                guard let repo = Issues.repo(of: root),
-                      let pull = Acceptance.acceptedOpenPullRequest(live, number: number,
-                                                                      acceptedHead: Acceptance.shared.acceptedHead(repo: repo, pr: number))
+                guard case let .found(pull) = live, pull.number == number, pull.state == .open, pull.head != nil
                 else {
-                    window.show(Acceptance.Readiness.changed.message, seconds: 6)
+                    window.show(L("The pull request changed. Refresh and try again."), seconds: 6)
                     return
                 }
-                Quorum.run(kind, pr: pull.number, in: workspace)
+                Quorum.run(kind, pr: pull.number, draft: pull.isDraft, in: workspace)
                 if let first = workspace.sessions.first, workspace.sessions.count > 1 { Store.shared.close(first, in: workspace) }
                 QuorumWatch.shared.start(always: true)
             }

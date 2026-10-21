@@ -190,33 +190,6 @@ final class Inbox: ObservableObject {
 
 }
 
-/// The pill in the title bar: how many wait on you. A click opens the
-/// inbox (⇧⌘J).
-struct InboxPill: View {
-    @ObservedObject var store: Store
-    @ObservedObject var window: WindowModel
-    @ObservedObject private var inbox = Inbox.shared
-
-    var body: some View {
-        let waiting = Inbox.items(in: store).filter { $0.workspace.id != window.selectedWorkspaceID }
-        if let first = waiting.first {
-            Button { inbox.toggle(in: window) } label: {
-                WaitingPill(text: waiting.count == 1 ? first.workspace.title : L("%d sessions waiting", waiting.count))
-            }
-            .buttonStyle(.plain)
-            .help(L("Inbox (⇧⌘J)"))
-            .accessibilityLabel(L("Inbox: %d waiting", waiting.count))
-            .popover(isPresented: Binding(
-                get: { inbox.isOpen(in: window) },
-                set: { if !$0 { inbox.close(in: window) } }
-            ), arrowEdge: .bottom) {
-                InboxView(store: store, window: window)
-            }
-            .transition(.opacity.combined(with: .scale(scale: 0.95)))
-        }
-    }
-}
-
 struct InboxView: View {
     @ObservedObject var store: Store
     @ObservedObject var window: WindowModel

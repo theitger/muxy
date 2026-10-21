@@ -1,61 +1,38 @@
 import SwiftUI
 
-/// The strip above the terminal, painted in the terminal's own color so it
-/// reads as part of it. Tabs are a segmented control; on the right a
-/// soft pill appears when another session wants you.
+/// Terminal instances and their own status, independent of repository views.
 struct TabBarView: View {
     @ObservedObject var store: Store
     @ObservedObject var window: WindowModel
     @ObservedObject var workspace: Workspace
-    /// Inside the stage card: the title bar above carries the window's
-    /// controls, so this strip is only the tabs.
-    var onStage = false
+    @ObservedObject private var quorum = QuorumWatch.shared
 
     var body: some View {
         HStack(spacing: 8) {
-            if !onStage {
-                IconButton(symbol: "sidebar.left", help: L("Sidebar (⌘B)")) {
-                    store.toggleSidebar()
-                }
+            ScrollView(.horizontal) {
+                HStack(spacing: 3) {
+                    ForEach(workspace.sessions) { session in
+                        SegmentTab(store: store, workspace: workspace, session: session)
+                    }
+                }.padding(3)
+            }.scrollIndicators(.never)
+            if window.isTerminalFocused, quorum.status(for: workspace) != nil || workspace.quorumReference != nil {
+                SmallButton(title: "Quorum", symbol: "checkmark.shield") { window.showSection(.quorum) }
             }
-            HStack(spacing: 2) {
-                ForEach(workspace.sessions) { session in
-                    SegmentTab(store: store, workspace: workspace, session: session)
-                }
-            }
-            .padding(3)
-            .background(
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .fill(Theme.textPrimary.opacity(0.05))
-            )
-            IconButton(symbol: "plus", help: L("New Tab (⌘T)")) {
-                window.newTab()
-            }
-            Spacer(minLength: 8)
             AppButton(workspace: workspace)
-            if workspace.context.repo != nil {
-                SmallButton(title: L("Task")) { window.openTask(TaskTarget(workspace: workspace)) }
-            }
-            ResultButton(window: window, workspace: workspace)
-            if !onStage {
-                InboxPill(store: store, window: window)
+            IconButton(symbol: "plus", help: L("New Tab (⌘T)")) { window.newTab() }
+            IconButton(symbol: window.isTerminalFocused ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right",
+                       help: L("Focus terminal (⇧⌘↩)")) { window.toggleTerminalFocus() }
+            if workspace.context.repo == nil {
+                Menu {
+                    Button(L("Close session")) { store.requestCloseWorkspace(workspace) }
+                } label: { Icon("ellipsis", size: 14).frame(width: 24, height: 26) }
+                .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
             }
         }
-        // Folded sidebar: leave room for the traffic lights.
-        .padding(.leading, onStage ? 8 : 80)
-        .padding(.trailing, 12)
-        .frame(height: onStage ? 42 : StageMetrics.topBar)
-        // Matches the terminal and reaches 1pt under it: Ghostty leaves its
-        // outermost pixels unpainted, which shows as a seam wherever the
-        // window blur is missing (Mission Control).
-        .background(
-            UnevenRoundedRectangle(
-                topLeadingRadius: onStage ? StageMetrics.radius : 0,
-                topTrailingRadius: onStage ? StageMetrics.radius : 0,
-                style: .continuous
-            )
-            .fill(Theme.terminal)
-        )
+        .padding(.horizontal, 12)
+        .frame(height: 36)
+        .background(Theme.terminal)
     }
 }
 
@@ -77,9 +54,10 @@ private struct SegmentTab: View {
                 .font(.system(size: 12, weight: .medium))
                 .foregroundStyle(isActive ? Theme.textPrimary : (hovered ? Theme.textBody : Theme.textMuted))
                 .lineLimit(1)
-            if session.needsAttention {
-                Circle().fill(Theme.orange.strong).frame(width: 5, height: 5)
-            } else if hovered, workspace.sessions.count > 1 {
+            if let status = session.tabStatus {
+                SessionSummaryLine(status: status)
+            }
+            if hovered, workspace.sessions.count > 1 {
                 Button {
                     store.close(session, in: workspace)
                 } label: {

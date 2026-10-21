@@ -135,7 +135,7 @@ private struct GeneralPane: View {
 }
 
 private struct TerminalPane: View {
-    @AppStorage(TerminalColors.storageKey) private var terminalColors = TerminalColors.neutral.rawValue
+    @AppStorage(TerminalColors.storageKey) private var terminalColors = TerminalColors.current.rawValue
     @AppStorage(TerminalColors.fontKey) private var fontFamily = ""
     @AppStorage(TerminalColors.sizeKey) private var fontSize: Double = 0
 
@@ -143,7 +143,7 @@ private struct TerminalPane: View {
         SettingCard {
             SettingRow(L("Colors"), detail: L("muxy's neutral pair, or your Ghostty config's theme.")) {
                 Segments(selection: Binding(
-                    get: { TerminalColors(rawValue: terminalColors) ?? .neutral },
+                    get: { TerminalColors(rawValue: terminalColors) ?? TerminalColors.current },
                     set: { choice in
                         terminalColors = choice.rawValue
                         TerminalColors.select(choice)
@@ -270,7 +270,7 @@ private struct WorkflowPane: View {
                 Toggle("", isOn: $proofAfterTurn).labelsHidden().toggleStyle(.offOn)
             }
             SettingRow(L("Land with quorum"), detail: Quorum.isInstalled
-                ? L("After you accept the implementation, muxy runs quorum before merging the pull request.")
+                ? L("muxy runs quorum before merging the pull request. App and code inspection are optional.")
                 : L("quorum isn't installed: landing merges once checks pass.")) {
                 Toggle("", isOn: $landWithQuorum).labelsHidden().toggleStyle(.offOn)
                     .disabled(!Quorum.isInstalled)

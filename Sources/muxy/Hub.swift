@@ -22,6 +22,8 @@ final class HubModel: ObservableObject {
         var title: String
         var url: String
         var author: String
+        var labels: [String] = []
+        var body: String?
         var id: String { "\(repo)#\(number)" }
     }
 
@@ -37,6 +39,8 @@ final class HubModel: ObservableObject {
         var branch: String?
         /// Its current PR head, when `gh pr list` could read it.
         var head: String?
+        var labels: [String] = []
+        var body: String?
         var id: String { "\(repo)#\(number)" }
     }
 
@@ -46,6 +50,7 @@ final class HubModel: ObservableObject {
     @Published private(set) var pulls: [OwnPull] = []
     @Published private(set) var loading = false
     @Published private(set) var updated: Date?
+    var awaitingFirstResponse: Bool { updated == nil && account.problem == nil }
     /// "owner/name" → local main checkout.
     @Published private(set) var checkouts: [String: String] = [:]
     private var timer: Timer?
@@ -127,6 +132,15 @@ final class HubModel: ObservableObject {
         pulls.filter { session(for: $0) == nil }
     }
 
+    nonisolated static func labels(in row: [String: Any]) -> [String] {
+        (row["labels"] as? [[String: Any]] ?? []).compactMap { $0["name"] as? String }
+    }
+
+    func description(for issue: Issue?) -> String? {
+        guard let issue else { return nil }
+        return issues.first { $0.repo.lowercased() == issue.repo.lowercased() && $0.number == issue.number }?.body ?? issue.body
+    }
+
     // MARK: gh (blocking)
 
     nonisolated static func loadAccount() -> Account {
@@ -152,16 +166,16 @@ final class HubModel: ObservableObject {
         guard let gh = Shell.find("gh") else { return nil }
         let result = Shell.execute(gh, [
             "search", "issues", "--assignee", "@me", "--state", "open", "--limit", "200",
-            "--sort", "created", "--json", "number,title,url,labels,repository,state,createdAt"
+            "--sort", "created", "--json", "number,title,url,labels,repository,state,createdAt,body"
         ], in: Paths.home, timeout: 30)
         guard result.status == 0,
               let rows = try? JSONSerialization.jsonObject(with: Data(result.output.utf8)) as? [[String: Any]] else { return nil }
         return rows.compactMap { row in
             guard let number = row["number"] as? Int, let title = row["title"] as? String,
                   let repo = (row["repository"] as? [String: Any])?["nameWithOwner"] as? String else { return nil }
-            let labels = (row["labels"] as? [[String: Any]] ?? []).compactMap { $0["name"] as? String }
+            let labels = Self.labels(in: row)
             var issue = Issue(repo: repo, number: number, title: title, url: row["url"] as? String ?? "",
-                              state: (row["state"] as? String ?? "open").uppercased(), labels: labels)
+                              state: (row["state"] as? String ?? "open").uppercased(), labels: labels, body: row["body"] as? String)
             issue.created = (row["createdAt"] as? String).flatMap { ISO8601DateFormatter().date(from: $0) }
             return issue
         }
@@ -171,7 +185,7 @@ final class HubModel: ObservableObject {
         guard let gh = Shell.find("gh") else { return nil }
         let result = Shell.execute(gh, [
             "search", "prs", "--review-requested", "@me", "--state", "open", "--limit", "30",
-            "--json", "number,title,url,repository,author"
+            "--json", "number,title,url,repository,author,labels,body"
         ], in: Paths.home, timeout: 30)
         guard result.status == 0,
               let rows = try? JSONSerialization.jsonObject(with: Data(result.output.utf8)) as? [[String: Any]] else { return nil }
@@ -179,7 +193,7 @@ final class HubModel: ObservableObject {
             guard let number = row["number"] as? Int, let title = row["title"] as? String,
                   let repo = (row["repository"] as? [String: Any])?["nameWithOwner"] as? String else { return nil }
             return ReviewRequest(repo: repo, number: number, title: title, url: row["url"] as? String ?? "",
-                                 author: (row["author"] as? [String: Any])?["login"] as? String ?? "")
+                                 author: (row["author"] as? [String: Any])?["login"] as? String ?? "", labels: Self.labels(in: row), body: row["body"] as? String)
         }
     }
 
@@ -189,7 +203,7 @@ final class HubModel: ObservableObject {
         guard let gh = Shell.find("gh") else { return nil }
         let result = Shell.execute(gh, [
             "search", "prs", "--author", "@me", "--state", "open", "--limit", "100",
-            "--sort", "updated", "--json", "number,title,url,repository,isDraft,updatedAt"
+            "--sort", "updated", "--json", "number,title,url,repository,isDraft,updatedAt,labels,body"
         ], in: Paths.home, timeout: 30)
         guard result.status == 0,
               let rows = try? JSONSerialization.jsonObject(with: Data(result.output.utf8)) as? [[String: Any]] else { return nil }
@@ -198,7 +212,8 @@ final class HubModel: ObservableObject {
                   let repo = (row["repository"] as? [String: Any])?["nameWithOwner"] as? String else { return nil }
             return OwnPull(repo: repo, number: number, title: title, url: row["url"] as? String ?? "",
                            draft: row["isDraft"] as? Bool ?? false,
-                           updated: (row["updatedAt"] as? String).flatMap { ISO8601DateFormatter().date(from: $0) })
+                           updated: (row["updatedAt"] as? String).flatMap { ISO8601DateFormatter().date(from: $0) },
+                           labels: Self.labels(in: row), body: row["body"] as? String)
         }
         for repo in Set(pulls.map { $0.repo.lowercased() }).intersection(cloned) {
             let listed = Shell.execute(gh, [

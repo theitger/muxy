@@ -1,8 +1,8 @@
 import Foundation
 
 /// The one thing a session needs next, from working to merged. muxy
-/// suggests it; you take it with one click. Human acceptance comes before
-/// quorum and landing for a session's pull request.
+/// suggests it; you take it with one click. App and code inspection are
+/// optional; quorum and landing verify the current commit independently.
 enum NextStep: Equatable {
     /// Nothing to do but wait; the words say for what.
     case wait(String)
@@ -76,7 +76,6 @@ enum Flow {
         }
         _ = pr
         guard context.prState == .open else { return .none }
-        if !Acceptance.shared.covers(workspace) { return .accept }
         let quorumInstalled = Quorum.isInstalled
         let review = QuorumWatch.shared.status(for: workspace)
         if let step = quorumStep(review, installed: quorumInstalled, head: context.prHead) { return step }
@@ -168,7 +167,7 @@ enum Flow {
             guard let agent = workspace.agentTab else { return false }
             let closes = workspace.sessions.lazy.compactMap(\.issue).first.map { " that closes #\($0.number)" } ?? ""
             return RemoteState.type(
-                "Commit your work, push the branch and open a pull request\(closes). Fill in the repository's pull request template if it has one.",
+                "Commit your work, push the branch and open a regular (non-draft) pull request\(closes). Fill in the repository's pull request template if it has one.",
                 enter: true, into: agent
             )
         case .accept:

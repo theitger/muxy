@@ -177,10 +177,6 @@ final class CommandCenter {
                 guard Landing.shared.canLand(workspace) else {
                     return reply(Reply(ok: false, output: "nothing to land: the session has no open pull request"))
                 }
-                guard Acceptance.shared.covers(workspace) else {
-                    Store.shared.window(of: workspace)?.openAcceptance(workspace)
-                    return reply(Reply(ok: false, output: "inspect and accept the implementation in muxy first"))
-                }
                 Landing.shared.land(workspace)
                 reply(Reply(ok: true, output: "landing \(workspace.title)"))
             }
