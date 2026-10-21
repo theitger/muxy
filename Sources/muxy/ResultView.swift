@@ -188,6 +188,7 @@ struct PanelActions {
 struct ResultOverlay: View {
     @ObservedObject var window: WindowModel
     @ObservedObject var workspace: Workspace
+    var embedded = false
     @ObservedObject private var results = Results.shared
     @ObservedObject private var proofs = Proofs.shared
     @ObservedObject private var turns = Turns.shared
@@ -197,12 +198,13 @@ struct ResultOverlay: View {
 
     var body: some View {
         ZStack(alignment: .topTrailing) {
-            if results.isPanelOpen(in: window) {
+            if embedded || results.isPanelOpen(in: window) {
                 let session = results.source(in: workspace)
                 ResultPanel(
                     result: session.flatMap { results.bySession[$0.id] },
                     building: session.map { results.building.contains($0.id) } ?? false,
                     hasAgent: session != nil,
+                    expanded: embedded,
                     livePR: workspace.context.pr,
                     liveChecks: workspace.context.checks,
                     extras: extras,
@@ -211,7 +213,7 @@ struct ResultOverlay: View {
                         if let session { results.refresh(session) }
                         turns.refresh(workspace.context.checkout)
                     },
-                    close: { results.closePanel(in: window) }
+                    close: { if embedded { window.showSection(.terminal) } else { results.closePanel(in: window) } }
                 )
                 .padding(10)
                 .transition(.move(edge: .trailing).combined(with: .opacity))
@@ -224,7 +226,7 @@ struct ResultOverlay: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
         // Closed, the terminal underneath gets every click.
-        .allowsHitTesting(results.isPanelOpen(in: window))
+        .allowsHitTesting(embedded || results.isPanelOpen(in: window))
     }
 
     private var extras: PanelExtras {
@@ -300,6 +302,7 @@ struct ResultPanel: View {
     let result: SessionResult?
     let building: Bool
     let hasAgent: Bool
+    var expanded = false
     /// The session's PR and its checks as the PR poll knows them now.
     var livePR: Int?
     var liveChecks: Checks = .none
@@ -320,11 +323,11 @@ struct ResultPanel: View {
                 ScrollView { padded }.scrollIndicators(.never)
             }
         }
-        .frame(width: 340)
+        .frame(maxWidth: expanded ? .infinity : 340)
         .background(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .fill(Theme.surface)
-                .shadow(color: .black.opacity(0.14), radius: 8, y: 3)
+                .shadow(color: .black.opacity(expanded ? 0 : 0.14), radius: 8, y: 3)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
@@ -344,9 +347,6 @@ struct ResultPanel: View {
             Text(L("Result"))
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(Theme.textPrimary)
-            if building {
-                ProgressView().controlSize(.mini).scaleEffect(0.8).frame(width: 12, height: 12)
-            }
             Spacer()
             IconButton(symbol: "arrow.clockwise", help: L("Refresh result"), action: refresh)
                 .accessibilityLabel(L("Refresh result"))
@@ -366,7 +366,7 @@ struct ResultPanel: View {
                 VStack(alignment: .leading, spacing: 5) {
                     label(L("What the agent did"))
                     Text(result.summary.map { PlainText.shortened($0, to: 700) } ?? L("The agent left no summary in this turn."))
-                        .font(.system(size: 12.5))
+                        .font(UI.body)
                         .foregroundStyle(result.summary == nil ? Theme.textDim : Theme.textBody)
                         .fixedSize(horizontal: false, vertical: true)
                         .textSelection(.enabled)
@@ -385,14 +385,12 @@ struct ResultPanel: View {
                     .font(.system(size: 10.5))
                     .foregroundStyle(Theme.textFaint)
             } else if building {
-                Text(L("Reading the agent's log …"))
-                    .font(.system(size: 12))
-                    .foregroundStyle(Theme.textDim)
+                SkeletonResult()
             } else {
                 Text(!hasAgent
                     ? L("No agent runs in this session.")
                     : L("No result yet. It appears when the agent finishes a turn."))
-                    .font(.system(size: 12))
+                    .font(UI.metadata)
                     .foregroundStyle(Theme.textDim)
                     .fixedSize(horizontal: false, vertical: true)
                 proofSection(claimed: nil)
@@ -410,7 +408,7 @@ struct ResultPanel: View {
             icon().frame(width: 16)
             VStack(alignment: .leading, spacing: 2) {
                 Text(text)
-                    .font(.system(size: 12.5))
+                    .font(UI.body)
                     .foregroundStyle(Theme.textPrimary)
                     .fixedSize(horizontal: false, vertical: true)
                 if let detail {
@@ -449,7 +447,7 @@ struct ResultPanel: View {
                     HStack(spacing: 8) {
                         ProgressView().controlSize(.mini).frame(width: 16)
                         Text(running.count > 0 ? L("muxy runs %@ (%d of %d)", running.check, running.index, running.count) : running.check)
-                            .font(.system(size: 12.5))
+                            .font(UI.body)
                             .foregroundStyle(Theme.textPrimary)
                         Spacer(minLength: 0)
                         Text(running.since, style: .timer)
@@ -470,7 +468,7 @@ struct ResultPanel: View {
                     }
                 } else if extras.hasChecks {
                     Text(L("Not run on these files yet."))
-                        .font(.system(size: 11.5))
+                        .font(UI.metadata)
                         .foregroundStyle(Theme.textDim)
                 }
             }
@@ -530,7 +528,7 @@ struct ResultPanel: View {
                             .foregroundStyle(Theme.textDim)
                             .frame(width: 44, alignment: .leading)
                         Text(turn.label.isEmpty ? L("Turn") : turn.label)
-                            .font(.system(size: 12))
+                            .font(UI.metadata)
                             .foregroundStyle(Theme.textBody)
                             .lineLimit(1)
                             .truncationMode(.tail)
@@ -563,7 +561,7 @@ struct ResultPanel: View {
                 }
                 .frame(width: 16)
                 Text(status.summary(for: extras.prHead))
-                    .font(.system(size: 12.5))
+                    .font(UI.body)
                     .foregroundStyle(Theme.textPrimary)
                 Spacer(minLength: 4)
                 if status.runDirectory != nil {
@@ -597,7 +595,7 @@ struct ResultPanel: View {
                     }
                     .frame(width: 16)
                     Text(step.text)
-                        .font(.system(size: 12.5))
+                        .font(UI.body)
                         .foregroundStyle(Theme.textPrimary)
                         .fixedSize(horizontal: false, vertical: true)
                     Spacer(minLength: 4)
@@ -619,7 +617,7 @@ struct ResultPanel: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(changes.files == 0 ? L("No files changed")
                         : changes.files == 1 ? L("1 file changed") : L("%d files changed", changes.files))
-                        .font(.system(size: 12.5))
+                        .font(UI.body)
                         .foregroundStyle(Theme.textPrimary)
                     if changes.files > 0 {
                         Text("+" + String(changes.insertions) + " −" + String(changes.deletions))

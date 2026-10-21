@@ -25,7 +25,7 @@ final class ReviewModel: ObservableObject {
     @Published var scope: Scope
     @Published private(set) var files: [FileDiff] = []
     @Published var selected: String?
-    @Published private(set) var loading = false
+    @Published private(set) var loading = true
     @Published private(set) var note: String?
     @Published private(set) var readiness: Acceptance.Readiness = .checking
     @Published var comments: [ReviewComment] = []
@@ -254,14 +254,11 @@ struct ReviewView: View {
     @State private var surface: AcceptanceSurface = .preview
     @State private var feedback = ""
     @State private var screenshot: URL?
-    @State private var accepting = false
     @State private var feedbackProblem: String?
-    @State private var criteriaProblem: String?
-    @State private var synchronizingCriteria = false
-    @State private var criteriaSynchronized = false
     @State private var acceptanceBrowser = WKWebView(frame: .zero)
     @State private var previewDevice: AcceptanceDevice = .desktop
     @State private var previewLandscape = false
+    @State private var showFeedback = false
 
     private enum AcceptanceSurface { case preview, code }
 
@@ -270,11 +267,7 @@ struct ReviewView: View {
             if model.purpose == .acceptance { acceptanceHeader } else { header }
             Rectangle().fill(Theme.hairline).frame(height: 1)
             if model.purpose == .acceptance {
-                HStack(spacing: 0) {
-                    acceptanceContent
-                    Rectangle().fill(Theme.hairline).frame(width: 1)
-                    acceptancePanel.frame(width: 270)
-                }
+                acceptanceContent
             } else {
                 codeContent
             }
@@ -300,10 +293,7 @@ struct ReviewView: View {
                 surface = .code
             }
         }
-        .task(id: model.purpose == .acceptance ? model.workspace.context.prHead : nil) {
-            guard model.purpose == .acceptance else { return }
-            await synchronizeCriteria()
-        }
+        .onChange(of: screenshot) { if screenshot != nil { showFeedback = true } }
         .onChange(of: model.scope) { model.load() }
         .onChange(of: model.workspace.context.prHead) { model.load() }
         .onChange(of: feedback) {
@@ -311,6 +301,17 @@ struct ReviewView: View {
             taskLedger.update(TaskTarget(workspace: model.workspace).id) { $0.draft = feedback }
         }
         .onExitCommand(perform: embedded ? nil : close)
+        .sheet(isPresented: $showFeedback) {
+            VStack(spacing: 0) {
+                HStack {
+                    Text(L("Feedback")).font(UI.heading)
+                    Spacer()
+                    Button(L("Done")) { showFeedback = false }
+                }.padding(20)
+                Divider()
+                ScrollView { acceptancePanel }
+            }.frame(width: 420, height: 380).background(Theme.bg)
+        }
         #if DEBUG
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("muxy.debug.reviewFeedback"))) { note in
             if let value = note.object as? String { feedback = value }
@@ -322,10 +323,30 @@ struct ReviewView: View {
     }
 
     private var codeContent: some View {
-        HStack(spacing: 0) {
-            fileList.frame(width: 230)
-            Rectangle().fill(Theme.hairline).frame(width: 1)
-            diffPane
+        GeometryReader { geometry in
+            if geometry.size.width >= 650 {
+                HStack(spacing: 0) {
+                    fileList.frame(width: 210)
+                    Rectangle().fill(Theme.hairline).frame(width: 1)
+                    diffPane
+                }
+            } else {
+                VStack(spacing: 0) {
+                    Menu {
+                        ForEach(model.files, id: \.path) { file in
+                            Button(file.path) { model.selected = file.path }
+                        }
+                    } label: {
+                        HStack {
+                            Icon("doc", size: 13)
+                            Text(model.selectedFile?.path ?? L("Code changes")).font(UI.metadata).lineLimit(1).truncationMode(.middle)
+                            Spacer()
+                        }.padding(12)
+                    }.menuStyle(.borderlessButton)
+                    Divider()
+                    diffPane
+                }
+            }
         }
     }
 
@@ -333,14 +354,15 @@ struct ReviewView: View {
         HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 7) {
-                    Text(L("Inspect the implementation"))
+                    Text(L("App & code"))
                         .font(.system(size: 14, weight: .semibold))
                         .foregroundStyle(Theme.textPrimary)
                     if let pr = model.workspace.context.pr { Badge(text: "PR #\(pr)", tone: Theme.blue) }
                 }
-                Text(model.workspace.sessions.compactMap(\.issue).first?.heading ?? model.workspace.title)
-                    .font(.system(size: 11.5)).foregroundStyle(Theme.textMuted)
+                if !embedded { Text(model.workspace.sessions.compactMap(\.issue).first?.heading ?? model.workspace.title)
+                    .font(UI.metadata).foregroundStyle(Theme.textMuted)
                     .lineLimit(1)
+                }
             }
             Spacer(minLength: 8)
             Picker("", selection: $surface) {
@@ -348,6 +370,7 @@ struct ReviewView: View {
                 Text(L("Code changes")).tag(AcceptanceSurface.code)
             }
             .labelsHidden().pickerStyle(.segmented).fixedSize()
+            ActionButton(title: L("Feedback"), symbol: "bubble.left") { showFeedback = true }
             IconButton(symbol: "arrow.clockwise", help: L("Reload"), action: reloadAcceptance)
             if !embedded { IconButton(symbol: "xmark", help: L("Close (esc)"), action: close) }
         }
@@ -370,7 +393,7 @@ struct ReviewView: View {
                             Text(L("Since last inspection")).tag(ReviewModel.Scope.sinceInspection(baseline))
                         }
                     }.labelsHidden().fixedSize()
-                    if model.loading { ProgressView().controlSize(.mini) }
+                    if model.loading && model.files.isEmpty { SkeletonGroup { SkeletonBar(width: 120, height: 11) } }
                     else { Text(L("%d files · +%d −%d", model.files.count, model.additions, model.deletions))
                         .font(Theme.label(size: 11)).foregroundStyle(Theme.textDim) }
                     Spacer()
@@ -384,33 +407,15 @@ struct ReviewView: View {
 
     private var acceptancePanel: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .top, spacing: 7) {
-                Icon(model.readiness.head == nil ? "circle.dotted" : "checkmark.circle", size: 12)
-                    .foregroundStyle(model.readiness.head == nil ? Theme.orange.strong : Theme.greenTone.strong)
-                Text(model.readiness.message)
-                    .font(.system(size: 11.5)).foregroundStyle(Theme.textMuted)
+            if let problem = feedbackProblem ?? taskLedger.problem {
+                Text(problem).font(UI.metadata).foregroundStyle(Theme.textMuted)
             }
-            if synchronizingCriteria {
-                HStack(spacing: 6) {
-                    ProgressView().controlSize(.mini)
-                    Text(L("Refreshing acceptance criteria …"))
-                }
-                .font(.system(size: 11.5)).foregroundStyle(Theme.textMuted)
-            }
-            if let problem = criteriaProblem ?? feedbackProblem ?? taskLedger.problem {
-                Text(problem).font(.system(size: 11.5)).foregroundStyle(Theme.textMuted)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            SmallButton(title: L("Remember inspected state")) { _ = model.rememberInspection() }
-                .disabled(model.readiness.head == nil)
             if screenshot != nil { Badge(text: L("Screenshot attached"), tone: Theme.blue) }
             if !model.comments.isEmpty { Badge(text: L("%d code comments", model.comments.count), tone: Theme.blue) }
-            Rectangle().fill(Theme.hairline).frame(height: 1)
-            acceptanceCriteria
             Text(L("Feedback for the agent"))
                 .font(.system(size: 11.5, weight: .medium)).foregroundStyle(Theme.textMuted)
             TextEditor(text: $feedback)
-                .font(.system(size: 12.5))
+                .font(UI.body)
                 .scrollContentBackground(.hidden)
                 .frame(height: 116)
                 .padding(6)
@@ -419,7 +424,7 @@ struct ReviewView: View {
                 .overlay(alignment: .topLeading) {
                     if feedback.isEmpty {
                         Text(L("What should the agent change?"))
-                            .font(.system(size: 12.5)).foregroundStyle(Theme.textDim)
+                            .font(UI.body).foregroundStyle(Theme.textDim)
                             .padding(.leading, 11).padding(.top, 12)
                             .allowsHitTesting(false)
                     }
@@ -429,47 +434,12 @@ struct ReviewView: View {
                    : L("Send feedback")) { sendFeedback() }
                 .disabled(model.agentSession == nil && model.feedbackAgent == nil || model.workspace.agent == .working || Landing.shared.step(for: model.workspace)?.isActive == true || QuorumWatch.shared.status(for: model.workspace)?.running == true || (feedback.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && screenshot == nil && model.comments.isEmpty))
                 .frame(maxWidth: .infinity)
-            Spacer(minLength: 12)
-            Rectangle().fill(Theme.hairline).frame(height: 1)
-            Button {
-                approve()
-            } label: {
-                if accepting { ProgressView().controlSize(.small) }
-                else { Text(L("Approve implementation")) }
+            if model.readiness.head != nil {
+                SmallButton(title: L("Remember inspected state")) { _ = model.rememberInspection() }
             }
-            .disabled(taskLedger.persistenceBlocked || Landing.shared.step(for: model.workspace)?.isActive == true || !criteriaSynchronized || synchronizingCriteria || !taskLedger.record(for: TaskTarget(workspace: model.workspace)).satisfied(at: model.workspace.context.prHead) || model.readiness.head == nil || accepting || !feedback.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || screenshot != nil || !model.comments.isEmpty)
-            .buttonStyle(.borderedProminent)
-            .frame(maxWidth: .infinity)
-            Text(Landing.shared.withQuorum
-                 ? L("Then muxy runs checks and quorum, and merges when the PR is green.")
-                 : L("Then muxy runs checks and merges when the PR is green."))
-                .font(.system(size: 10.5)).foregroundStyle(Theme.textDim)
-                .fixedSize(horizontal: false, vertical: true)
         }
-        .padding(12)
+        .padding(16)
         .background(Theme.surface)
-    }
-
-    @ViewBuilder private var acceptanceCriteria: some View {
-        let target = TaskTarget(workspace: model.workspace)
-        let record = taskLedger.record(for: target)
-        if !record.criteria.isEmpty {
-            SectionLabel(L("Acceptance criteria"), tone: Theme.textMuted)
-            ScrollView {
-                VStack(alignment: .leading, spacing: 8) {
-                    ForEach(record.criteria) { criterion in
-                        Toggle(isOn: Binding(get: { criterion.checked(at: model.workspace.context.prHead) }, set: { checked in
-                            taskLedger.update(target.id) { record in
-                                if let index = record.criteria.firstIndex(where: { $0.id == criterion.id }) {
-                                    record.criteria[index].checkedHead = checked ? model.workspace.context.prHead : nil
-                                }
-                            }
-                        })) { Text(criterion.text).font(.system(size: 11.5)).foregroundStyle(Theme.textBody) }
-                        .toggleStyle(.checkbox).disabled(model.readiness.head == nil || Landing.shared.step(for: model.workspace)?.isActive == true)
-                    }
-                }
-            }.frame(maxHeight: 150)
-        }
     }
 
     private func sendFeedback() {
@@ -477,48 +447,14 @@ struct ReviewView: View {
             feedback = ""
             screenshot = nil
             feedbackProblem = nil
+            showFeedback = false
             if !embedded { close() }
         } else {
             feedbackProblem = taskLedger.problem ?? Queue.shared.problem ?? L("The agent could not receive feedback. Your draft was kept.")
         }
     }
 
-    private func approve() {
-        let inspectedHead = model.readiness.head
-        accepting = true
-        Task {
-            let state = await Acceptance.shared.approve(model.workspace, inspectedHead: inspectedHead)
-            accepting = false
-            model.load()
-            guard state.head != nil else { feedbackProblem = state.message; return }
-            if !embedded { close() }
-            TaskLedger.shared.inspect(model.workspace, head: state.head)
-            guard Queue.shared.followDecision(in: model.workspace, awaitingAgent: false) else {
-                feedbackProblem = Queue.shared.problem
-                return
-            }
-            Landing.shared.land(model.workspace)
-            Queue.shared.resume()
-        }
-    }
-
-    private func synchronizeCriteria() async {
-        criteriaSynchronized = false
-        synchronizingCriteria = true
-        criteriaProblem = nil
-        let synchronized = await Acceptance.shared.synchronizeCriteria(for: model.workspace)
-        guard !Task.isCancelled else { return }
-        synchronizingCriteria = false
-        criteriaSynchronized = synchronized
-        if !synchronized {
-            criteriaProblem = L("Could not refresh the linked issue's acceptance criteria. Try reloading.")
-        }
-    }
-
-    private func reloadAcceptance() {
-        model.load()
-        Task { await synchronizeCriteria() }
-    }
+    private func reloadAcceptance() { model.load() }
 
     private var header: some View {
         HStack(spacing: 10) {
@@ -538,16 +474,16 @@ struct ReviewView: View {
             }
             .labelsHidden()
             .fixedSize()
-            if model.loading {
-                ProgressView().controlSize(.small)
+            if model.loading && model.files.isEmpty {
+                SkeletonGroup { SkeletonBar(width: 140, height: 12) }
             } else {
                 Text(model.files.isEmpty ? L("No changes") : L("%d files · +%d −%d", model.files.count, model.additions, model.deletions))
-                    .font(.system(size: 12))
+                    .font(UI.metadata)
                     .foregroundStyle(Theme.textMuted)
                     .monospacedDigit()
             }
             if let note = model.note {
-                Text(note).font(.system(size: 11.5)).foregroundStyle(Theme.textDim).lineLimit(1)
+                Text(note).font(UI.metadata).foregroundStyle(Theme.textDim).lineLimit(1)
             }
             Spacer()
             if !model.comments.isEmpty {
@@ -586,6 +522,7 @@ struct ReviewView: View {
     private var fileList: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 1) {
+                if model.loading, model.files.isEmpty { SkeletonList(kind: .files, count: 8) }
                 ForEach(model.files) { file in
                     FileRow(file: file, selected: model.selectedFile?.path == file.path,
                             comments: model.comments.filter { $0.path == file.path }.count) {
@@ -604,9 +541,11 @@ struct ReviewView: View {
         if let file = model.selectedFile {
             FileDiffView(file: file, model: model)
                 .id(file.path + "\(model.scope.hashValue)")
+        } else if model.loading {
+            SkeletonDiff()
         } else {
-            Text(model.loading ? L("Reading the changes …") : L("Nothing changed here."))
-                .font(.system(size: 12.5))
+            Text(L("Nothing changed here."))
+                .font(UI.body)
                 .foregroundStyle(Theme.textDim)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
@@ -672,7 +611,7 @@ private struct AcceptancePreview: View {
                         .labelsHidden().fixedSize()
                     }
                     Button(L("Capture screenshot")) { capture() }
-                        .font(.system(size: 11.5))
+                        .font(UI.metadata)
                     IconButton(symbol: "safari", help: L("Open in Browser")) {
                         NSWorkspace.shared.open(browser.url ?? URL(string: "http://localhost:\(port)/")!)
                     }
@@ -688,7 +627,7 @@ private struct AcceptancePreview: View {
                     .labelsHidden().pickerStyle(.segmented).fixedSize()
                     if device != .desktop {
                         Button(landscape ? L("Portrait") : L("Landscape")) { landscape.toggle() }
-                            .font(.system(size: 11.5))
+                            .font(UI.metadata)
                     }
                     Spacer()
                     if device != .desktop {
@@ -729,7 +668,7 @@ private struct AcceptancePreview: View {
                     Text(L("No running app preview"))
                         .font(.system(size: 14, weight: .semibold)).foregroundStyle(Theme.textPrimary)
                     Text(L("Start the app in this session. Its web preview will appear here automatically. You can inspect the code changes now."))
-                        .font(.system(size: 12)).foregroundStyle(Theme.textMuted)
+                        .font(UI.metadata).foregroundStyle(Theme.textMuted)
                         .multilineTextAlignment(.center).frame(maxWidth: 340)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -889,7 +828,7 @@ private struct FileDiffView: View {
                     NSWorkspace.shared.open(URL(fileURLWithPath: (model.checkout as NSString).appendingPathComponent(file.path)))
                 }
                 .buttonStyle(.link)
-                .font(.system(size: 11.5))
+                .font(UI.metadata)
             }
             .padding(.horizontal, 12)
             .frame(height: 32)
@@ -918,7 +857,7 @@ private struct FileDiffView: View {
 
     private func placeholder(_ text: String) -> some View {
         Text(text)
-            .font(.system(size: 12.5))
+            .font(UI.body)
             .foregroundStyle(Theme.textDim)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -1018,7 +957,7 @@ private struct CommentCard: View {
             Icon("text.bubble.fill", size: 10.5)
                 .foregroundStyle(Theme.blue.strong)
             Text(text)
-                .font(.system(size: 12))
+                .font(UI.metadata)
                 .foregroundStyle(Theme.textPrimary)
                 .fixedSize(horizontal: false, vertical: true)
                 .textSelection(.enabled)
@@ -1044,7 +983,7 @@ private struct CommentEditor: View {
         VStack(alignment: .trailing, spacing: 6) {
             TextField(L("What should the agent change here?"), text: $text, axis: .vertical)
                 .textFieldStyle(.plain)
-                .font(.system(size: 12.5))
+                .font(UI.body)
                 .lineLimit(1 ... 6)
                 .focused($focused)
                 .onSubmit { onSave(text) }
@@ -1059,7 +998,7 @@ private struct CommentEditor: View {
                     .keyboardShortcut(.return, modifiers: [])
                     .disabled(text.trimmingCharacters(in: .whitespaces).isEmpty)
             }
-            .font(.system(size: 12))
+            .font(UI.metadata)
         }
         .padding(.leading, 80)
         .padding(.trailing, 12)

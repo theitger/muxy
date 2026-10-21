@@ -28,6 +28,30 @@ final class AcceptanceTests: XCTestCase {
         XCTAssertNil(Acceptance.acceptedOpenPullRequest(pull(accepted, state: .closed), number: 7, acceptedHead: accepted))
     }
 
+    func testQuorumNeedsFreshMatchingPRButNoHumanReceipt() {
+        let head = String(repeating: "a", count: 40)
+        let pull = Git.PullRequest(number: 7, state: .open, head: head, checks: .none, isDraft: false, mergeability: .clean)
+        XCTAssertNotNil(Quorum.openPullRequest(.found(pull), number: 7, expectedHead: head))
+        XCTAssertNil(Quorum.openPullRequest(.found(pull), number: 8, expectedHead: head))
+        XCTAssertNil(Quorum.openPullRequest(.found(pull), number: 7, expectedHead: "stale"))
+        XCTAssertNil(Quorum.openPullRequest(.found(pull), number: 7, expectedHead: nil))
+        XCTAssertNil(Quorum.openPullRequest(.unknown, number: 7, expectedHead: head))
+        XCTAssertNil(Quorum.openPullRequest(.none, number: 7, expectedHead: head))
+        var closed = pull
+        closed.state = .closed
+        XCTAssertNil(Quorum.openPullRequest(.found(closed), number: 7, expectedHead: head))
+    }
+
+    func testDirtyOrUnreadableCheckoutCannotSupplyCheckedHead() throws {
+        let repo = try TempRepo()
+        let checkpoint = try XCTUnwrap(Landing.checkedHead(in: repo.root))
+        try repo.write("untracked.txt", "new changes")
+        XCTAssertNil(Landing.checkedHead(in: repo.root))
+        try repo.commit("Commit changes")
+        XCTAssertNotEqual(Landing.checkedHead(in: repo.root), checkpoint)
+        XCTAssertNil(Landing.checkedHead(in: "/does-not-exist"))
+    }
+
     func testQuorumCompletionUsesItsFinalHeadInsteadOfStaleContext() {
         let old = String(repeating: "a", count: 40)
         let final = String(repeating: "b", count: 40)
@@ -40,17 +64,18 @@ final class AcceptanceTests: XCTestCase {
         XCTAssertFalse(Landing.quorumCovers(status, pull: stale, pr: 7))
     }
 
-    func testLandingRequiresAcceptanceAfterMergingAnUpdatedBase() throws {
+    func testChecksMustBeRepeatedAfterMergingAnUpdatedBase() throws {
         let repo = try TempRepo()
         let checkout = try repo.addWorktree("feature", branch: "feature")
         try repo.write("feature.txt", "feature\n", in: checkout)
         try repo.commit("Feature", in: checkout)
         let accepted = try repo.head(in: checkout)
-        XCTAssertEqual(Landing.checkedOutAcceptedHead(in: checkout, accepted: accepted), accepted)
+        let checkpoint = try XCTUnwrap(Landing.checkedHead(in: checkout))
+        XCTAssertEqual(checkpoint.head, accepted)
 
         try repo.write("base.txt", "base\n")
         try repo.commit("Base update")
         try repo.git("merge", "--no-edit", "main", in: checkout)
-        XCTAssertNil(Landing.checkedOutAcceptedHead(in: checkout, accepted: accepted))
+        XCTAssertNotEqual(Landing.checkedHead(in: checkout), checkpoint)
     }
 }

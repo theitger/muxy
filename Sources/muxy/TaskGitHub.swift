@@ -62,6 +62,7 @@ struct TaskGitHubStatus: View {
     let request: TaskGitHubRequest
     @Binding var issueState: String?
     var onIssue: (Issue) -> Void = { _ in }
+    var onInitialLoading: (Bool) -> Void = { _ in }
     @State private var snapshot = TaskGitHubSnapshot()
     @State private var checked: Date?
     @State private var checking = false
@@ -69,26 +70,37 @@ struct TaskGitHubStatus: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 16) {
-                Text("GitHub").foregroundStyle(Theme.textDim)
-                if let issue = request.issue, let url = URL(string: "https://github.com/\(request.repo)/issues/\(issue)") {
-                    Link(destination: url) {
-                        Text(snapshot.issueState == "OPEN" ? L("Issue open") : snapshot.issueState == "CLOSED" ? L("Issue closed") : L("Issue status unknown"))
-                    }
+            if checked == nil {
+                SkeletonGroup {
+                    HStack(spacing: 16) {
+                        SkeletonBar(width: 42, height: 12)
+                        if request.issue != nil { SkeletonBar(width: 85, height: 12) }
+                        SkeletonBar(width: 100, height: 12)
+                        if request.pr != nil { SkeletonBar(width: 80, height: 12) }
+                        Spacer(minLength: 0)
+                    }.frame(height: 16)
                 }
-                if let number = request.pr, let url = URL(string: "https://github.com/\(request.repo)/pull/\(number)") {
-                    Link(destination: url) {
-                        Text("#\(number) · " + prLabel)
+            } else {
+                HStack(spacing: 16) {
+                    Text("GitHub").foregroundStyle(Theme.textDim)
+                    if let issue = request.issue, let url = URL(string: "https://github.com/\(request.repo)/issues/\(issue)") {
+                        Link(destination: url) {
+                            Text(snapshot.issueState == "OPEN" ? L("Issue open") : snapshot.issueState == "CLOSED" ? L("Issue closed") : L("Issue status unknown"))
+                        }
                     }
-                    Text(ciLabel).foregroundStyle(snapshot.pullRequest?.checks == .failed ? Theme.red : Theme.textMuted)
-                } else {
-                    Text(L("No pull request linked")).foregroundStyle(Theme.textDim)
+                    if let number = request.pr, let url = URL(string: "https://github.com/\(request.repo)/pull/\(number)") {
+                        Link(destination: url) {
+                            Text("#\(number) · " + prLabel)
+                        }
+                        Text(ciLabel).foregroundStyle(snapshot.pullRequest?.checks == .failed ? Theme.red : Theme.textMuted)
+                    } else {
+                        Text(L("No pull request linked")).foregroundStyle(Theme.textDim)
+                    }
+                    Spacer(minLength: 0)
+                    if let checked { Text(checked, style: .time).foregroundStyle(Theme.textDim) }
+                    Button { refresh = UUID() } label: { Icon("arrow.clockwise", size: 11) }
+                        .buttonStyle(.plain).help(L("Refresh")).disabled(checking)
                 }
-                Spacer(minLength: 0)
-                if checking { ProgressView().controlSize(.mini) }
-                else if let checked { Text(checked, style: .time).foregroundStyle(Theme.textDim) }
-                Button { refresh = UUID() } label: { Icon("arrow.clockwise", size: 11) }
-                    .buttonStyle(.plain).help(L("Refresh")).disabled(checking)
             }
             if snapshot.problem {
                 Text(L("GitHub could not be fully refreshed. Unknown states need checking."))
@@ -99,6 +111,7 @@ struct TaskGitHubStatus: View {
         .task(id: refresh) {
             repeat {
                 checking = true
+                if checked == nil { onInitialLoading(true) }
                 let value = await Task.detached(priority: .utility) { TaskGitHubSnapshot.load(request) }.value
                 guard !Task.isCancelled else { return }
                 snapshot = value
@@ -106,6 +119,7 @@ struct TaskGitHubStatus: View {
                 if let issue = value.issue { onIssue(issue) }
                 checked = Date()
                 checking = false
+                onInitialLoading(false)
                 do { try await Task.sleep(for: .seconds(60)) } catch { return }
             } while !Task.isCancelled
         }

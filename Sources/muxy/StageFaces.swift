@@ -54,6 +54,7 @@ struct WingCardFace: View {
     /// nothing jumps when you switch), upright and framed.
     var onStage = false
     var openDetails: (() -> Void)?
+    var close: (() -> Void)?
 
     static let radius: CGFloat = 9
 
@@ -159,7 +160,7 @@ struct WingCardFace: View {
             SessionTile(agent: face.agent, attention: face.attention, isGit: face.isGit, kind: face.kind)
             VStack(alignment: .leading, spacing: 1) {
                 Text(face.title)
-                    .font(.system(size: 13, weight: onStage ? .semibold : .medium))
+                    .font(.system(size: 14, weight: onStage ? .semibold : .medium))
                     .foregroundStyle(onStage ? Theme.textPrimary : Theme.textBody)
                     .lineLimit(1)
                 HStack(spacing: 5) {
@@ -169,9 +170,18 @@ struct WingCardFace: View {
             }
             Spacer(minLength: 4)
             PRBadge(pr: face.pr, status: face.prStatus)
+            if let close {
+                Button(action: close) {
+                    Icon("xmark", size: 10).foregroundStyle(Theme.textMuted)
+                        .frame(width: 24, height: 28).contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help(L("Close session"))
+                .accessibilityLabel(L("Close session"))
+            }
         }
         .padding(.horizontal, 8)
-        .frame(height: 48)
+        .frame(height: 60)
         .background(
             RoundedRectangle(cornerRadius: Self.radius, style: .continuous)
                 .fill(onStage ? Theme.fillActive : (hovered ? Theme.fillHover : .clear))
@@ -187,145 +197,4 @@ enum StageMetrics {
     /// The title bar: a compact toolbar's height, so the window's own
     /// buttons (centered in it by macOS) line up with muxy's.
     static let topBar: CGFloat = 40
-}
-
-/// The window with the wings out: a title bar across, the wings on the
-/// left, the session in front as a card on the right.
-struct StageLayout<TopBar: View, Wings: View, Stage: View>: View {
-    let wingsWidth: CGFloat
-    @ViewBuilder let topBar: TopBar
-    @ViewBuilder let wings: Wings
-    @ViewBuilder let stage: Stage
-
-    var body: some View {
-        VStack(spacing: 0) {
-            topBar
-                .frame(height: StageMetrics.topBar)
-                .frame(maxWidth: .infinity)
-                .background(Theme.sidebar)
-            HStack(spacing: 0) {
-                wings.frame(width: wingsWidth)
-                stage
-                    .padding(.trailing, StageMetrics.margin)
-                    .padding(.bottom, StageMetrics.margin)
-            }
-            .background(
-                StageGutter(leading: wingsWidth, radius: StageMetrics.radius, margin: StageMetrics.margin)
-                    .fill(Theme.sidebar, style: FillStyle(eoFill: true))
-                    .clipped()
-            )
-            // The card's corners: two half-transparent edges meeting there
-            // let the window behind shine through as a thin ring. Slivers in
-            // the gutter's color, a touch rounder, cover it.
-            .overlay(
-                StageGutter(leading: wingsWidth, radius: StageMetrics.radius + 1.5, margin: StageMetrics.margin, cornersOnly: true)
-                    .fill(Theme.sidebar, style: FillStyle(eoFill: true))
-                    .allowsHitTesting(false)
-            )
-        }
-    }
-}
-
-/// The wings' color around the stage card: the area minus the card. The
-/// card itself stays unpainted, so the terminal's own translucent background
-/// is the only layer there — exactly as in Ghostty.
-struct StageGutter: Shape {
-    var leading: CGFloat
-    var radius: CGFloat = 10
-    var margin: CGFloat = 8
-    /// Only the card's four corner slivers, not the whole gutter.
-    var cornersOnly = false
-
-    func path(in rect: CGRect) -> Path {
-        let card = CGRect(
-            x: rect.minX + leading, y: rect.minY,
-            width: rect.width - leading - margin, height: rect.height - margin
-        )
-        var path = Path(cornersOnly ? card : rect)
-        path.addRoundedRect(in: card, cornerSize: CGSize(width: radius, height: radius), style: .continuous)
-        return path
-    }
-}
-
-/// The title bar's middle: what is on stage and where it lives.
-struct StageTitle: View {
-    let title: String
-    let place: String
-    let pr: Int?
-    let prStatus: PRStatus
-    var prURL: URL?
-
-    var body: some View {
-        HStack(spacing: 8) {
-            Text(title)
-                .font(.system(size: 12.5, weight: .semibold))
-                .foregroundStyle(Theme.textPrimary)
-            Text(place)
-                .font(.system(size: 12.5))
-                .foregroundStyle(Theme.textMuted)
-                .truncationMode(.middle)
-            Button {
-                if let prURL { NSWorkspace.shared.open(prURL) }
-            } label: {
-                PRBadge(pr: pr, status: prStatus)
-            }
-            .buttonStyle(.plain)
-            .disabled(prURL == nil)
-        }
-        .lineLimit(1)
-    }
-}
-
-/// "login-fix": someone else wants you.
-struct WaitingPill: View {
-    let text: String
-
-    var body: some View {
-        HStack(spacing: 7) {
-            Circle().fill(Theme.orange.strong).frame(width: 6, height: 6)
-            Text(text.count > 30 ? text.prefix(29) + "…" : text)
-                .lineLimit(1)
-        }
-        .font(.system(size: 12, weight: .medium))
-        .foregroundStyle(Theme.orange.strong)
-        .padding(.horizontal, 11)
-        .frame(height: 26)
-        .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(Theme.orange.soft))
-        .contentShape(Rectangle())
-    }
-}
-
-/// A labelled title-bar button with its key: "+ New Session ⌘N".
-struct TitleBarButton: View {
-    let symbol: String
-    let title: String
-    let keys: String
-    let action: () -> Void
-    @State private var hovered = false
-
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: 7) {
-                Icon(symbol, size: 10.5)
-                Text(title)
-                    .font(.system(size: 12, weight: .medium))
-                Kbd(keys)
-            }
-            .foregroundStyle(hovered ? Theme.textPrimary : Theme.textBody)
-            .padding(.leading, 10)
-            .padding(.trailing, 4)
-            .frame(height: 28)
-            .background(
-                RoundedRectangle(cornerRadius: 7, style: .continuous)
-                    .fill(hovered ? Theme.fillHover : .clear)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 7, style: .continuous)
-                    .strokeBorder(Theme.hairline, lineWidth: 0.5)
-            )
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .onHover { hovered = $0 }
-    }
 }

@@ -13,12 +13,17 @@ enum TerminalColors: String, CaseIterable, Identifiable {
     var name: String {
         switch self {
         case .ghostty: L("Your Ghostty theme")
-        case .neutral: L("Neutral")
+        case .neutral: L("Muxy · neutral")
         }
     }
 
     static var current: TerminalColors {
-        UserDefaults.standard.string(forKey: storageKey).flatMap(TerminalColors.init) ?? .neutral
+        if let saved = UserDefaults.standard.string(forKey: storageKey).flatMap(TerminalColors.init) { return saved }
+        return hasGhosttyConfig ? .ghostty : .neutral
+    }
+
+    static var hasGhosttyConfig: Bool {
+        FileManager.default.fileExists(atPath: Paths.home + "/.config/ghostty/config")
     }
 
     /// Rendered after your config file, so an empty theme leaves it alone.
@@ -48,9 +53,13 @@ enum TerminalColors: String, CaseIterable, Identifiable {
     /// Colors and font together, as the terminals get them.
     static var currentTheme: TerminalTheme {
         let base = current.theme
-        guard fontFamily != nil || fontSize != nil else { return base }
         func withFont(_ config: TerminalConfiguration) -> TerminalConfiguration {
             var result = config
+            // A standalone installation needs a readable starting point.
+            // An existing Ghostty config and explicit Muxy choices win.
+            if !hasGhosttyConfig {
+                result = result.fontSize(14).custom("window-padding-x", "16").custom("window-padding-y", "12")
+            }
             // font-family repeats as a fallback list in Ghostty: an empty
             // one first clears yours, or the choice would only be a fallback.
             if let family = fontFamily { result = result.custom("font-family", "\"\"").fontFamily(family) }

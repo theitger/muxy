@@ -43,6 +43,13 @@ struct TerminalHostView: NSViewRepresentable {
         attach(session.terminalView, to: container)
     }
 
+    static func dismantleNSView(_ container: NSView, coordinator: ()) {
+        for view in container.subviews {
+            (view as? TerminalView)?.setSurfaceVisible(false)
+            view.removeFromSuperview()
+        }
+    }
+
     private func round(_ container: NSView) {
         container.wantsLayer = true
         guard let layer = container.layer, layer.cornerRadius != cornerRadius else { return }

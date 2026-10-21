@@ -96,20 +96,20 @@ struct DecisionsPage: View {
                     .font(.system(size: 15, weight: .medium)).foregroundStyle(Theme.textPrimary)
                     .padding(.bottom, 6)
                 Text(decisions.isEmpty ? L("No decisions waiting. Work can continue.") : L("Decide here; the task keeps its context."))
-                    .font(.system(size: 12)).foregroundStyle(Theme.textDim).padding(.bottom, 20)
+                    .font(UI.metadata).foregroundStyle(Theme.textDim).padding(.bottom, 20)
                 ForEach(decisions) { decision in
                     Button { window.openTask(decision.target) } label: {
                         HStack(alignment: .top, spacing: 12) {
                             StateMark(word: "", tone: Theme.orange.strong, size: 12, dot: true).padding(.top, 5)
                             VStack(alignment: .leading, spacing: 5) {
                                 Text(decision.target.title).font(.system(size: 13, weight: .medium)).foregroundStyle(Theme.textPrimary)
-                                Text(decision.reason).font(.system(size: 12)).foregroundStyle(Theme.textMuted)
+                                Text(decision.reason).font(UI.metadata).foregroundStyle(Theme.textMuted)
                                 if let issue = decision.target.issue {
                                     Text(issue.repo + " #\(issue.number)").font(.system(size: 11)).foregroundStyle(Theme.textDim)
                                 }
                             }
                             Spacer(minLength: 12)
-                            Text(decision.action).font(.system(size: 12)).foregroundStyle(Theme.textBody)
+                            Text(decision.action).font(UI.metadata).foregroundStyle(Theme.textBody)
                             Icon("chevron.right", size: 10).foregroundStyle(Theme.textDim)
                         }
                         .padding(.vertical, 16).contentShape(Rectangle())
@@ -119,6 +119,7 @@ struct DecisionsPage: View {
                 }
                 if let problem = queue.problem { Text(problem).foregroundStyle(Theme.textMuted).padding(.top, 16) }
                 if let problem = landing.journal.problem { Text(problem).foregroundStyle(Theme.textMuted).padding(.top, 16) }
+                AgentUpdates(store: store).padding(.top, 24)
             }
             .padding(24)
         }
@@ -129,6 +130,8 @@ struct DecisionsPage: View {
 struct TaskPage: View {
     let target: TaskTarget
     @ObservedObject var window: WindowModel
+    var embedded = false
+    var activeSection: String?
     @ObservedObject private var store = Store.shared
     @ObservedObject private var ledger = TaskLedger.shared
     @ObservedObject private var work = WorkLedger.shared
@@ -151,6 +154,7 @@ struct TaskPage: View {
     @State private var editingGoal = false
     @State private var reply = ""
     @State private var githubIssueState: String?
+    @State private var issueLoading = false
     @State private var starting = false
     @State private var startProblem: String?
     @AppStorage(AgentKind.defaultKey) private var defaultAgent = AgentKind.preferredChoice()
@@ -174,9 +178,11 @@ struct TaskPage: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            header.padding(20)
-            Rectangle().fill(Theme.hairline).frame(height: 1)
-            switch section {
+            if !embedded {
+                header.padding(20)
+                Rectangle().fill(Theme.hairline).frame(height: 1)
+            }
+            switch activeSection ?? section {
             case "implementation": implementation
             case "reviews": reviews
             case "activity": activity
@@ -198,14 +204,14 @@ struct TaskPage: View {
     private var header: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 12) {
-                Button { window.taskTarget = nil } label: {
-                    HStack(spacing: 5) { Icon("chevron.left", size: 10); Text(L("Hub")) }
-                }.buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(Theme.textDim)
+                Button { window.openLibrary() } label: {
+                    HStack(spacing: 5) { Icon("chevron.left", size: 10); Text(L("Tasks")) }
+                }.buttonStyle(.plain).font(UI.metadata).foregroundStyle(Theme.textDim)
                 Spacer()
                 if let workspace {
                     SmallButton(title: L("Terminal"), symbol: "terminal") {
-                        window.showHub = false
                         window.select(workspace)
+                        window.showSection(.terminal)
                     }
                 }
                 if let next = TaskDecision.items().first(where: { $0.id != target.id }) {
@@ -219,13 +225,13 @@ struct TaskPage: View {
                     Text((issue ?? target.issue)?.heading ?? target.title)
                         .font(.system(size: 16, weight: .medium)).foregroundStyle(Theme.textPrimary)
                         .textSelection(.enabled)
-                    if let workspace { Text(Flow.next(for: workspace).title).font(.system(size: 12)).foregroundStyle(Theme.textMuted) }
+                    if let workspace { Text(Flow.next(for: workspace).title).font(UI.metadata).foregroundStyle(Theme.textMuted) }
                 }
                 Spacer(minLength: 0)
                 taskAction
             }
             if let request = githubRequest {
-                TaskGitHubStatus(request: request, issueState: $githubIssueState, onIssue: applyIssue).id(request)
+                TaskGitHubStatus(request: request, issueState: $githubIssueState, onIssue: applyIssue, onInitialLoading: { issueLoading = $0 }).id(request)
             }
             if let issue = startIssue {
                 HStack(spacing: 12) {
@@ -237,8 +243,8 @@ struct TaskPage: View {
                             starting = false
                             if id == nil { startProblem = L("Task could not start. Check the repository checkout and agent setup.") }
                         }
-                        if let agent { HubModel.shared.start(issue, agents: [agent], in: window, hideHub: false, then: done) }
-                        else { HubModel.shared.startTerminal(issue, in: window, hideHub: false, then: done) }
+                        if let agent { HubModel.shared.start(issue, agents: [agent], in: window, hideHub: true, then: done) }
+                        else { HubModel.shared.startTerminal(issue, in: window, hideHub: true, then: done) }
                     }.disabled(starting)
                     Picker(L("Agent"), selection: Binding(get: { preferredAgent }, set: { agentOverride = $0 })) {
                         ForEach(AgentKind.allCases) { Text($0.name).tag($0.rawValue) }
@@ -248,10 +254,28 @@ struct TaskPage: View {
                         .font(.system(size: 11)).foregroundStyle(Theme.textDim)
                 }
             }
-            if let startProblem { Text(startProblem).font(.system(size: 12)).foregroundStyle(Theme.textMuted) }
-            Segments(selection: Binding(get: { section }, set: { section = $0 }), options: [("overview", L("Overview")), ("implementation", L("Implementation")),
-                ("reviews", L("Reviews")), ("activity", L("Activity")), ("queue", L("Queue & limits"))])
+            if let startProblem { Text(startProblem).font(UI.metadata).foregroundStyle(Theme.textMuted) }
+            HStack {
+                if detailSections.count > 1 {
+                    Segments(selection: Binding(get: { section }, set: { section = $0 }), options: detailSections)
+                }
+                Spacer(minLength: 8)
+                SmallButton(title: L("Queue & limits")) { section = "queue" }
+            }
+
         }
+    }
+
+    private var detailSections: [(String, String)] {
+        var sections = [("overview", L("Task details"))]
+        if review != nil { sections.append(("implementation", L("App & code"))) }
+        if workspace.flatMap({ quorum.status(for: $0) }) != nil || item.flatMap({ work in work.repo.flatMap { repo in work.pr.flatMap { quorum.byKey["\(repo)#\($0)"] } } }) != nil {
+            sections.append(("reviews", "Quorum"))
+        }
+        if !record.feedback.isEmpty || record.lastInspectedHead != nil || item?.evidence.isEmpty == false {
+            sections.append(("activity", L("Activity")))
+        }
+        return sections
     }
 
     @ViewBuilder private var taskAction: some View {
@@ -274,7 +298,7 @@ struct TaskPage: View {
             default: EmptyView()
             } }
         } else if let item, item.isOpen {
-            SmallButton(title: L("Continue")) { work.resume(item, in: window); window.showHub = true }
+            SmallButton(title: L("Continue")) { work.resume(item, in: window) }
         } else if let root = target.root, let branch = target.branch {
             SmallButton(title: L("Open checkout")) {
                 guard let directory = HubModel.worktree(of: branch, root: root) else {
@@ -282,29 +306,35 @@ struct TaskPage: View {
                 }
                 let workspace = Store.shared.makeWorkspace(directory: directory, in: window)
                 window.select(workspace)
-                window.showHub = true
             }
         }
     }
 
     private var overview: some View {
+        GeometryReader { geometry in
         ScrollView {
-            HStack(alignment: .top, spacing: 32) {
+            let layout = geometry.size.width > 850
+                ? AnyLayout(HStackLayout(alignment: .top, spacing: 32))
+                : AnyLayout(VStackLayout(alignment: .leading, spacing: 28))
+            layout {
                 VStack(alignment: .leading, spacing: 18) {
+                    if embedded, let request = githubRequest {
+                        TaskGitHubStatus(request: request, issueState: $githubIssueState, onIssue: applyIssue, onInitialLoading: { issueLoading = $0 }).id(request)
+                    }
                     HStack {
                         SectionLabel(L("Goal"), tone: Theme.textMuted)
                         Spacer()
                         SmallButton(title: L("Edit")) { editingGoal.toggle() }
                     }
                     if editingGoal {
-                        TextEditor(text: $goal).font(.system(size: 13)).scrollContentBackground(.hidden)
+                        TextEditor(text: $goal).font(UI.body).scrollContentBackground(.hidden)
                             .frame(minHeight: 70, maxHeight: 120)
                             .padding(8).background(RoundedRectangle(cornerRadius: 6).fill(Theme.fillHover))
                         SmallButton(title: L("Save goal")) {
                             if ledger.update(target.id, { $0.goal = goal; $0.customGoal = true }) { editingGoal = false }
                         }
                     } else {
-                        Text(goal).font(.system(size: 13)).foregroundStyle(Theme.textBody)
+                        Text(goal).font(UI.body).foregroundStyle(Theme.textBody)
                             .fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
                     }
                     criteria
@@ -312,14 +342,23 @@ struct TaskPage: View {
                         DisclosureGroup(L("Issue description")) {
                             MarkdownText(text: body).padding(.top, 10)
                                 .frame(maxWidth: .infinity, alignment: .leading)
-                        }.font(.system(size: 12)).foregroundStyle(Theme.textMuted)
+                        }.font(UI.metadata).foregroundStyle(Theme.textMuted)
                     }
-                    if let issueProblem { Text(issueProblem).font(.system(size: 12)).foregroundStyle(Theme.textMuted) }
+                    if issueLoading, issue?.body == nil, record.issueBody == nil {
+                        SkeletonGroup {
+                            VStack(alignment: .leading, spacing: 10) {
+                                SkeletonBar(width: 145, height: 12)
+                                SkeletonBar(height: 14)
+                                SkeletonBar(height: 14).padding(.trailing, 50)
+                            }
+                        }
+                    }
+                    if let issueProblem { Text(issueProblem).font(UI.metadata).foregroundStyle(Theme.textMuted) }
                     if let workspace, let summary = results.result(for: workspace)?.summary {
                         SectionLabel(L("What the agent did"), tone: Theme.textMuted)
-                        Text(summary).font(.system(size: 12.5)).foregroundStyle(Theme.textBody).textSelection(.enabled)
+                        Text(summary).font(UI.body).foregroundStyle(Theme.textBody).textSelection(.enabled)
                     }
-                    if let problem = ledger.problem { Text(problem).font(.system(size: 12)).foregroundStyle(Theme.textMuted) }
+                    if let problem = ledger.problem { Text(problem).font(UI.metadata).foregroundStyle(Theme.textMuted) }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 VStack(alignment: .leading, spacing: 16) {
@@ -331,18 +370,19 @@ struct TaskPage: View {
                             SectionLabel(L("Collisions"), tone: Theme.textMuted)
                             ForEach(Array(collisions.enumerated()), id: \.offset) { _, collision in
                                 Text((collision.withBase ? collision.baseName : Radar.shared.title(of: collision.other)) + ": " + collision.files.joined(separator: ", "))
-                                    .font(.system(size: 12)).foregroundStyle(Theme.textBody)
+                                    .font(UI.metadata).foregroundStyle(Theme.textBody)
                             }
                         }
                     }
                     if let item, !item.evidence.isEmpty { EvidenceButton(item: item) }
                     if let queued = queue.items.first(where: { $0.id.lowercased() == target.id.lowercased() }), let reason = queue.reason(for: queued) {
-                        Text(reason).font(.system(size: 12)).foregroundStyle(Theme.textMuted)
+                        Text(reason).font(UI.metadata).foregroundStyle(Theme.textMuted)
                     }
                 }
-                .frame(width: 310, alignment: .leading)
+                .frame(maxWidth: geometry.size.width > 850 ? 310 : .infinity, alignment: .leading)
             }
             .padding(24)
+        }
         }
     }
 
@@ -351,6 +391,18 @@ struct TaskPage: View {
             SectionLabel(L("Acceptance criteria"), tone: Theme.textMuted)
             Text(L("Checks apply to the current pull request commit."))
                 .font(.system(size: 11)).foregroundStyle(Theme.textDim)
+            if issueLoading, record.criteria.isEmpty {
+                SkeletonGroup {
+                    VStack(alignment: .leading, spacing: 10) {
+                        ForEach(0 ..< 3) { index in
+                            HStack(spacing: 8) {
+                                SkeletonBar(width: 14, height: 14)
+                                SkeletonBar(height: 14).padding(.trailing, CGFloat(index * 20))
+                            }
+                        }
+                    }
+                }
+            }
             ForEach(record.criteria) { criterion in
                 Toggle(isOn: Binding(get: { criterion.checked(at: workspace?.context.prHead) }, set: { checked in
                     ledger.update(target.id) { value in
@@ -358,7 +410,7 @@ struct TaskPage: View {
                             value.criteria[index].checkedHead = checked ? workspace?.context.prHead : nil
                         }
                     }
-                })) { Text(criterion.text).font(.system(size: 12.5)).foregroundStyle(Theme.textBody) }
+                })) { Text(criterion.text).font(UI.body).foregroundStyle(Theme.textBody) }
                 .toggleStyle(.checkbox).disabled(workspace?.context.prHead == nil)
                 .contextMenu {
                     Button(L("Remove")) { ledger.update(target.id) { $0.removeCriterion(criterion) } }
@@ -377,7 +429,7 @@ struct TaskPage: View {
         if let workspace {
             let next = Flow.next(for: workspace)
             SectionLabel(L("Next step"), tone: Theme.textMuted)
-            Text(next.title.isEmpty ? L("No action needed.") : next.title).font(.system(size: 13)).foregroundStyle(Theme.textBody)
+            Text(next.title.isEmpty ? L("No action needed.") : next.title).font(UI.body).foregroundStyle(Theme.textBody)
             if case .answer = next, let agent = workspace.sessions.first(where: { $0.agent == .blocked }) {
                 if let text = agent.terminalView.currentSurface?.readText(screen: true), !text.isEmpty {
                     Text(String(text.suffix(6000))).font(Theme.mono(size: 11)).foregroundStyle(Theme.textBody)
@@ -394,7 +446,7 @@ struct TaskPage: View {
                     .disabled(reply.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             } else if case .approvePlan = next {
                 Text(L("Read the agent's plan in the terminal before approving it."))
-                    .font(.system(size: 12)).foregroundStyle(Theme.textDim)
+                    .font(UI.metadata).foregroundStyle(Theme.textDim)
                 SmallButton(title: L("Approve the plan")) {
                     if let item = queue.item(for: workspace), item.phase == .planReady { queue.approve(item) }
                     else if !Flow.take(next, in: workspace, window: window) {
@@ -403,15 +455,15 @@ struct TaskPage: View {
                 }
             }
             if let step = landing.step(for: workspace) {
-                Text(step.text).font(.system(size: 12)).foregroundStyle(Theme.textMuted)
+                Text(step.text).font(UI.metadata).foregroundStyle(Theme.textMuted)
             }
         } else if let issue, !issue.isOpen {
             SectionLabel(L("Next step"), tone: Theme.textMuted)
-            Text(L("This issue is closed.")).font(.system(size: 12)).foregroundStyle(Theme.textDim)
+            Text(L("This issue is closed.")).font(UI.metadata).foregroundStyle(Theme.textDim)
         } else {
             SectionLabel(L("Next step"), tone: Theme.textMuted)
             Text(item?.isOpen == true ? L("Continue the saved conversation in its checkout.") : L("Start or queue this issue to begin."))
-                .font(.system(size: 12)).foregroundStyle(Theme.textBody)
+                .font(UI.metadata).foregroundStyle(Theme.textBody)
         }
     }
 
@@ -424,7 +476,7 @@ struct TaskPage: View {
                 ForEach(Array(result.entries.enumerated()), id: \.offset) { _, entry in
                     HStack(alignment: .firstTextBaseline, spacing: 8) {
                         StateMark(word: "", tone: entry.outcome == .passed ? Theme.greenTone.strong : entry.outcome == .failed ? Theme.orange.strong : Theme.textDim, size: 12, dot: true)
-                        Text(entry.name).font(.system(size: 12)).foregroundStyle(Theme.textBody)
+                        Text(entry.name).font(UI.metadata).foregroundStyle(Theme.textBody)
                         Spacer()
                         Text(String(format: "%.0f s", entry.seconds)).font(Theme.mono(size: 10.5)).foregroundStyle(Theme.textDim)
                     }
@@ -468,16 +520,16 @@ struct TaskPage: View {
                    let branch = target.branch ?? item?.branch ?? workspace?.context.branch,
                    let receipt = landing.journal.receipts[WorkItem.key(root: root, branch: branch)] {
                     SectionLabel(L("Automation"), tone: Theme.textMuted)
-                    Text(receipt.step.text).font(.system(size: 12.5)).foregroundStyle(Theme.textBody)
+                    Text(receipt.step.text).font(UI.body).foregroundStyle(Theme.textBody)
                     Text(L("%d repair requests", receipt.asks)).font(.system(size: 11)).foregroundStyle(Theme.textDim)
                 }
                 SectionLabel(L("Feedback"), tone: Theme.textMuted)
-                if record.feedback.isEmpty { Text(L("No feedback sent yet.")).font(.system(size: 12)).foregroundStyle(Theme.textDim) }
+                if record.feedback.isEmpty { Text(L("No feedback sent yet.")).font(UI.metadata).foregroundStyle(Theme.textDim) }
                 ForEach(record.feedback.reversed()) { feedback in
                     VStack(alignment: .leading, spacing: 6) {
                         Text(feedback.date.formatted(date: .abbreviated, time: .shortened))
                             .font(.system(size: 11)).foregroundStyle(Theme.textDim)
-                        Text(feedback.text).font(.system(size: 12.5)).foregroundStyle(Theme.textBody).textSelection(.enabled)
+                        Text(feedback.text).font(UI.body).foregroundStyle(Theme.textBody).textSelection(.enabled)
                         if let path = feedback.screenshot {
                             SmallButton(title: L("Screenshot")) { NSWorkspace.shared.open(URL(fileURLWithPath: path)) }
                         }
@@ -487,7 +539,7 @@ struct TaskPage: View {
                 ForEach(Array((item?.evidence ?? []).reversed().enumerated()), id: \.offset) { _, fact in
                     HStack(alignment: .firstTextBaseline, spacing: 10) {
                         StateMark(word: "", tone: fact.ok == true ? Theme.greenTone.strong : fact.ok == false ? Theme.orange.strong : Theme.textDim, size: 12, dot: true)
-                        Text(fact.text).font(.system(size: 12.5)).foregroundStyle(Theme.textBody)
+                        Text(fact.text).font(UI.body).foregroundStyle(Theme.textBody)
                         Spacer()
                         Text(fact.date.formatted(date: .abbreviated, time: .shortened)).font(.system(size: 11)).foregroundStyle(Theme.textDim)
                     }
@@ -498,7 +550,7 @@ struct TaskPage: View {
     }
 
     private func empty(_ message: String) -> some View {
-        Text(message).font(.system(size: 12.5)).foregroundStyle(Theme.textDim)
+        Text(message).font(UI.body).foregroundStyle(Theme.textDim)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
     }
 
@@ -540,7 +592,7 @@ struct TaskQueueSettings: View {
                 SectionLabel(L("Queue & limits"), tone: Theme.textMuted)
                 if let item {
                     HStack(spacing: 12) {
-                        Text(item.phase.description).font(.system(size: 13)).foregroundStyle(Theme.textBody)
+                        Text(item.phase.description).font(UI.body).foregroundStyle(Theme.textBody)
                         if item.phase.isActive {
                             SmallButton(title: L("Pause automation")) { queue.pause(item) }
                         } else if item.phase != .queued {
@@ -554,29 +606,29 @@ struct TaskQueueSettings: View {
                             SmallButton(title: L("Start queue")) { queue.start() }
                         }
                     }
-                    if let reason = queue.reason(for: item) { Text(reason).font(.system(size: 12)).foregroundStyle(Theme.textMuted) }
+                    if let reason = queue.reason(for: item) { Text(reason).font(UI.metadata).foregroundStyle(Theme.textMuted) }
                     if let started = item.started {
                         TimelineView(.periodic(from: .now, by: 30)) { context in
                             Text(L("Elapsed: %@ · %d of %d review attempts", QuorumRunView.duration(context.date.timeIntervalSince(started)), item.reviewCount, (item.limits ?? AutomationLimits()).reviewAttempts))
-                                .font(.system(size: 12)).foregroundStyle(Theme.textDim)
+                                .font(UI.metadata).foregroundStyle(Theme.textDim)
                         }
                     }
                     ForEach(usage.windows(item.agent), id: \.name) { window in
                         let percent = String(format: "%.0f%%", window.used)
                         let reset = window.resets.map { " · " + $0.formatted(date: .omitted, time: .shortened) } ?? ""
                         Text("\(item.agent.name) · \(window.name): \(percent)\(reset)")
-                            .font(.system(size: 12)).foregroundStyle(Theme.textDim)
+                            .font(UI.metadata).foregroundStyle(Theme.textDim)
                     }
                     SectionLabel(L("Start after these issues are merged"), tone: Theme.textMuted)
                     Text(L("A successful review or a closed issue does not release a dependency."))
-                        .font(.system(size: 11.5)).foregroundStyle(Theme.textDim)
+                        .font(UI.metadata).foregroundStyle(Theme.textDim)
                     ForEach(queue.items.filter { $0.id != item.id }) { other in
                         Toggle(isOn: Binding(get: { dependencies.contains(other.id) }, set: { checked in
                             if checked { dependencies.insert(other.id) } else { dependencies.remove(other.id) }
-                        })) { Text(other.id + " · " + other.issue.title).font(.system(size: 12)) }
+                        })) { Text(other.id + " · " + other.issue.title).font(UI.metadata) }
                         .toggleStyle(.checkbox).disabled(item.phase.isActive)
                     }
-                    if queue.items.count == 1 { Text(L("Queue another issue to add a prerequisite.")).font(.system(size: 12)).foregroundStyle(Theme.textDim) }
+                    if queue.items.count == 1 { Text(L("Queue another issue to add a prerequisite.")).font(UI.metadata).foregroundStyle(Theme.textDim) }
                     Stepper(L("Time limit: %d hours", limits.hours), value: $limits.hours, in: 1...48).disabled(item.phase.isActive)
                     Stepper(L("Review attempts: %d", limits.reviews), value: $limits.reviews, in: 0...10).disabled(item.phase.isActive)
                     Stepper(L("Repair requests per landing: %d", limits.repairs), value: $limits.repairs, in: 0...10).disabled(item.phase.isActive)
@@ -584,22 +636,22 @@ struct TaskQueueSettings: View {
                         message = queue.configure(item, dependencies: Array(dependencies), limits: limits) ?? L("Saved")
                     }.disabled(item.phase.isActive)
                     Text(L("The time limit pauses further muxy actions. Work already running in quorum or GitHub is tracked separately."))
-                        .font(.system(size: 11.5)).foregroundStyle(Theme.textDim)
+                        .font(UI.metadata).foregroundStyle(Theme.textDim)
                 } else if !issue.isOpen {
-                    Text(L("This issue is closed.")).font(.system(size: 12)).foregroundStyle(Theme.textDim)
+                    Text(L("This issue is closed.")).font(UI.metadata).foregroundStyle(Theme.textDim)
                 } else {
                     Text(L("Add this issue to the queue to set dependencies and limits."))
-                        .font(.system(size: 12.5)).foregroundStyle(Theme.textMuted)
+                        .font(UI.body).foregroundStyle(Theme.textMuted)
                     HStack(spacing: 8) {
                         SmallButton(title: L("Queue for Claude")) { queue.add(issue, agent: .claude); load() }
                         SmallButton(title: L("Queue for Codex")) { queue.add(issue, agent: .codex); load() }
                     }
                 }
-                if let message { Text(message).font(.system(size: 12)).foregroundStyle(Theme.textMuted) }
-                if let problem = queue.problem { Text(problem).font(.system(size: 12)).foregroundStyle(Theme.textMuted) }
+                if let message { Text(message).font(UI.metadata).foregroundStyle(Theme.textMuted) }
+                if let problem = queue.problem { Text(problem).font(UI.metadata).foregroundStyle(Theme.textMuted) }
                 Spacer(minLength: 0)
             }
-            .frame(maxWidth: .infinity, alignment: .leading).font(.system(size: 12.5))
+            .frame(maxWidth: .infinity, alignment: .leading).font(UI.body)
         }
         .onAppear(perform: load)
     }
@@ -637,12 +689,12 @@ struct TaskBudgetSettings: View {
             Stepper(L("Repair requests per landing: %d", limits.repairs), value: $limits.repairs, in: 0...10)
             SmallButton(title: L("Save limits")) { saved = ledger.update(target.id) { $0.limits = limits } }
             if saved { Text(L("Saved")).foregroundStyle(Theme.textDim) }
-            if let problem = ledger.problem { Text(problem).font(.system(size: 12)).foregroundStyle(Theme.textMuted) }
+            if let problem = ledger.problem { Text(problem).font(UI.metadata).foregroundStyle(Theme.textMuted) }
             Text(L("Dependencies are available when the task belongs to a queued issue."))
-                .font(.system(size: 12)).foregroundStyle(Theme.textDim)
+                .font(UI.metadata).foregroundStyle(Theme.textDim)
             Spacer()
         }
-        .font(.system(size: 12.5))
+        .font(UI.body)
         .frame(maxWidth: .infinity, alignment: .leading)
         .onAppear { limits = ledger.record(for: target).limits ?? AutomationLimits() }
     }

@@ -92,3 +92,21 @@ final class SessionSummaryTests: XCTestCase {
         XCTAssertEqual(SessionSummary.completedQuorum(interrupted, head: "head")?.tone, .attention)
     }
 }
+
+@MainActor
+final class TerminalTabStatusTests: XCTestCase {
+    func testShellAndIdleAgentDoNotClaimToBeWorking() {
+        XCTAssertNil(TerminalSession.tabStatus(agent: .none, needsAttention: false, busy: false, planning: false))
+        XCTAssertNil(TerminalSession.tabStatus(agent: .idle, needsAttention: false, busy: false, planning: false))
+    }
+
+    func testTabKeepsItsOwnErrorOrQuestionEvenWhileAnotherTabWorks() {
+        let blocked = TerminalSession.tabStatus(agent: .blocked, needsAttention: true, busy: false, planning: false)
+        let working = TerminalSession.tabStatus(agent: .working, needsAttention: false, busy: true, planning: false)
+        let failed = TerminalSession.tabStatus(agent: .failed, needsAttention: true, busy: false, planning: false)
+        XCTAssertEqual(blocked?.tone, .attention)
+        XCTAssertEqual(working?.running, true)
+        XCTAssertEqual(failed?.tone, .failure)
+        XCTAssertNil(TerminalSession.tabStatus(agent: .none, needsAttention: false, busy: false, planning: false))
+    }
+}

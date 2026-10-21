@@ -14,6 +14,7 @@ final class IssueField: ObservableObject {
 
     @Published private(set) var status: Status = .none
     @Published private(set) var suggestions: [Issue] = []
+    @Published private(set) var listLoading = false
     /// The list is yours (assigned), not just the newest.
     @Published private(set) var mine = false
     @Published private(set) var highlight: Int?
@@ -39,6 +40,8 @@ final class IssueField: ObservableObject {
         guard case let .found(issue) = status, let ref else { return nil }
         return (issue, ref.note)
     }
+
+    var showsSuggestionSkeleton: Bool { query != nil && listLoading && suggestions.isEmpty && !isFound }
 
     var showsSuggestions: Bool { query != nil && !suggestions.isEmpty }
 
@@ -117,10 +120,12 @@ final class IssueField: ObservableObject {
         let token = listToken
         list = []
         targetRepo = nil
+        listLoading = false
         guard let root else {
             filter()
             return
         }
+        listLoading = true
         Task.detached(priority: .utility) {
             let repo = Issues.repo(of: root)
             let found = repo.flatMap { Issues.list(repo: $0, in: root) }
@@ -128,6 +133,7 @@ final class IssueField: ObservableObject {
                 guard token == self.listToken else { return }
                 self.targetRepo = repo
                 self.list = found?.issues ?? []
+                self.listLoading = false
                 self.mine = found?.mine ?? false
                 self.filter()
                 self.checkForeign()
@@ -196,6 +202,7 @@ struct IssueAccessory: View {
         VStack(alignment: .leading, spacing: 6) {
             chip
             if field.showsSuggestions { list }
+            else if field.showsSuggestionSkeleton { SkeletonIssueSuggestions() }
         }
         .animation(Theme.ease, value: field.status)
         .animation(Theme.ease, value: field.suggestions)
@@ -206,14 +213,16 @@ struct IssueAccessory: View {
         switch field.status {
         case .none:
             EmptyView()
-        case let .loading(number):
-            HStack(spacing: 7) {
-                ProgressView().controlSize(.mini).scaleEffect(0.8).frame(width: 12, height: 12)
-                Text(L("Looking up #%d …", number))
+        case .loading:
+            SkeletonGroup {
+                HStack(spacing: 7) {
+                    SkeletonBar(width: 14, height: 14)
+                    SkeletonBar(width: 40, height: 12)
+                    SkeletonBar(height: 12)
+                }
+                .padding(.horizontal, 10).frame(height: 30)
+                .background(RoundedRectangle(cornerRadius: 7).fill(Theme.textPrimary.opacity(0.05)))
             }
-            .font(.system(size: 12))
-            .foregroundStyle(Theme.textDim)
-            .padding(.horizontal, 2)
         case let .found(issue):
             VStack(alignment: .leading, spacing: 4) {
                 IssueRow(issue: issue, prominent: true)

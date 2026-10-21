@@ -23,17 +23,19 @@ struct StatusBar: View {
         let working = sessions.filter { $0.agent == .working }.count
         let waiting = sessions.filter { $0.agent == .blocked }.count
         let failed = sessions.filter { $0.agent == .failed }.count
-        let idle = sessions.filter { $0.agent == .idle }.count
         let collisions = Set(radar.byCheckout.values.flatMap { $0 }.filter { !$0.withBase }.flatMap(\.files)).count
         let behind = radar.byCheckout.values.flatMap { $0 }.filter(\.withBase).count
         let running = quorum.byKey.values.filter(\.running).count
         let landings = landing.steps.values.filter(\.isActive).count
         return HStack(spacing: 14) {
-            pip(Theme.blue.strong, working, L("working"))
-            pip(Theme.orange.strong, waiting, L("need you"), button: waiting > 0 ? { store.toggleInbox() } : nil)
-            pip(Theme.redTone.strong, failed, L("failed"))
-            pip(Theme.textDim, idle, L("idle"))
-            divider
+            if working > 0 { pip(Theme.blue.strong, working, L("working")) }
+            if waiting > 0 { pip(Theme.orange.strong, waiting, L("need you"), button: { store.toggleInbox() }) }
+            if failed > 0 { pip(Theme.redTone.strong, failed, L("failed")) }
+            if working + waiting + failed == 0 {
+                Text(sessions.isEmpty ? L("No open sessions")
+                     : sessions.count == 1 ? L("1 open session") : L("%d open sessions", sessions.count))
+                    .foregroundStyle(Theme.textMuted)
+            }
             fact("arrow.triangle.merge", collisions, collisions == 1 ? L("file collides") : L("files collide"),
                  tone: collisions > 0 ? Theme.orange.strong : nil)
             fact("arrow.down.to.line", behind, L("behind base"), tone: nil)
@@ -46,15 +48,15 @@ struct StatusBar: View {
             if let login = hub.account.login {
                 Text("gh:" + login).foregroundStyle(Theme.textFaint)
             }
-            Button { window.showHub.toggle() } label: {
-                Text("⌘H " + L("hub")).foregroundStyle(window.showHub ? Theme.textPrimary : Theme.textDim)
+            Button { window.goHome() } label: {
+                Text("⌘H " + L("Start")).foregroundStyle(Theme.textMuted)
             }
             .buttonStyle(.plain)
         }
         .font(Theme.label(size: 11))
         .lineLimit(1)
         .padding(.horizontal, 12)
-        .frame(height: 24)
+        .frame(height: 30)
         .frame(maxWidth: .infinity)
         .background(Theme.sidebar)
     }

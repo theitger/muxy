@@ -118,7 +118,7 @@ final class Landing: ObservableObject {
             quorumSince[workspace.id] = receipt.quorumSince
             proven[workspace.id] = receipt.provenHead
             if workspace.context.prState == .merged { set(.landed, for: workspace); continue }
-            switch receipt.recovery(accepted: Acceptance.shared.covers(workspace), agentWorking: workspace.agent == .working) {
+            switch receipt.recovery(agentWorking: workspace.agent == .working) {
             case .observe:
                 break
             case .inspect:
@@ -183,10 +183,6 @@ final class Landing: ObservableObject {
             ?? Queue.shared.problem
             ?? (TaskLedger.shared.persistenceBlocked ? TaskLedger.shared.problem : nil) {
             Store.shared.window(of: workspace)?.show(problem, seconds: 6)
-            return
-        }
-        guard Acceptance.shared.covers(workspace) else {
-            Store.shared.window(of: workspace)?.openAcceptance(workspace)
             return
         }
         if let reason = Queue.shared.landingBlocker(for: workspace) {
@@ -405,9 +401,8 @@ final class Landing: ObservableObject {
                     guard self.current(workspace, run) else { return }
                     if merged.status == 0 {
                         if let repo = workspace.context.repo { Acceptance.shared.invalidate(repo: repo, pr: pr) }
-                        self.set(.failed(L("The accepted commit changed. Inspect the result again.")), for: workspace)
                         workspace.primary?.refreshContext()
-                        Store.shared.window(of: workspace)?.openAcceptance(workspace)
+                        self.prove(workspace, checkout: checkout, root: root, pr: pr)
                     } else {
                         self.ask(workspace, L("The agent merges %@", state.start),
                                  "Merge \(state.start) into this branch, resolve anything that comes up, run the relevant tests, commit and push.")
@@ -424,10 +419,15 @@ final class Landing: ObservableObject {
         guard set(.proving, for: workspace) else { return }
         Task.detached(priority: .userInitiated) {
             let checks = ProofCheck.load(root: root)
+            let checkpoint = Self.checkedHead(in: checkout)
             await MainActor.run {
                 guard self.current(workspace, run) else { return }
+                guard let checkpoint else {
+                    self.set(.failed(L("The checkout changed. Commit the changes and try again.")), for: workspace)
+                    return
+                }
                 guard !checks.isEmpty else {
-                    self.push(workspace, checkout: checkout, pr: pr)
+                    self.push(workspace, checkout: checkout, pr: pr, checkpoint: checkpoint)
                     return
                 }
                 // Every check, on the files as they are now: never a run
@@ -453,35 +453,38 @@ final class Landing: ObservableObject {
                     case .cancelled:
                         self.set(.failed(L("Checks cancelled")), for: workspace)
                     case .passed, .skipped:
-                        self.push(workspace, checkout: checkout, pr: pr)
+                        guard result.tree == checkpoint.tree else {
+                            self.set(.failed(L("The checkout changed during checks. Run them again.")), for: workspace)
+                            return
+                        }
+                        self.push(workspace, checkout: checkout, pr: pr, checkpoint: checkpoint)
                     }
                 }
             }
         }
     }
 
-    private func push(_ workspace: Workspace, checkout: String, pr: Int) {
+    private func push(_ workspace: Workspace, checkout: String, pr: Int, checkpoint: CheckedHead) {
         let run = runs[workspace.id]
-        guard let repo = workspace.context.repo, let branch = workspace.context.branch,
-              let accepted = Acceptance.shared.acceptedHead(repo: repo, pr: pr) else {
-            set(.failed(L("The accepted commit changed. Inspect the result again.")), for: workspace)
+        guard let branch = workspace.context.branch else {
+            set(.failed(L("The checkout changed. Commit the changes and try again.")), for: workspace)
             return
         }
         guard set(.pushing, for: workspace) else { return }
         let reviewStatus = QuorumWatch.shared.status(for: workspace)
         Task.detached(priority: .userInitiated) {
-            guard let head = Self.checkedOutAcceptedHead(in: checkout, accepted: accepted) else {
+            guard Self.checkedHead(in: checkout) == checkpoint else {
                 await MainActor.run {
                     guard self.current(workspace, run), self.steps[workspace.id] == .pushing else { return }
-                    self.set(.failed(L("The accepted commit changed. Inspect the result again.")), for: workspace)
+                    self.set(.failed(L("The checkout changed during checks. Run them again.")), for: workspace)
                     workspace.primary?.refreshContext()
-                    Store.shared.window(of: workspace)?.openAcceptance(workspace)
                 }
                 return
             }
-            // Push the accepted object, not the moving HEAD ref. A checkout
-            // changed between this check and git's start cannot publish it.
+            let head = checkpoint.head
+            // Publish the checked object, never the moving HEAD ref.
             let result = Shell.execute(WorkState.git, ["push", "--quiet", "origin", "\(head):refs/heads/\(branch)"], in: checkout, timeout: 1200)
+            let unchanged = Self.checkedHead(in: checkout) == checkpoint
             await MainActor.run {
                 guard self.current(workspace, run), self.steps[workspace.id] == .pushing else { return }
                 guard result.status == 0 else {
@@ -489,11 +492,9 @@ final class Landing: ObservableObject {
                     self.set(.failed(L("Push failed: %@", reason)), for: workspace)
                     return
                 }
-                guard let repo = workspace.context.repo,
-                      Acceptance.shared.covers(repo: repo, pr: pr, head: head) else {
-                    self.set(.failed(L("The accepted commit changed. Inspect the result again.")), for: workspace)
+                guard unchanged else {
+                    self.set(.failed(L("The checkout changed during checks. Run them again.")), for: workspace)
                     workspace.primary?.refreshContext()
-                    Store.shared.window(of: workspace)?.openAcceptance(workspace)
                     return
                 }
                 self.proven[workspace.id] = head
@@ -516,11 +517,20 @@ final class Landing: ObservableObject {
         }
     }
 
-    nonisolated static func checkedOutAcceptedHead(in checkout: String, accepted: String) -> String? {
+    struct CheckedHead: Equatable {
+        let head: String
+        let tree: String
+    }
+
+    /// A proof belongs to a clean checkout and one immutable commit/tree pair.
+    /// Failed status reads and edits made while reading are never treated as clean.
+    nonisolated static func checkedHead(in checkout: String) -> CheckedHead? {
         guard let head = Shell.run(WorkState.git, ["rev-parse", "HEAD"], in: checkout),
-              head.lowercased() == accepted.lowercased()
-        else { return nil }
-        return head
+              let tree = Shell.run(WorkState.git, ["rev-parse", "HEAD^{tree}"], in: checkout) else { return nil }
+        let status = Shell.execute(WorkState.git, ["status", "--porcelain"], in: checkout)
+        guard status.status == 0, status.output.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              Shell.run(WorkState.git, ["rev-parse", "HEAD"], in: checkout) == head else { return nil }
+        return CheckedHead(head: head, tree: tree)
     }
 
     private func merge(_ workspace: Workspace, checkout: String, pr: Int) {

@@ -39,10 +39,7 @@ struct WindowRoot: View {
                 if model.workspaces.isEmpty {
                     store.restoreSessions(into: model)
                 }
-                if model.workspaces.isEmpty {
-                    model.newWorkspace()
-                    model.workspaces.first?.isLaunchDefault = true
-                }
+                model.goHome()
             } else {
                 store.window(windowID)?.claimed = true
             }
@@ -55,27 +52,21 @@ struct ContentView: View {
     @ObservedObject var window: WindowModel
 
     var body: some View {
-        Group {
-            if store.sidebarVisible {
-                stage
-            } else {
-                // Wings away: the terminal fills the window, like Ghostty.
-                VStack(spacing: 0) {
-                    if window.showHub {
-                        HubView(store: store, window: window, sidebarFolded: true)
-                    } else if let workspace = window.selectedWorkspace {
-                        TabBarView(store: store, window: window, workspace: workspace)
-                        WithPreview(workspace: workspace, cornerRadius: 0) {
-                            WorkspaceContent(workspace: workspace)
-                        }
-                            .overlay { ResultOverlay(window: window, workspace: workspace) }
-                            .overlay { ReviewOverlay(window: window) }
-                    } else {
-                        EmptyState()
-                    }
+        VStack(spacing: 0) {
+            StageTopBar(store: store, window: window)
+                .frame(height: StageMetrics.topBar)
+                .background(Theme.sidebar)
+            HStack(spacing: 0) {
+                if store.sidebarVisible && !window.isTerminalFocused {
+                    WingsView(store: store, window: window)
+                        .frame(width: store.sidebarWidth)
+                        .overlay(alignment: .trailing) { SidebarHandle(store: store) }
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                destination
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(Theme.bg)
             }
+            if !window.isTerminalFocused { StatusBar(store: store, window: window) }
         }
         .overlay(alignment: .top) {
             if window.showSwitcher {
@@ -96,9 +87,13 @@ struct ContentView: View {
                     Color.black.opacity(0.12)
                         .contentShape(Rectangle())
                         .onTapGesture { window.showNewSession = false }
-                    NewSessionView(store: store, window: window)
-                        .padding(.top, 90)
-                        .transition(.scale(scale: 0.97, anchor: .top).combined(with: .offset(y: 8)))
+                    ScrollView {
+                        NewSessionView(store: store, window: window)
+                            .background(DialogOutsideClick { window.showNewSession = false })
+                            .padding(.vertical, 32)
+                            .frame(maxWidth: .infinity)
+                    }
+                    .scrollIndicators(.never)
                 }
                 .transition(.opacity)
             }
@@ -130,47 +125,22 @@ struct ContentView: View {
         .ignoresSafeArea()
     }
 
-    /// Wings out: a title bar across, the wings, the session in front as a card.
-    private var stage: some View {
-        VStack(spacing: 0) {
-            stageLayout
-            StatusBar(store: store, window: window)
-        }
-    }
-
-    private var stageLayout: some View {
-        StageLayout(wingsWidth: store.sidebarWidth) {
-            StageTopBar(store: store, window: window)
-        } wings: {
-            WingsView(store: store, window: window)
-                .overlay(alignment: .trailing) { SidebarHandle(store: store) }
-        } stage: {
-            VStack(spacing: 0) {
-                if window.showHub {
-                    HubView(store: store, window: window)
-                        .clipShape(RoundedRectangle(cornerRadius: StageMetrics.radius, style: .continuous))
-                } else if let workspace = window.selectedWorkspace {
-                    TabBarView(store: store, window: window, workspace: workspace, onStage: true)
-                    WithPreview(workspace: workspace, cornerRadius: StageMetrics.radius) {
-                        WorkspaceContent(workspace: workspace, cornerRadius: StageMetrics.radius)
-                    }
-                        .overlay { ResultOverlay(window: window, workspace: workspace) }
-                        .overlay { ReviewOverlay(window: window) }
-                        // What a session fades in over when it takes the stage.
-                        .background(
-                            UnevenRoundedRectangle(
-                                bottomLeadingRadius: StageMetrics.radius,
-                                bottomTrailingRadius: StageMetrics.radius, style: .continuous
-                            )
-                            .fill(Theme.terminal)
-                        )
-                } else {
-                    EmptyState()
-                        .clipShape(RoundedRectangle(cornerRadius: StageMetrics.radius, style: .continuous))
-                }
+    @ViewBuilder private var destination: some View {
+        switch window.destination {
+        case .home:
+            HomeView(store: store, window: window)
+        case .library:
+            HubView(store: store, window: window)
+        case .workspace:
+            if let workspace = window.selectedWorkspace {
+                WorkbenchView(store: store, window: window, workspace: workspace)
+                    .id(workspace.id)
+            } else {
+                HomeView(store: store, window: window)
             }
         }
     }
+
 }
 
 /// Across the top with the wings out: the window's controls, what is on
@@ -180,39 +150,54 @@ private struct StageTopBar: View {
     @ObservedObject var window: WindowModel
 
     var body: some View {
-        HStack(spacing: 4) {
-            // The traffic lights.
-            Color.clear.frame(width: 72)
-            IconButton(symbol: "sidebar.left", help: L("Sidebar (⌘B)")) {
-                store.toggleSidebar()
+        HStack(spacing: 10) {
+            Color.clear.frame(width: 68)
+            IconButton(symbol: "sidebar.left", help: L("Sidebar (⌘B)")) { store.toggleSidebar() }
+            Button { window.goHome() } label: {
+                HStack(spacing: 7) {
+                    Text("muxy").font(.system(size: 15, weight: .bold, design: .rounded))
+                    Text("/").foregroundStyle(Theme.textFaint)
+                    Text(location).font(UI.control).lineLimit(1).truncationMode(.middle)
+                }
+                .foregroundStyle(Theme.textBody)
+            }.buttonStyle(.plain)
+            if window.destination == .workspace, let workspace = window.selectedWorkspace {
+                if let branch = workspace.context.branch, branch != workspace.title {
+                    Text(branch).font(UI.metadata).foregroundStyle(Theme.textMuted)
+                        .lineLimit(1).truncationMode(.middle)
+                }
+                PRBadge(pr: workspace.context.pr, status: workspace.prStatus)
             }
-            IconButton(
-                symbol: store.detailedWings ? "rectangle.grid.1x2" : "list.bullet",
-                help: store.detailedWings ? L("Simple Sessions") : L("Detailed Sessions")
-            ) {
-                store.toggleDetailedWings()
-            }
-            Spacer(minLength: 12)
-            if let workspace = window.selectedWorkspace {
-                StageTitle(
-                    title: workspace.title,
-                    place: [workspace.context.repo, workspace.subtitle].compactMap { $0 }.joined(separator: " · "),
-                    pr: workspace.context.pr,
-                    prStatus: workspace.prStatus,
-                    prURL: workspace.pullRequestURL
-                )
-            }
-            Spacer(minLength: 12)
-            HStack(spacing: 8) {
-                InboxPill(store: store, window: window)
-                HubButton(window: window)
-                TitleBarButton(symbol: "plus", title: L("New Session"), keys: "⌘N") {
-                    window.showNewSession = true
+            Spacer(minLength: 8)
+            if window.isTerminalFocused {
+                ActionButton(title: L("Exit terminal focus"), symbol: "arrow.down.right.and.arrow.up.left") {
+                    window.toggleTerminalFocus()
                 }
             }
+            IconButton(symbol: "magnifyingglass", help: L("Search sessions (⌘K)")) { window.showSwitcher = true }
+            ActionButton(title: L("New session"), symbol: "plus") { window.newTask() }
         }
-        .padding(.trailing, 10)
+        .padding(.trailing, 16)
+        .overlay(alignment: .bottom) { Rectangle().fill(Theme.hairline).frame(height: 1) }
     }
+
+    private var location: String {
+        switch window.destination {
+        case .home: return L("Start")
+        case .workspace: return window.selectedWorkspace?.title ?? L("Terminal")
+        case .library:
+            if let target = window.taskTarget { return target.title }
+            if window.reviewRun != nil { return L("Review") }
+            switch window.libraryPage {
+            case "queue": return L("Queue")
+            case "attention": return L("Needs you")
+            case "reviews": return L("Reviews")
+            case "worktrees": return L("Worktrees")
+            default: return L("Tasks")
+            }
+        }
+    }
+
 }
 
 /// The sidebar's edge: a hairline with a wider invisible grip. Drag to
@@ -260,28 +245,51 @@ private struct SidebarHandle: View {
 
 /// The active tab's terminal for one workspace.
 /// The terminal, and the app's preview beside it while one is open.
-private struct WithPreview<Terminal: View>: View {
+struct WithPreview<Terminal: View>: View {
     @ObservedObject var workspace: Workspace
     @ObservedObject private var previews = Previews.shared
     var cornerRadius: CGFloat
     @ViewBuilder var terminal: Terminal
+    @State private var showingPreview = true
+
+    private var terminalMinimum: CGFloat {
+        guard let view = workspace.selectedSession?.terminalView,
+              let columns = view.currentSurface?.gridSize.columns, columns > 0 else { return 800 }
+        // Use the actual terminal grid, including the user's font/zoom.
+        return max(800, ceil(view.bounds.width / CGFloat(columns) * 80) + 32)
+    }
 
     var body: some View {
         GeometryReader { geometry in
-            HStack(spacing: 0) {
+            if previews.port(open: workspace) == nil {
                 terminal
-                if previews.port(open: workspace) != nil {
+            } else if let width = WorkbenchLayout.previewWidth(available: geometry.size.width, terminalMinimum: terminalMinimum) {
+                HStack(spacing: 0) {
+                    terminal
                     Rectangle().fill(Theme.hairline).frame(width: 1)
-                    PreviewPane(workspace: workspace)
-                        .frame(width: max(320, geometry.size.width * 0.48))
-                        .clipShape(UnevenRoundedRectangle(bottomTrailingRadius: cornerRadius, style: .continuous))
+                    PreviewPane(workspace: workspace).frame(width: width)
+                }
+            } else {
+                VStack(spacing: 0) {
+                    HStack {
+                        Button(L("Terminal")) { showingPreview = false }
+                            .font(UI.control).foregroundStyle(showingPreview ? Theme.textMuted : Theme.textPrimary)
+                        Button(L("App preview")) { showingPreview = true }
+                            .font(UI.control).foregroundStyle(showingPreview ? Theme.textPrimary : Theme.textMuted)
+                        Spacer()
+                    }.buttonStyle(.plain).padding(.horizontal, 16).frame(height: 36).background(Theme.sidebar)
+                    if showingPreview { PreviewPane(workspace: workspace) }
+                    else { terminal }
                 }
             }
+        }
+        .onChange(of: previews.port(open: workspace)) { _, port in
+            if port != nil { showingPreview = true }
         }
     }
 }
 
-private struct WorkspaceContent: View {
+struct WorkspaceContent: View {
     @ObservedObject var workspace: Workspace
     var cornerRadius: CGFloat = 0
 
@@ -324,97 +332,5 @@ private struct Preparing: View {
             )
             .transition(.opacity)
         }
-    }
-}
-
-/// Nothing open: a calm serif headline and the few keys that matter.
-private struct EmptyState: View {
-    var body: some View {
-        VStack(alignment: .leading, spacing: 26) {
-            VStack(alignment: .leading, spacing: 8) {
-                Text(L("What are you working on?"))
-                    .font(.system(size: 34, weight: .regular, design: .serif))
-                    .tracking(-0.6)
-                    .foregroundStyle(Theme.textPrimary)
-                Text(L("Every session is a folder with its tabs."))
-                    .font(.system(size: 13))
-                    .foregroundStyle(Theme.textDim)
-            }
-            VStack(spacing: 0) {
-                hint(L("New Session"), "⌘N")
-                divider
-                hint(L("Search sessions"), "⌘K")
-                divider
-                hint(L("New Window"), "⇧⌘N")
-            }
-            .padding(.horizontal, 16)
-            .background(
-                RoundedRectangle(cornerRadius: 7, style: .continuous)
-                    .fill(Theme.surface.opacity(0.7))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 7, style: .continuous)
-                    .strokeBorder(Theme.hairline, lineWidth: 0.5)
-            )
-            .frame(width: 360)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Theme.bg)
-    }
-
-    private var divider: some View {
-        Rectangle().fill(Theme.hairline.opacity(0.7)).frame(height: 1)
-    }
-
-    private func hint(_ label: String, _ keys: String) -> some View {
-        HStack {
-            Text(label)
-                .font(.system(size: 13))
-                .foregroundStyle(Theme.textBody)
-            Spacer()
-            Kbd(keys)
-        }
-        .frame(height: 40)
-    }
-}
-
-/// Opens the hub (⌘H): issues, sessions in flight, worktrees.
-private struct HubButton: View {
-    @ObservedObject var window: WindowModel
-    @ObservedObject private var hub = HubModel.shared
-    @State private var hovered = false
-
-    var body: some View {
-        Button { window.showHub.toggle() } label: {
-            HStack(spacing: 6) {
-                Icon("square.grid.2x2", size: 10.5)
-                Text(L("Hub"))
-                    .font(.system(size: 12, weight: .medium))
-                let waiting = hub.issues.filter { hub.session(for: $0) == nil }.count
-                if waiting > 0 {
-                    Text(String(waiting))
-                        .font(.system(size: 10.5, weight: .semibold))
-                        .monospacedDigit()
-                        .padding(.horizontal, 5)
-                        .frame(height: 16)
-                        .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(Theme.textPrimary.opacity(0.08)))
-                }
-            }
-            .foregroundStyle(window.showHub || hovered ? Theme.textPrimary : Theme.textBody)
-            .padding(.horizontal, 10)
-            .frame(height: 28)
-            .background(
-                RoundedRectangle(cornerRadius: 7, style: .continuous)
-                    .fill(window.showHub ? Theme.fillActive : (hovered ? Theme.fillHover : .clear))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 7, style: .continuous)
-                    .strokeBorder(Theme.hairline, lineWidth: 0.5)
-            )
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .help(L("Hub: issues, sessions, worktrees (⌘H)"))
-        .onHover { hovered = $0 }
     }
 }

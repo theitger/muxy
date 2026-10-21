@@ -321,6 +321,14 @@ enum Quorum {
         return log
     }
 
+    /// Validate a fresh GitHub response against the PR snapshot selected on the board.
+    nonisolated static func openPullRequest(_ lookup: Git.Lookup, number: Int, expectedHead: String?) -> Git.PullRequest? {
+        guard let expectedHead, !expectedHead.isEmpty,
+              case let .found(pull) = lookup, pull.number == number, pull.state == .open,
+              pull.head?.lowercased() == expectedHead.lowercased() else { return nil }
+        return pull
+    }
+
     /// What babysit needs before it starts (it refuses otherwise): the
     /// PR's branch committed and the same here as on origin. Unpushed
     /// commits are pushed, a branch behind origin is moved up; uncommitted
@@ -336,13 +344,13 @@ enum Quorum {
               let remote = Shell.run(git, ["rev-parse", "FETCH_HEAD"], in: root)
         else { return L("Couldn't fetch %@ from GitHub.", branch) }
         guard accepted.map({ remote.lowercased() == $0.lowercased() }) ?? true else {
-            return L("The accepted commit changed. Inspect the result again.")
+            return L("The pull request changed. Refresh and try again.")
         }
         guard Shell.execute(git, ["rev-parse", "--verify", "--quiet", "refs/heads/\(branch)"], in: root).status == 0 else {
             return nil // only on origin: babysit works from there
         }
         guard let local = Shell.run(git, ["rev-parse", "refs/heads/\(branch)"], in: root) else {
-            return L("The accepted commit changed. Inspect the result again.")
+            return L("The pull request changed. Refresh and try again.")
         }
         let ahead = Shell.run(git, ["rev-list", "--count", "\(remote)..refs/heads/\(branch)"], in: root).flatMap(Int.init) ?? 0
         let behind = Shell.run(git, ["rev-list", "--count", "refs/heads/\(branch)..\(remote)"], in: root).flatMap(Int.init) ?? 0
@@ -350,7 +358,7 @@ enum Quorum {
         // but no other local head can replace the accepted commit.
         let matchesAccepted = accepted.map { local.lowercased() == $0.lowercased() } ?? true
         guard matchesAccepted || (ahead == 0 && behind > 0) else {
-            return L("The accepted commit changed. Inspect the result again.")
+            return L("The pull request changed. Refresh and try again.")
         }
         switch (ahead > 0, behind > 0) {
         case (false, false):
@@ -391,7 +399,10 @@ enum Quorum {
     static func start(_ kind: QuorumStatus.Kind, pr: Int, draft: Bool, root: String,
                       allowAutoMerge: Bool = false, follow: String? = nil) -> Bool {
         guard let log = launch(command(kind, pr: pr, draft: draft, allowAutoMerge: allowAutoMerge), in: root, name: "\(kind.rawValue)-\(pr)") else { return false }
-        if let follow { showLog(log, in: follow, focus: false) }
+        if let follow {
+            let repo = QuorumWatch.shared.slugs[root] ?? HubModel.shared.checkouts.first(where: { $0.value == root })?.key
+            showLog(log, in: follow, focus: false, reference: QuorumReference(root: root, number: pr, repo: repo, log: log))
+        }
         QuorumWatch.shared.start(always: true)
         DispatchQueue.main.asyncAfter(deadline: .now() + 3) { QuorumWatch.shared.refresh() }
         return true
@@ -400,9 +411,12 @@ enum Quorum {
     /// A run's output in a terminal of its own, live: quorum's own view,
     /// as when it ran in a tab. Closing it doesn't touch the run.
     @MainActor
-    static func showLog(_ log: String, in directory: String, focus: Bool = true) {
+    static func showLog(_ log: String, in directory: String, focus: Bool = true, reference: QuorumReference? = nil) {
         guard let window = Store.shared.activeWindow ?? Store.shared.windows.first else { return }
         let workspace = Store.shared.makeWorkspace(directory: directory, in: window)
+        var linked = reference
+        linked?.logOnly = true
+        workspace.quorumReference = linked
         Store.shared.runInNewTab("tail -n +1 -F \(quoted(log))", in: workspace)
         if let first = workspace.sessions.first, workspace.sessions.count > 1 { Store.shared.close(first, in: workspace) }
         guard focus else { return }
@@ -427,6 +441,9 @@ enum Quorum {
             Store.shared.window(of: workspace)?.show(L("quorum didn't start."))
             return
         }
+        let root = workspace.context.root ?? directory
+        let repo = QuorumWatch.shared.slugs[root] ?? HubModel.shared.checkouts.first(where: { $0.value == root })?.key
+        workspace.quorumReference = QuorumReference(root: root, number: pr, repo: repo, log: log)
         Store.shared.runInNewTab("tail -n +1 -F \(quoted(log))", in: workspace)
     }
 
@@ -503,13 +520,30 @@ final class QuorumWatch: ObservableObject {
         self.timer = timer
     }
 
+    func reference(for workspace: Workspace) -> QuorumReference? {
+        if let reference = workspace.quorumReference, reference.logOnly == true { return reference }
+        guard let root = workspace.context.root else { return workspace.quorumReference }
+        let repo = slugs[root] ?? HubModel.shared.checkouts.first(where: { $0.value == root })?.key
+        if let number = workspace.context.pr {
+            if let reference = workspace.quorumReference, reference.root == root, reference.number == number { return reference }
+            return QuorumReference(root: root, number: number, repo: repo)
+        }
+        if let reference = workspace.quorumReference { return reference }
+        // Older log sessions did not persist their PR identity.
+        if let log = workspace.sessions.compactMap({ QuorumReference.fromLogTitle($0.title, root: root, repo: repo) }).first {
+            return log
+        }
+        return nil
+    }
+
     func status(for workspace: Workspace) -> QuorumStatus? {
-        guard let pr = workspace.context.pr, let root = workspace.context.root, let slug = slugs[root] else { return nil }
-        return byKey["\(slug)#\(pr)"]
+        guard let reference = reference(for: workspace), let repo = reference.repo ?? slugs[reference.root] else { return nil }
+        let key = "\(repo)#\(reference.number)"
+        return byKey[key] ?? byKey.first(where: { $0.key.lowercased() == key.lowercased() })?.value
     }
 
     func refresh() {
-        let roots = Set(Store.shared.workspaces.compactMap(\.context.root)).subtracting(slugs.keys)
+        let roots = Set(Store.shared.workspaces.flatMap { [$0.context.root, $0.quorumReference?.root].compactMap { $0 } }).subtracting(slugs.keys)
         Task.detached(priority: .utility) {
             let statuses = Quorum.statuses()
             var found: [String: String] = [:]
@@ -537,10 +571,6 @@ final class QuorumWatch: ObservableObject {
     /// quorum in a new tab of the session, where you can watch it.
     func start(_ kind: QuorumStatus.Kind, in workspace: Workspace, allowAutoMerge: Bool = false) {
         guard let pr = workspace.context.pr else { return }
-        guard Acceptance.shared.covers(workspace) else {
-            Store.shared.window(of: workspace)?.openAcceptance(workspace)
-            return
-        }
         Quorum.run(kind, pr: pr, draft: workspace.context.isDraft, allowAutoMerge: allowAutoMerge, in: workspace)
         start(always: true)
         DispatchQueue.main.asyncAfter(deadline: .now() + 3) { self.refresh() }

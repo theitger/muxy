@@ -14,7 +14,7 @@ final class Queue: ObservableObject {
 
     /// Appended to the issue prompt: nobody answers until it is done.
     nonisolated static let unattendedNote = """
-    You are working unattended: nobody will answer questions until this is done. Decide sensibly on your own and note your assumptions in the pull request. When the work is done and the checks pass, commit, push the branch and open the pull request yourself, with "Closes" and the issue in its description.
+    You are working unattended: nobody will answer questions until this is done. Decide sensibly on your own and note your assumptions in the pull request. When the work is done and the checks pass, commit, push the branch and open a regular (non-draft) pull request yourself, with "Closes" and the issue in its description.
     """
 
     struct Item: Codable, Equatable, Identifiable {
@@ -534,8 +534,6 @@ final class Queue: ObservableObject {
         switch facts.step {
         case .approvePlan:
             return .finish(.planReady)
-        case .accept:
-            return .finish(.needsYou(L("Inspect and accept the implementation.")))
         case .answer:
             return .finish(.needsYou(L("The agent asks you something.")))
         case .land, .landing:
@@ -546,7 +544,7 @@ final class Queue: ObservableObject {
             guard settled else { return .wait }
             // Asked once and still no PR after a while: it's yours.
             return item.askedForPR ? .finish(.needsYou(L("No pull request was opened."))) : .askForPR
-        case .review:
+        case .accept, .review:
             guard settled else { return .wait }
             return facts.quorumInstalled && item.reviewCount < (item.limits ?? AutomationLimits()).reviewAttempts
                 ? .babysit : facts.quorumInstalled ? .finish(.needsYou(L("Review attempt limit reached."))) : .finish(.ready)

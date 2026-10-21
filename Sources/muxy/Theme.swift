@@ -34,7 +34,7 @@ enum Theme {
     static let textPrimary = dyn(light: 0x09090B, dark: 0xFAFAFA)
     static let textBody = dyn(light: 0x3F3F46, dark: 0xD4D4D8)
     static let textMuted = dyn(light: 0x71717A, dark: 0xA1A1AA)
-    static let textDim = dyn(light: 0x8E8E96, dark: 0x7A7A83)
+    static let textDim = dyn(light: 0x71717A, dark: 0xA1A1AA)
     static let textFaint = dyn(light: 0xB0B0B7, dark: 0x55555C)
     static let accent = dyn(light: 0xE8630C, dark: 0xFF8A2E)
     static let green = dyn(light: 0x2E7D32, dark: 0x28C840)

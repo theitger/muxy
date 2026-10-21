@@ -1,7 +1,7 @@
 import Foundation
 
-/// Human acceptance of a pull request's exact commit. Quorum and landing
-/// start only after this receipt exists for the current PR head.
+/// Optional human inspection of a pull request's exact commit. These
+/// receipts document inspection; quorum and landing do not require them.
 @MainActor
 final class Acceptance: ObservableObject {
     static let shared = Acceptance()

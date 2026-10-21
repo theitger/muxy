@@ -42,7 +42,8 @@ struct QuorumRunView: View {
                 HStack(spacing: 8) {
                     if let pr = status?.number, let log = Quorum.latestLog(pr: pr) {
                         SmallButton(title: L("Log"), symbol: "terminal") {
-                            Quorum.showLog(log, in: status.flatMap { HubModel.shared.checkout(of: $0.repo) } ?? Paths.home)
+                            let root = status.flatMap { HubModel.shared.checkout(of: $0.repo) } ?? Paths.home
+                            Quorum.showLog(log, in: root, reference: status.map { QuorumReference(root: root, number: pr, repo: $0.repo, log: log) })
                         }
                     }
                     if let url = status?.url {

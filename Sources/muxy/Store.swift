@@ -10,8 +10,6 @@ final class Store: ObservableObject {
     @Published private(set) var windows: [WindowModel] = []
     @AppStorage("sidebarVisible") var sidebarVisible = true
     @AppStorage("sidebarWidth") var sidebarWidth: Double = 256
-    /// Wings show each session's last lines; off: title and status only.
-    @AppStorage("detailedWings") var detailedWings = true
     /// Agents started by "New Session" skip their permission prompts.
     @AppStorage("skipPermissions") var skipPermissions = true
     /// Sessions come back after a quit, a crash or an update.
@@ -37,10 +35,6 @@ final class Store: ObservableObject {
 
     func toggleSidebar() {
         withAnimation(Theme.ease) { sidebarVisible.toggle() }
-    }
-
-    func toggleDetailedWings() {
-        withAnimation(Theme.ease) { detailedWings.toggle() }
     }
 
     // MARK: - Lifecycle
@@ -136,7 +130,7 @@ final class Store: ObservableObject {
         for session in workspaces.flatMap(\.sessions) where session.kind == .codex && !session.reportsByHook {
             session.refreshSnapshot()
         }
-        guard detailedWings, sidebarVisible else { return }
+        guard sidebarVisible else { return }
         for window in windows {
             guard let nsWindow = window.nsWindow, nsWindow.occlusionState.contains(.visible) else { continue }
             // The one on stage too: its card keeps its size and lines.
@@ -203,6 +197,7 @@ final class Store: ObservableObject {
                     continue
                 }
                 let workspace = makeWorkspace(directory: head.cwd, in: window, session: head)
+                workspace.quorumReference = savedWorkspace.quorumReference
                 tabs.compactMap { $0 }.dropFirst().forEach { add($0, to: workspace) }
                 if let index = savedWorkspace.selected, tabs.indices.contains(index), let tab = tabs[index] {
                     workspace.selectedSessionID = tab.id
@@ -237,7 +232,8 @@ final class Store: ObservableObject {
                 if workspace.id == window.selectedWorkspaceID { selected = list.count }
                 list.append(SavedSessions.Workspace(
                     tabs: pairs.map(\.1),
-                    selected: pairs.firstIndex { $0.0 == workspace.selectedSessionID }
+                    selected: pairs.firstIndex { $0.0 == workspace.selectedSessionID },
+                    quorumReference: workspace.quorumReference
                 ))
             }
             return list.isEmpty ? nil : SavedSessions.Window(workspaces: list, selected: selected)
@@ -296,10 +292,10 @@ final class Store: ObservableObject {
         return model
     }
 
-    /// ⇧⌘N — a new window with a fresh session, like ⌘N in Ghostty.
-    func newWindow(directory: String = Paths.home) {
+    /// A new window starts at Start; explicit directory opens still start work.
+    func newWindow(directory: String? = nil) {
         let model = makeWindow()
-        model.newWorkspace(directory: directory)
+        if let directory { model.newWorkspace(directory: directory) }
         openWindow?(id: "main", value: model.id)
     }
 
@@ -365,12 +361,13 @@ final class Store: ObservableObject {
         guard let window = window(of: workspace) else { return }
         if let session { workspace.selectedSessionID = session.id }
         window.select(workspace)
+        if session != nil { window.showSection(.terminal) }
         if window !== activeWindow { window.bringToFront() }
     }
 
     func toggleInbox() {
         guard let window = activeWindow else { return }
-        Inbox.shared.toggle(in: window)
+        window.openLibrary("attention")
     }
 
     /// Notification click.
@@ -753,6 +750,7 @@ final class Store: ObservableObject {
 
     private enum KeyCode {
         static let tab: UInt16 = 48
+        static let returnKey: UInt16 = 36
         static let down: UInt16 = 125
         static let up: UInt16 = 126
     }
@@ -764,6 +762,7 @@ final class Store: ObservableObject {
         let window = self.window(for: event.window) ?? activeWindow
 
         switch (mods, event.keyCode) {
+        case ([.command, .shift], KeyCode.returnKey): window?.toggleTerminalFocus(); return true
         case ([.command, .option], KeyCode.up): window?.selectWorkspace(offset: -1); return true
         case ([.command, .option], KeyCode.down): window?.selectWorkspace(offset: 1); return true
         case ([.control], KeyCode.tab): window?.selectTab(offset: 1); return true
@@ -781,7 +780,6 @@ final class Store: ObservableObject {
         if mods == [.command, .shift] {
             switch key {
             case "n": newWindow()
-            case "b": toggleDetailedWings()
             case "j": toggleInbox()
             case "d": window?.toggleReview()
             // Without a search open, ⇧⌘G stays the terminal's.
@@ -800,8 +798,10 @@ final class Store: ObservableObject {
             return true
         }
         switch key {
-        case "h": targetWindow().showHub.toggle()
-        case "n": targetWindow().showNewSession.toggle()
+        case "h": targetWindow().goHome()
+        case "n":
+            let target = targetWindow()
+            if target.showNewSession { target.showNewSession = false } else { target.newTask() }
         case "t": targetWindow().newTab()
         case "w": window?.closeCurrent()
         case "i": if let window { Results.shared.togglePanel(in: window) }
@@ -927,7 +927,7 @@ final class Store: ObservableObject {
 
     // MARK: - Menu commands
 
-    func newWorkspaceInFront() { targetWindow().showNewSession = true }
+    func newWorkspaceInFront() { targetWindow().newTask() }
     func newTabInFront() { targetWindow().newTab() }
     /// ⌥⌘N: no questions, a shell in home, like any terminal's ⌘N.
     func newShellInFront() {

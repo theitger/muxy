@@ -9,8 +9,48 @@ enum DebugDriver {
     static func handle(action: String, value: String?, store: Store, reply: (Bool, String) -> Void) {
         guard let window = store.activeWindow ?? store.windows.first else { return reply(false, "no window") }
         switch action {
+        case "ui-state":
+            return reply(true, "newSession=\(window.showNewSession) destination=\(window.destination) sessions=\(window.workspaces.count) page=\(window.libraryPage)")
+        case "home":
+            window.goHome()
+        case "focus-terminal":
+            window.toggleTerminalFocus()
+        case "window-id":
+            guard let number = window.nsWindow?.windowNumber else { return reply(false, "no window") }
+            return reply(true, String(number))
+        case "scrollbars":
+            guard let content = window.nsWindow?.contentView else { return reply(false, "no view") }
+            func describe(_ view: NSView) -> [String] {
+                var lines: [String] = []
+                if let scroll = view as? NSScrollView {
+                    lines.append("width=\(Int(scroll.bounds.width)) style=\(scroll.scrollerStyle == .legacy ? "legacy" : "overlay") visible=\(scroll.verticalScroller?.isHidden == false) scroller=\(String(describing: scroll.verticalScroller?.frame)) alpha=\(scroll.verticalScroller?.alphaValue ?? 0) knob=\(scroll.verticalScroller?.knobProportion ?? 0) content=\(Int(scroll.documentView?.bounds.height ?? 0)) viewport=\(Int(scroll.contentView.bounds.height))")
+                }
+                return lines + view.subviews.flatMap(describe)
+            }
+            return reply(true, describe(content).joined(separator: "\n"))
+        case "type":
+            guard let value, let session = window.selectedWorkspace?.selectedSession else { return reply(false, "no terminal") }
+            return reply(RemoteState.type(value, enter: true, into: session), "")
+        case "terminal-metrics":
+            guard let view = window.selectedWorkspace?.selectedSession?.terminalView,
+                  let grid = view.currentSurface?.gridSize else { return reply(false, "no surface") }
+            return reply(true, "\(grid.columns)x\(grid.rows) cells; \(Int(view.bounds.width))x\(Int(view.bounds.height)) pt")
+        case "terminal-text":
+            guard let session = window.selectedWorkspace?.selectedSession,
+                  let text = session.terminalView.currentSurface?.readText(screen: true) else { return reply(false, "no surface") }
+            return reply(true, text)
+        case "section":
+            guard let value, let section = WorkSection(rawValue: value) else { return reply(false, "unknown section") }
+            window.showSection(section)
+        case "resize":
+            guard let value, let nsWindow = window.nsWindow else { return reply(false, "invalid size") }
+            let parts = value.split(separator: "x").compactMap { Double($0) }
+            guard let width = parts.first else { return reply(false, "invalid size") }
+            nsWindow.setContentSize(NSSize(width: max(760, width), height: parts.count > 1 ? max(480, parts[1]) : 820))
+        case "search-tasks":
+            NotificationCenter.default.post(name: Notification.Name("muxy.debug.taskSearch"), object: value ?? "")
         case "hub":
-            UserDefaults.standard.set(value ?? "board", forKey: "hubPage")
+            window.libraryPage = value ?? "board"
             window.showHub = true
         case "close-hub":
             window.showHub = false
@@ -21,6 +61,12 @@ enum DebugDriver {
             else { window.openReview(scope: value == "branch" ? .branch : .lastTurn) }
         case "close-review":
             window.closeReview()
+        case "quorum-log":
+            guard let value, let status = QuorumWatch.shared.byKey[value], let number = status.number,
+                  let log = Quorum.latestLog(pr: number) else { return reply(false, "log not found") }
+            let root = HubModel.shared.checkout(of: status.repo) ?? Paths.home
+            Quorum.showLog(log, in: root, reference: QuorumReference(root: root, number: number, repo: status.repo, log: log))
+            window.showSection(.quorum)
         case "quorum":
             if let value {
                 guard let status = QuorumWatch.shared.byKey[value] else { return reply(false, "run not found") }
