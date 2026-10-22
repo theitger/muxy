@@ -15,6 +15,9 @@ import GhosttyTerminal
 final class TerminalSession: NSObject, ObservableObject, Identifiable {
     /// One ghostty app/config instance shared by all surfaces.
     static let controller: TerminalController = {
+        // Restored terminals can start before applicationDidFinishLaunching.
+        // Apply the saved appearance before an agent probes terminal colors.
+        AppAppearance.apply()
         Config.prepareGhosttyResources()
         let path = Paths.home + "/.config/ghostty/config"
         let existing = FileManager.default.fileExists(atPath: path) ? path : nil

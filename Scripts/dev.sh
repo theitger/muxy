@@ -15,6 +15,9 @@ cp "$REPO/.build/debug/muxy" "$APP/Contents/MacOS/muxy"
 cp -R "$REPO/.build/debug/muxy_muxy.bundle" "$APP/Contents/Resources/"
 cp "$REPO/Packaging/AppIcon.icns" "$APP/Contents/Resources/"
 cp "$REPO/Scripts/agent-hook.sh" "$APP/Contents/Resources/"
+# Serve the same phone frontend being tested in this checkout.
+pnpm --dir "$REPO/Prototypes/remote" build
+cp "$REPO/Prototypes/remote/dist/index.html" "$APP/Contents/Resources/remote.html"
 mkdir -p "$APP/Contents/Resources/bin"
 cp "$REPO/Scripts/muxy" "$APP/Contents/Resources/bin/"
 ditto "$REPO/.build/debug/Sparkle.framework" "$APP/Contents/Frameworks/Sparkle.framework"

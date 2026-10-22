@@ -325,8 +325,8 @@ final class RemoteConnection {
     private var lastParse = Date.distantPast
     private var lastHistoryRead = Date.distantPast
     private var parsing = false
-    /// Agent conversations whose log was looked for once already.
-    private var searched: Set<String> = []
+    /// A newly started conversation may not have created its log yet.
+    private var transcriptSearches: [String: Date] = [:]
 
     init(secret: Data, send: @escaping (Data) -> Void, close: @escaping () -> Void) {
         self.secret = secret
@@ -399,10 +399,10 @@ final class RemoteConnection {
             if let tab { RemoteState.markSeen(tab) }
             push()
         case "type":
-            guard let tab, RemoteState.type(message["text"] as? String ?? "", enter: message["enter"] as? Bool ?? false, into: tab) else {
-                return send(["t": "typed", "ok": false])
-            }
-            send(["t": "typed", "ok": true])
+            let accepted = tab.map { RemoteState.type(message["text"] as? String ?? "", enter: message["enter"] as? Bool ?? false, into: $0) } ?? false
+            var response: [String: Any] = ["t": "typed", "ok": accepted]
+            if let request = message["request"] as? String { response["request"] = request }
+            send(response)
         case "key":
             if let tab, let key = message["key"] as? String { RemoteState.press(key, in: tab) }
         case "choose":
@@ -503,9 +503,13 @@ final class RemoteConnection {
     /// — a busy Claude rewrites it constantly.
     private func pushChat(_ id: String, _ session: TerminalSession) {
         // A session restored after a restart: its log, found by the agent's id.
-        if session.transcriptPath == nil, let kind = session.kind, let id = session.agentSessionID,
-           searched.insert(id).inserted {
-            session.transcriptPath = Transcripts.locate(agent: kind, conversation: id)
+        if session.transcriptPath == nil, let kind = session.kind, let conversation = session.agentSessionID {
+            let key = "\(kind.rawValue):\(conversation)"
+            let now = Date()
+            if now.timeIntervalSince(transcriptSearches[key] ?? .distantPast) >= 5 {
+                transcriptSearches[key] = now
+                session.transcriptPath = Transcripts.locate(agent: kind, conversation: conversation)
+            }
         }
         guard let path = session.transcriptPath, !parsing,
               Date().timeIntervalSince(lastParse) >= 1 else { return }

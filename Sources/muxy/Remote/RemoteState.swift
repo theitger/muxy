@@ -20,6 +20,7 @@ enum RemoteState {
                 "agent": agentName(workspace.agent),
                 "attention": workspace.needsAttention,
                 "tabs": workspace.sessions.map(tab),
+                "selectedTab": workspace.selectedSessionID?.uuidString ?? "",
             ]
             if let kind = featured?.kind { item["agentKind"] = kind.rawValue }
             if let activity = featured?.snapshot?.activity { item["activity"] = activity }

@@ -55,6 +55,11 @@ enum German {
         "Task details": "Aufgabendetails",
         "Checks & result": "Checks & Ergebnis",
         "No review data available": "Keine Review-Daten verfügbar",
+        "Set up Quorum to review pull requests from this session.": "Richte Quorum ein, um Pull Requests aus dieser Session zu reviewen.",
+        "Set up Quorum": "Quorum einrichten",
+        "Quorum reviews pull requests. Open a pull request for this branch to start a review.": "Quorum reviewt Pull Requests. Öffne einen Pull Request für diesen Branch, um ein Review zu starten.",
+        "All reviews": "Alle Reviews",
+        "Review requires an open pull request and a local checkout.": "Für ein Review brauchst du einen offenen Pull Request und einen lokalen Checkout.",
         "Reviews, findings and fixes from the current quorum run.": "Reviews, Findings und Fixes des aktuellen Quorum-Laufs.",
         // Explicit session states and tool purposes
         "Run commands or talk to your coding agent here.": "Führe Befehle aus oder sprich hier mit deinem Coding-Agenten.",

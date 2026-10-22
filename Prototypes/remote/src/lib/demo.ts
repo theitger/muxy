@@ -233,8 +233,11 @@ export function useDemo(): Muxy {
     chats: { t1: chat, t3: chat.slice(0, 2), t2: chat.slice(0, 2), t4: [] },
     opened,
     watch: useCallback(() => {}, []),
-    type: useCallback((tab: string) => resolve(tab), [resolve]),
-    key: useCallback((_tab: string, _k: Key | string) => {}, []),
+    type: useCallback(async (tab: string) => {
+      resolve(tab)
+      return true
+    }, [resolve]),
+    key: useCallback((_tab: string, _k: Key | string) => true, []),
     choose: useCallback((tab: string) => resolve(tab), [resolve]),
     loadRepos: useCallback(() => {}, []),
     issues,

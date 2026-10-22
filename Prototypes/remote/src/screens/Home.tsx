@@ -29,8 +29,8 @@ export function Home({
   const waiting = sessions.filter(wantsYou).sort((a, b) => urgency(a) - urgency(b))
   // A step to take (a PR, a review, a fix, landing): its own list, ready to tap.
   const nextUp = sessions.filter((s) => !wantsYou(s) && actionable(s.next?.kind))
-  const running = sessions.filter((s) => !wantsYou(s) && !nextUp.includes(s) && s.agent === 'working')
-  const rest = sessions.filter((s) => !wantsYou(s) && !nextUp.includes(s) && s.agent !== 'working')
+  const running = sessions.filter((s) => !wantsYou(s) && !nextUp.includes(s) && (s.agent === 'working' || s.quorum?.running === true))
+  const rest = sessions.filter((s) => !wantsYou(s) && !nextUp.includes(s) && !running.includes(s))
   const groups = [...new Set(rest.map((s) => s.group))]
 
   return (

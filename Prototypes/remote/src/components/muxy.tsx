@@ -49,6 +49,9 @@ export const urgency = (s: Session) => (s.agent === 'blocked' ? 0 : s.agent === 
 /** One line on what a session is up to, and its tone. */
 export function status(s: Session): { text: string; tone: Tone; live?: boolean } {
   const who = agentName(s.agentKind)
+  if (s.quorum?.running && s.agent !== 'blocked' && s.agent !== 'failed') {
+    return { text: s.quorum.summary, tone: 'blue', live: true }
+  }
   switch (s.agent) {
     case 'blocked':
       return { text: t('%s is waiting for your answer', who), tone: 'orange' }

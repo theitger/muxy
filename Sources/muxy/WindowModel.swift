@@ -210,6 +210,13 @@ final class WindowModel: ObservableObject, Identifiable {
         if let review, review.workspace.id != workspace.id { self.review = nil }
     }
 
+    /// A session picked from the sidebar always opens its live terminal.
+    func openTerminal(_ workspace: Workspace) {
+        select(workspace)
+        review = nil
+        showSection(.terminal)
+    }
+
     func selectWorkspace(index: Int) {
         let ordered = orderedWorkspaces
         guard ordered.indices.contains(index) else { return }

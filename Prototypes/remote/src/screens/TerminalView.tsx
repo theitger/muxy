@@ -37,8 +37,8 @@ export function TerminalView({
 }: {
   screen?: Screen
   wrap: boolean
-  onType: (text: string, enter: boolean) => void
-  onKey: (key: Key | string) => void
+  onType: (text: string, enter: boolean) => boolean | void | Promise<boolean>
+  onKey: (key: Key | string) => boolean | void | Promise<boolean>
   busy?: boolean
   commands?: string[]
   /** Off where the chat has its own input below. */
@@ -142,11 +142,11 @@ export function TerminalView({
           placeholder={t('Command')}
           onType={(text, enter) => {
             stick.current = true
-            onType(text, enter)
+            return onType(text, enter)
           }}
           onKey={(k) => {
             stick.current = true
-            onKey(k)
+            return onKey(k)
           }}
         />
       )}

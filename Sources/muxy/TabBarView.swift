@@ -5,7 +5,6 @@ struct TabBarView: View {
     @ObservedObject var store: Store
     @ObservedObject var window: WindowModel
     @ObservedObject var workspace: Workspace
-    @ObservedObject private var quorum = QuorumWatch.shared
 
     var body: some View {
         HStack(spacing: 8) {
@@ -16,7 +15,7 @@ struct TabBarView: View {
                     }
                 }.padding(3)
             }.scrollIndicators(.never)
-            if window.isTerminalFocused, quorum.status(for: workspace) != nil || workspace.quorumReference != nil {
+            if window.isTerminalFocused {
                 SmallButton(title: "Quorum", symbol: "checkmark.shield") { window.showSection(.quorum) }
             }
             AppButton(workspace: workspace)
@@ -32,7 +31,7 @@ struct TabBarView: View {
         }
         .padding(.horizontal, 12)
         .frame(height: 36)
-        .background(Theme.terminal)
+        .background(Theme.surface)
     }
 }
 

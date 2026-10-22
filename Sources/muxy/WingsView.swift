@@ -93,7 +93,7 @@ private struct WingCard: View {
             close: { store.requestCloseWorkspace(workspace) }
         )
         .contentShape(Rectangle())
-        .onTapGesture { window.select(workspace) }
+        .onTapGesture { window.openTerminal(workspace) }
         .gesture(
             // Drop anywhere → its own window right there; on another
             // window's wings → moves into that window.

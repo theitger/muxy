@@ -15,7 +15,7 @@ struct WorkbenchView: View {
     private var availableSections: [WorkSection] {
         var sections: [WorkSection] = [.terminal]
         if workspace.context.checkout != nil, workspace.context.root != nil { sections.append(.inspect) }
-        if quorum.status(for: workspace) != nil || workspace.quorumReference != nil { sections.append(.quorum) }
+        sections.append(.quorum)
         return sections
     }
 
@@ -29,7 +29,6 @@ struct WorkbenchView: View {
         }
         .background(Theme.bg)
         .onChange(of: availableSections) {
-            if window.workSection == .quorum, !availableSections.contains(.quorum) { window.showSection(.terminal) }
             if window.workSection == .inspect, workspace.context.checkout == nil { window.showSection(.terminal) }
         }
     }
@@ -186,11 +185,35 @@ struct WorkbenchView: View {
             .padding(24).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         } else {
             VStack(alignment: .leading, spacing: 14) {
-                Text(L("No review data available")).font(UI.heading)
+                Text("Quorum").font(UI.title).foregroundStyle(Theme.textPrimary)
                 if let log = workspace.quorumReference?.log, FileManager.default.fileExists(atPath: log) {
+                    Text(L("No review data available")).font(UI.body).foregroundStyle(Theme.textMuted)
                     ActionButton(title: L("Log"), symbol: "terminal") { window.showSection(.terminal) }
+                } else if !Quorum.isInstalled {
+                    Text(L("Set up Quorum to review pull requests from this session."))
+                        .font(UI.body).foregroundStyle(Theme.textMuted)
+                    ActionButton(title: L("Set up Quorum"), symbol: "gearshape") {
+                        UserDefaults.standard.set(SettingsView.Pane.review.rawValue, forKey: "settingsPane")
+                        store.openSettings?()
+                    }
+                } else if workspace.context.pr != nil {
+                    Text(L("No review run for this task yet.")).font(UI.body).foregroundStyle(Theme.textMuted)
+                    if landing.canLand(workspace) {
+                        ActionButton(title: L("Review with quorum"), symbol: "checkmark.shield", primary: true) { take(.review) }
+                            .disabled(landing.step(for: workspace)?.isActive == true)
+                    } else {
+                        Text(L("Review requires an open pull request and a local checkout."))
+                            .font(UI.body).foregroundStyle(Theme.textMuted)
+                    }
+                } else {
+                    Text(L("No pull request linked")).font(UI.heading).foregroundStyle(Theme.textPrimary)
+                    Text(L("Quorum reviews pull requests. Open a pull request for this branch to start a review."))
+                        .font(UI.body).foregroundStyle(Theme.textMuted)
                 }
-                ActionButton(title: L("Reload"), symbol: "arrow.clockwise") { quorum.refresh() }
+                HStack(spacing: 8) {
+                    ActionButton(title: L("All reviews"), symbol: "list.bullet") { window.openLibrary("reviews") }
+                    ActionButton(title: L("Reload"), symbol: "arrow.clockwise") { quorum.refresh() }
+                }
             }.padding(24).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
     }

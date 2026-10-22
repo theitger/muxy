@@ -24,13 +24,16 @@ export function Composer({
   screen?: string
   busy?: boolean
   history?: string[]
-  onType: (text: string, enter: boolean) => void
-  onKey: (key: Key | string) => void
+  onType: (text: string, enter: boolean) => boolean | void | Promise<boolean>
+  onKey: (key: Key | string) => boolean | void | Promise<boolean>
   placeholder: string
   /** Typed into a terminal: a command line, keys, suggestions. */
   terminal?: boolean
 }) {
   const [draft, setDraft] = useState('')
+  const submitting = useRef(false)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [sendFailed, setSendFailed] = useState(false)
   const [focused, setFocused] = useState(false)
   const [ctrl, setCtrl] = useState(false)
   const field = useRef<HTMLTextAreaElement>(null)
@@ -52,14 +55,28 @@ export function Composer({
 
   const sendKeys = (list: string[]) => list.forEach((k, i) => setTimeout(() => onKey(k), i * 40))
 
-  function submit() {
-    if (draft.trim()) onType(terminal ? draft : draft.trim(), true)
-    else if (terminal) onKey('enter')
-    setDraft('')
+  async function submit() {
+    if (submitting.current) return
+    const text = draft
+    if (!text.trim() && !terminal) return
+    submitting.current = true
+    setIsSubmitting(true)
+    setSendFailed(false)
+    try {
+      const accepted = text.trim() ? await onType(terminal ? text : text.trim(), true) : await onKey('enter')
+      setSendFailed(accepted === false)
+      if (accepted !== false) setDraft((current) => current === text ? '' : current)
+    } catch {
+      setSendFailed(true)
+    } finally {
+      submitting.current = false
+      setIsSubmitting(false)
+    }
   }
 
   return (
-    <div className="relative z-10 border-t border-hair bg-surface/85 pb-[calc(env(safe-area-inset-bottom,0px)+6px)] backdrop-blur-xl backdrop-saturate-150 [.keyboard-open_&]:pb-1.5">
+    <div className="relative z-10 shrink-0 border-t border-hair bg-surface/85 pb-[calc(env(safe-area-inset-bottom,0px)+6px)] backdrop-blur-xl backdrop-saturate-150 [.keyboard-open_&]:pb-1.5">
+      {sendFailed && <p role="alert" className="px-4 pt-2 text-[13px] text-t2">{t('Input not confirmed. Check the terminal before trying again; your text is still here.')}</p>}
       {hint?.kind === 'menu' && (
         <div className="fade-in px-3 pt-2.5">
           {hint.question && <div className="mb-1.5 px-1 text-[13px] text-t3">{hint.question}</div>}
@@ -160,7 +177,7 @@ export function Composer({
             onFocus={() => setFocused(true)}
             onBlur={() => setFocused(false)}
             onKeyDown={(e) => {
-              if (terminal && e.key === 'Enter' && !e.shiftKey) {
+              if (terminal && e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
                 e.preventDefault()
                 submit()
               }
@@ -182,20 +199,19 @@ export function Composer({
             )}
           />
         </div>
-        {busy && !draft ? (
+        {busy && !draft && (
           <Tap label={t('Stop')} onPress={() => onKey('esc')} className="size-[38px] shrink-0 rounded-full bg-t1 text-bg">
             <Square className="size-[13px]" fill="currentColor" strokeWidth={0} />
           </Tap>
-        ) : (
-          <Tap
-            label={draft ? t('Send') : 'Return'}
-            onPress={submit}
-            disabled={!terminal && !draft.trim()}
-            className={cn('size-[38px] shrink-0 rounded-full transition-colors duration-150', draft.trim() ? 'bg-brand text-bg' : 'bg-active text-t3')}
-          >
-            <ArrowUp className="size-[20px]" strokeWidth={2.6} />
-          </Tap>
         )}
+        <Tap
+          label={isSubmitting ? t('Sending …') : draft ? t('Send') : 'Return'}
+          onPress={submit}
+          disabled={isSubmitting || (!terminal && !draft.trim())}
+          className={cn('size-[38px] shrink-0 rounded-full transition-colors duration-150', draft.trim() ? 'bg-brand text-bg' : 'bg-active text-t3')}
+        >
+          <ArrowUp className="size-[20px]" strokeWidth={2.6} />
+        </Tap>
       </form>
     </div>
   )

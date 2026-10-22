@@ -23,8 +23,8 @@ enum Theme {
         let rgb = TerminalColors.current == .neutral
             ? (dark ? TerminalColors.neutralDark : TerminalColors.neutralLight)
             : (dark ? ghostty.dark : ghostty.light)
-        return rgb.nsColor
-    }).opacity(ghostty.opacity)
+        return rgb.nsColor.withAlphaComponent(TerminalColors.current == .neutral ? 1 : ghostty.opacity)
+    })
 
     /// The sidebar and title bar, at exactly the terminal's opacity. Areas
     /// of different opacity side by side leave a visible line in Mission
