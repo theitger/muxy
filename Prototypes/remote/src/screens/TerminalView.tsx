@@ -4,7 +4,7 @@ import { cn } from '@/lib/utils'
 import { Composer } from '@/components/Composer'
 import { Tap } from '@/components/touch'
 import { t } from '@/lib/i18n'
-import type { Key, Screen } from '@/lib/protocol'
+import type { InputDelivery, Key, Screen } from '@/lib/protocol'
 
 export function stored(name: string, fallback: string) {
   try {
@@ -37,8 +37,8 @@ export function TerminalView({
 }: {
   screen?: Screen
   wrap: boolean
-  onType: (text: string, enter: boolean) => boolean | void | Promise<boolean>
-  onKey: (key: Key | string) => boolean | void | Promise<boolean>
+  onType: (text: string, enter: boolean) => boolean | void | InputDelivery | Promise<boolean | InputDelivery>
+  onKey: (key: Key | string) => boolean | void | InputDelivery | Promise<boolean | InputDelivery>
   busy?: boolean
   commands?: string[]
   /** Off where the chat has its own input below. */

@@ -28,6 +28,7 @@ export const de: Record<string, string> = {
 
   'Input not confirmed. Check the terminal before trying again; your text is still here.': 'Eingabe nicht bestätigt. Prüfe das Terminal vor einem neuen Versuch; dein Text bleibt erhalten.',
   'Sending …': 'Sende …',
+  'Text reached the terminal, but Enter was not confirmed. Check the terminal and press Return to submit.': 'Der Text ist im Terminal angekommen, aber Enter wurde nicht bestätigt. Prüfe das Terminal und drücke Return zum Absenden.',
 
   // Home
   'New Session': 'Neue Session',

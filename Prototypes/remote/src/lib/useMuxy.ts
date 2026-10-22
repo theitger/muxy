@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Channel, type ChannelState } from './channel'
 import { fromBase64URL } from './crypto'
 import { useDemo, isDemo } from './demo'
-import type { Account, ChatItem, Issue, Key, Repo, Screen, Session, StepKind } from './protocol'
+import type { InputDelivery, Account, ChatItem, Issue, Key, Repo, Screen, Session, StepKind } from './protocol'
 
 const SECRET_KEY = 'muxy.secret'
 const ROOM_KEY = 'muxy.room'
@@ -98,7 +98,7 @@ function useChannel() {
   const [account, setAccount] = useState<Account | null>(null)
   const [opened, setOpened] = useState<{ session: string | null; error?: string; at: number } | null>(null)
   const channel = useRef<Channel | null>(null)
-  const pendingInput = useRef(new Map<string, (accepted: boolean) => void>())
+  const pendingInput = useRef(new Map<string, (delivery: InputDelivery) => void>())
   const inputSequence = useRef(0)
   const inputOrder = useRef<string[]>([])
   const watching = useRef<{ tab: string; history: boolean } | null>(null)
@@ -134,7 +134,7 @@ function useChannel() {
             const request = typeof m.request === 'string' ? m.request : inputOrder.current[0]
             if (request) {
               inputOrder.current = inputOrder.current.filter((id) => id !== request)
-              pendingInput.current.get(request)?.(m.ok === true)
+              pendingInput.current.get(request)?.(m.ok === true ? 'accepted' : m.partial === true ? 'partial' : 'rejected')
             }
             break
           }
@@ -150,7 +150,7 @@ function useChannel() {
         setState(s)
         if (s !== 'open') {
           inputOrder.current = []
-          for (const finish of pendingInput.current.values()) finish(false)
+          for (const finish of pendingInput.current.values()) finish('unconfirmed')
         }
         // After a reconnect, tell muxy again what we're looking at.
         if (s === 'open' && watching.current) c.send({ t: 'watch', ...watching.current })
@@ -160,7 +160,7 @@ function useChannel() {
     c.start()
     return () => {
       inputOrder.current = []
-      for (const finish of pendingInput.current.values()) finish(false)
+      for (const finish of pendingInput.current.values()) finish('unconfirmed')
       c.stop()
     }
   }, [pairing])
@@ -172,21 +172,21 @@ function useChannel() {
 
   const type = useCallback(async (tab: string, text: string, enter = true) => {
     const request = `${Date.now()}-${++inputSequence.current}`
-    const accepted = await new Promise<boolean>((resolve) => {
-      const finish = (ok: boolean) => {
+    const accepted = await new Promise<InputDelivery>((resolve) => {
+      const finish = (delivery: InputDelivery) => {
         clearTimeout(timeout)
         pendingInput.current.delete(request)
-        resolve(ok)
+        resolve(delivery)
       }
-      const timeout = window.setTimeout(() => finish(false), 10000)
+      const timeout = window.setTimeout(() => finish('unconfirmed'), 10000)
       pendingInput.current.set(request, finish)
       inputOrder.current.push(request)
       if (!channel.current?.send({ t: 'type', tab, text, enter, request })) {
         inputOrder.current = inputOrder.current.filter((id) => id !== request)
-        finish(false)
+        finish('rejected')
       }
     })
-    if (!accepted) return false
+    if (accepted !== 'accepted') return accepted
     const line = text.trim()
     if (enter && line && !line.includes('\n')) {
       setSent((list) => {
@@ -195,7 +195,7 @@ function useChannel() {
         return next
       })
     }
-    return true
+    return 'accepted' as const
   }, [])
 
   // Newest first: what this phone sent, then the shell's own history.

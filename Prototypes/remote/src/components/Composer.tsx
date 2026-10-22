@@ -3,7 +3,7 @@ import { useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { cn } from '@/lib/utils'
 import { keysFor, readHint } from '@/lib/hints'
 import { t } from '@/lib/i18n'
-import type { Key } from '@/lib/protocol'
+import type { InputDelivery, Key } from '@/lib/protocol'
 import { Tap } from './touch'
 
 /**
@@ -24,8 +24,8 @@ export function Composer({
   screen?: string
   busy?: boolean
   history?: string[]
-  onType: (text: string, enter: boolean) => boolean | void | Promise<boolean>
-  onKey: (key: Key | string) => boolean | void | Promise<boolean>
+  onType: (text: string, enter: boolean) => boolean | void | InputDelivery | Promise<boolean | InputDelivery>
+  onKey: (key: Key | string) => boolean | void | InputDelivery | Promise<boolean | InputDelivery>
   placeholder: string
   /** Typed into a terminal: a command line, keys, suggestions. */
   terminal?: boolean
@@ -34,6 +34,7 @@ export function Composer({
   const submitting = useRef(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [sendFailed, setSendFailed] = useState(false)
+  const [partiallySent, setPartiallySent] = useState(false)
   const [focused, setFocused] = useState(false)
   const [ctrl, setCtrl] = useState(false)
   const field = useRef<HTMLTextAreaElement>(null)
@@ -58,14 +59,16 @@ export function Composer({
   async function submit() {
     if (submitting.current) return
     const text = draft
-    if (!text.trim() && !terminal) return
+    if (!text.trim() && !terminal && !partiallySent) return
     submitting.current = true
     setIsSubmitting(true)
     setSendFailed(false)
     try {
       const accepted = text.trim() ? await onType(terminal ? text : text.trim(), true) : await onKey('enter')
-      setSendFailed(accepted === false)
-      if (accepted !== false) setDraft((current) => current === text ? '' : current)
+      const failed = accepted === false || accepted === 'rejected' || accepted === 'unconfirmed'
+      setSendFailed(failed)
+      setPartiallySent(accepted === 'partial')
+      if (!failed) setDraft((current) => current === text ? '' : current)
     } catch {
       setSendFailed(true)
     } finally {
@@ -76,6 +79,7 @@ export function Composer({
 
   return (
     <div className="relative z-10 shrink-0 border-t border-hair bg-surface/85 pb-[calc(env(safe-area-inset-bottom,0px)+6px)] backdrop-blur-xl backdrop-saturate-150 [.keyboard-open_&]:pb-1.5">
+      {partiallySent && <p role="alert" className="px-4 pt-2 text-[13px] text-t2">{t('Text reached the terminal, but Enter was not confirmed. Check the terminal and press Return to submit.')}</p>}
       {sendFailed && <p role="alert" className="px-4 pt-2 text-[13px] text-t2">{t('Input not confirmed. Check the terminal before trying again; your text is still here.')}</p>}
       {hint?.kind === 'menu' && (
         <div className="fade-in px-3 pt-2.5">
@@ -207,7 +211,7 @@ export function Composer({
         <Tap
           label={isSubmitting ? t('Sending …') : draft ? t('Send') : 'Return'}
           onPress={submit}
-          disabled={isSubmitting || (!terminal && !draft.trim())}
+          disabled={isSubmitting || (!terminal && !partiallySent && !draft.trim())}
           className={cn('size-[38px] shrink-0 rounded-full transition-colors duration-150', draft.trim() ? 'bg-brand text-bg' : 'bg-active text-t3')}
         >
           <ArrowUp className="size-[20px]" strokeWidth={2.6} />

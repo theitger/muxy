@@ -1,5 +1,7 @@
 // What Muxy sends (RemoteState.swift, Transcript.swift).
 
+export type InputDelivery = 'accepted' | 'rejected' | 'partial' | 'unconfirmed'
+
 export type Agent = 'none' | 'idle' | 'working' | 'blocked' | 'failed'
 
 export type AgentKind = 'claude' | 'codex'

@@ -399,8 +399,8 @@ final class RemoteConnection {
             if let tab { RemoteState.markSeen(tab) }
             push()
         case "type":
-            let accepted = tab.map { RemoteState.type(message["text"] as? String ?? "", enter: message["enter"] as? Bool ?? false, into: $0) } ?? false
-            var response: [String: Any] = ["t": "typed", "ok": accepted]
+            let delivery = tab.map { RemoteState.typeDelivery(message["text"] as? String ?? "", enter: message["enter"] as? Bool ?? false, into: $0) } ?? .rejected
+            var response: [String: Any] = ["t": "typed", "ok": delivery == .accepted, "partial": delivery == .partial]
             if let request = message["request"] as? String { response["request"] = request }
             send(response)
         case "key":

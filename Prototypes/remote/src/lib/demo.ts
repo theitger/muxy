@@ -235,7 +235,7 @@ export function useDemo(): Muxy {
     watch: useCallback(() => {}, []),
     type: useCallback(async (tab: string) => {
       resolve(tab)
-      return true
+      return 'accepted' as const
     }, [resolve]),
     key: useCallback((_tab: string, _k: Key | string) => true, []),
     choose: useCallback((tab: string) => resolve(tab), [resolve]),

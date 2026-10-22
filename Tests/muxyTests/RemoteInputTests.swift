@@ -4,6 +4,34 @@ import XCTest
 
 @MainActor
 final class RemoteInputTests: XCTestCase {
+    func testRejectedTextDoesNotSubmitEnter() {
+        var entered = false
+        let delivery = RemoteState.deliverInput("continue", enter: true, sendText: { _ in false }, sendEnter: { entered = true; return true })
+        XCTAssertEqual(delivery, .rejected)
+        XCTAssertFalse(entered)
+    }
+
+    func testFailedEnterAfterAcceptedTextIsPartialDelivery() {
+        var written: [String] = []
+        let delivery = RemoteState.deliverInput("continue", enter: true, sendText: { written.append($0); return true }, sendEnter: { false })
+        XCTAssertEqual(delivery, .partial)
+        XCTAssertEqual(written, ["continue"])
+    }
+
+    func testFailedEmptyEnterIsRejectedWithoutWritingText() {
+        var wroteText = false
+        let delivery = RemoteState.deliverInput("", enter: true, sendText: { _ in wroteText = true; return true }, sendEnter: { false })
+        XCTAssertEqual(delivery, .rejected)
+        XCTAssertFalse(wroteText)
+    }
+
+    func testAcceptedPasteDoesNotSendUnrequestedEnter() {
+        var entered = false
+        let delivery = RemoteState.deliverInput("draft", enter: false, sendText: { $0 == "draft" }, sendEnter: { entered = true; return true })
+        XCTAssertEqual(delivery, .accepted)
+        XCTAssertFalse(entered)
+    }
+
     func testEncryptedInputFailureIsAcknowledgedAndCorrelated() throws {
         let secret = Data(repeating: 0x35, count: 32)
         var frames: [Data] = []

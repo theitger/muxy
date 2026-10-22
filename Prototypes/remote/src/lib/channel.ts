@@ -66,6 +66,7 @@ export class Channel {
     let gotHello = false
 
     ws.onmessage = (event) => {
+      if (this.stopped || this.ws !== ws) return
       const frame = new Uint8Array(event.data as ArrayBuffer)
       if (!this.keys) {
         // [0x01][muxy's ephemeral key]

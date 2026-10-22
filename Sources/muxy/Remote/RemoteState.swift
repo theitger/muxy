@@ -169,13 +169,28 @@ enum RemoteState {
 
     /// Typed text goes in like a paste (as Ghostty does for drops); Enter
     /// and special keys as real key events.
+    enum InputDelivery: String {
+        case accepted, rejected, partial
+    }
+
+    /// Text and Enter are separate writes. Preserve that distinction for callers
+    /// deciding whether to retry the text or only submit the terminal's draft.
+    static func deliverInput(_ text: String, enter: Bool, sendText: (String) -> Bool, sendEnter: () -> Bool) -> InputDelivery {
+        guard text.isEmpty || sendText(text) else { return .rejected }
+        guard !enter || sendEnter() else { return text.isEmpty ? .rejected : .partial }
+        return .accepted
+    }
+
+    static func typeDelivery(_ text: String, enter: Bool, into session: TerminalSession) -> InputDelivery {
+        guard let surface = session.terminalView.currentSurface else { return .rejected }
+        let result = deliverInput(text, enter: enter, sendText: surface.sendText, sendEnter: { press("enter", in: session) })
+        if result != .rejected { markSeen(session) }
+        return result
+    }
+
     @discardableResult
     static func type(_ text: String, enter: Bool, into session: TerminalSession) -> Bool {
-        guard let surface = session.terminalView.currentSurface else { return false }
-        guard text.isEmpty || surface.sendText(text) else { return false }
-        guard !enter || press("enter", in: session) else { return false }
-        markSeen(session)
-        return true
+        typeDelivery(text, enter: enter, into: session) == .accepted
     }
 
     /// A key the phone pressed: (macOS key code, Ghostty mods, text,
