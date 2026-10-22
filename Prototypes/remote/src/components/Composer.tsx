@@ -64,11 +64,14 @@ export function Composer({
     setIsSubmitting(true)
     setSendFailed(false)
     try {
-      const accepted = text.trim() ? await onType(terminal ? text : text.trim(), true) : await onKey('enter')
+      // A partial write already delivered its text. Retry only Enter through
+      // the acknowledged input path, even if the draft changed while waiting.
+      const onlyEnter = partiallySent || !text.trim()
+      const accepted = await onType(onlyEnter ? '' : terminal ? text : text.trim(), true)
       const failed = accepted === false || accepted === 'rejected' || accepted === 'unconfirmed'
       setSendFailed(failed)
-      setPartiallySent(accepted === 'partial')
-      if (!failed) setDraft((current) => current === text ? '' : current)
+      setPartiallySent(accepted === 'partial' || (failed && partiallySent))
+      if (!failed && !onlyEnter) setDraft((current) => current === text ? '' : current)
     } catch {
       setSendFailed(true)
     } finally {
@@ -80,7 +83,7 @@ export function Composer({
   return (
     <div className="relative z-10 shrink-0 border-t border-hair bg-surface/85 pb-[calc(env(safe-area-inset-bottom,0px)+6px)] backdrop-blur-xl backdrop-saturate-150 [.keyboard-open_&]:pb-1.5">
       {partiallySent && <p role="alert" className="px-4 pt-2 text-[13px] text-t2">{t('Text reached the terminal, but Enter was not confirmed. Check the terminal and press Return to submit.')}</p>}
-      {sendFailed && <p role="alert" className="px-4 pt-2 text-[13px] text-t2">{t('Input not confirmed. Check the terminal before trying again; your text is still here.')}</p>}
+      {sendFailed && <p role="alert" className="px-4 pt-2 text-[13px] text-t2">{t('Input not confirmed. Check the terminal before trying again.')}</p>}
       {hint?.kind === 'menu' && (
         <div className="fade-in px-3 pt-2.5">
           {hint.question && <div className="mb-1.5 px-1 text-[13px] text-t3">{hint.question}</div>}
@@ -209,7 +212,7 @@ export function Composer({
           </Tap>
         )}
         <Tap
-          label={isSubmitting ? t('Sending …') : draft ? t('Send') : 'Return'}
+          label={isSubmitting ? t('Sending …') : partiallySent ? 'Return' : draft ? t('Send') : 'Return'}
           onPress={submit}
           disabled={isSubmitting || (!terminal && !partiallySent && !draft.trim())}
           className={cn('size-[38px] shrink-0 rounded-full transition-colors duration-150', draft.trim() ? 'bg-brand text-bg' : 'bg-active text-t3')}
