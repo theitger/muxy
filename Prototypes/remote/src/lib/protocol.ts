@@ -1,5 +1,7 @@
 // What Muxy sends (RemoteState.swift, Transcript.swift).
 
+export type InputDelivery = 'accepted' | 'rejected' | 'partial' | 'unconfirmed'
+
 export type Agent = 'none' | 'idle' | 'working' | 'blocked' | 'failed'
 
 export type AgentKind = 'claude' | 'codex'
@@ -38,6 +40,8 @@ export type Session = {
   notice?: string
   pr?: { number: number; status: PRStatus }
   tabs: Tab[]
+  /** The tab selected on the Mac, including a Quorum log terminal. */
+  selectedTab?: string
   branch?: string
   /** The tab running the agent (idle or at work): where messages go. */
   agentTab?: string

@@ -89,6 +89,8 @@ enum TerminalColors: String, CaseIterable, Identifiable {
     static let neutralDark = RGB(hex: 0x09090B)
 
     private static let light = TerminalConfiguration { config in
+        config.withCustom("theme", "")
+        config.withBackgroundOpacity(1)
         config.withBackground("#ffffff")
         config.withForeground("#18181b")
         config.withCursorColor("#18181b")
@@ -102,6 +104,8 @@ enum TerminalColors: String, CaseIterable, Identifiable {
     }
 
     private static let dark = TerminalConfiguration { config in
+        config.withCustom("theme", "")
+        config.withBackgroundOpacity(1)
         config.withBackground("#09090b")
         config.withForeground("#fafafa")
         config.withCursorColor("#fafafa")

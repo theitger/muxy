@@ -57,6 +57,21 @@ final class NavigationTests: XCTestCase {
         XCTAssertEqual(window.workSection, .result)
     }
 
+    func testSidebarSessionOpensTerminalAfterInspectAndHome() {
+        let window = WindowModel()
+        let workspace = Workspace(windowID: window.id)
+        window.select(workspace)
+        window.showSection(.inspect)
+        window.goHome()
+        window.openTerminal(workspace)
+        XCTAssertEqual(window.selectedWorkspaceID, workspace.id)
+        XCTAssertEqual(window.destination, .workspace)
+        XCTAssertEqual(window.workSection, .terminal)
+        window.showSection(.quorum)
+        window.openTerminal(workspace)
+        XCTAssertEqual(window.workSection, .terminal)
+    }
+
     func testRepositoryStartDoesNotReuseThePreviouslyRequestedRepository() {
         let window = WindowModel()
         window.newTask(in: "/repo/a")

@@ -24,10 +24,11 @@ export function SessionScreen({
   urgentElsewhere: number
   onBack: () => void
 }) {
-  const [tabId, setTabId] = useState(() => (session.tabs.find((t) => t.kind === 'agent') ?? session.tabs[0])?.id)
+  const [tabId, setTabId] = useState(() => (session.tabs.find((t) => t.id === session.selectedTab) ?? session.tabs.find((t) => t.kind === 'agent') ?? session.tabs[0])?.id)
   const tab = session.tabs.find((t) => t.id === tabId) ?? session.tabs[0]
-  const [mode, setMode] = useState<'chat' | 'terminal'>(tab?.kind === 'agent' ? 'chat' : 'terminal')
+  const [mode, setMode] = useState<'auto' | 'terminal'>('auto')
   const [history, setHistory] = useState(false)
+  const [followRequest, setFollowRequest] = useState(0)
   const [wrap, setWrap] = useState(() => stored('muxy.wrap', '1') === '1')
   const [options, setOptions] = useState(false)
   const { watch } = muxy
@@ -43,13 +44,20 @@ export function SessionScreen({
   if (!tab) return null
   const st = status(session)
   const who = agentName(tab.agentKind)
-  const showChat = tab.kind === 'agent' && mode === 'chat'
-  const type = (text: string, enter: boolean) => muxy.type(tab.id, text, enter)
-  const key = (k: string) => muxy.key(tab.id, k)
+  const hasChat = tab.kind === 'agent' && !!items?.length
+  const showChat = hasChat && mode === 'auto'
+  const type = (text: string, enter: boolean) => {
+    setFollowRequest((value) => value + 1)
+    return muxy.type(tab.id, text, enter)
+  }
+  const key = (k: string) => {
+    setFollowRequest((value) => value + 1)
+    return muxy.key(tab.id, k)
+  }
 
   return (
     <div className="flex h-full flex-col bg-bg">
-      <header className="relative z-20 border-b border-hair bg-surface/85 pt-[env(safe-area-inset-top,0px)] backdrop-blur-xl backdrop-saturate-150">
+      <header className="relative z-20 shrink-0 border-b border-hair bg-surface/85 pt-[env(safe-area-inset-top,0px)] backdrop-blur-xl backdrop-saturate-150">
         <div className="grid h-11 grid-cols-[auto_1fr_auto] items-center gap-1 px-1.5">
           <button type="button" onClick={onBack} aria-label={t('Back to sessions')} className="flex h-11 items-center pr-2 text-brand active:opacity-40">
             <ChevronLeft className="size-[30px]" strokeWidth={2} />
@@ -64,14 +72,14 @@ export function SessionScreen({
             <div className={cn('truncate text-[12px] leading-tight', toneText[st.tone])}>{st.text}</div>
           </div>
           <div className="flex items-center justify-end">
-            {tab.kind === 'agent' && (
+            {hasChat && (
               <button
                 type="button"
-                onClick={() => setMode(mode === 'chat' ? 'terminal' : 'chat')}
-                aria-label={mode === 'chat' ? t('Show terminal') : t('Show chat')}
+                onClick={() => setMode(showChat ? 'terminal' : 'auto')}
+                aria-label={showChat ? t('Show terminal') : t('Show chat')}
                 className="grid size-11 place-items-center text-brand active:opacity-40"
               >
-                {mode === 'chat' ? <SquareTerminal className="size-[22px]" strokeWidth={2} /> : <MessageSquare className="size-[22px]" strokeWidth={2} />}
+                {showChat ? <SquareTerminal className="size-[22px]" strokeWidth={2} /> : <MessageSquare className="size-[22px]" strokeWidth={2} />}
               </button>
             )}
             {!showChat && (
@@ -90,7 +98,7 @@ export function SessionScreen({
                 type="button"
                 onClick={() => {
                   setTabId(t.id)
-                  setMode(t.kind === 'agent' ? 'chat' : 'terminal')
+                  setMode('auto')
                 }}
                 aria-current={t.id === tab.id}
                 className={cn(
@@ -118,34 +126,28 @@ export function SessionScreen({
       </header>
 
       {showChat ? (
-        <>
-          <ChatView key={tab.id} session={session} tab={tab} items={items} onChoose={(n) => muxy.choose(tab.id, n)} />
-          <Composer
-            busy={tab.agent === 'working'}
-            onType={type}
-            onKey={key}
-            placeholder={
-              tab.agent === 'working'
-                ? t("Message for when it's done")
-                : tab.agent === 'blocked'
-                  ? t('Or write what to do instead')
-                  : tab.agent === 'failed'
-                    ? t('“continue” restarts the turn')
-                    : t('Reply to %s', who)
-            }
-          />
-        </>
+        <ChatView key={tab.id} session={session} tab={tab} items={items} onChoose={(n) => muxy.choose(tab.id, n)} />
       ) : (
         <TerminalView
           key={tab.id}
           screen={muxy.screens[tab.id]}
           wrap={wrap}
-          busy={tab.agent === 'working'}
-          commands={tab.kind === 'shell' ? muxy.history : undefined}
+          composer={false}
+          followRequest={followRequest}
           onType={type}
           onKey={key}
         />
       )}
+      <Composer
+        key={`composer-${tab.id}`}
+        terminal={!showChat}
+        screen={!showChat ? muxy.screens[tab.id]?.text : undefined}
+        busy={tab.agent === 'working'}
+        history={tab.kind === 'shell' ? muxy.history : undefined}
+        onType={type}
+        onKey={key}
+        placeholder={tab.kind === 'agent' ? t('Reply to %s', who) : t('Command')}
+      />
 
       <BottomSheet open={options} onClose={() => setOptions(false)} title={t('View')} closeLabel={t('Done')}>
         <div className="mx-4 mt-2 overflow-hidden rounded-[12px] bg-raised">

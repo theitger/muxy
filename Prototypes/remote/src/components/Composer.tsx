@@ -1,9 +1,9 @@
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Square } from 'lucide-react'
-import { useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { cn } from '@/lib/utils'
 import { keysFor, readHint } from '@/lib/hints'
 import { t } from '@/lib/i18n'
-import type { Key } from '@/lib/protocol'
+import type { InputDelivery, Key } from '@/lib/protocol'
 import { Tap } from './touch'
 
 /**
@@ -24,16 +24,24 @@ export function Composer({
   screen?: string
   busy?: boolean
   history?: string[]
-  onType: (text: string, enter: boolean) => void
-  onKey: (key: Key | string) => void
+  onType: (text: string, enter: boolean) => boolean | void | InputDelivery | Promise<boolean | InputDelivery>
+  onKey: (key: Key | string) => boolean | void | InputDelivery | Promise<boolean | InputDelivery>
   placeholder: string
   /** Typed into a terminal: a command line, keys, suggestions. */
   terminal?: boolean
 }) {
   const [draft, setDraft] = useState('')
+  const submitting = useRef(false)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [sendFailed, setSendFailed] = useState(false)
+  const [partiallySent, setPartiallySent] = useState(false)
   const [focused, setFocused] = useState(false)
   const [ctrl, setCtrl] = useState(false)
   const field = useRef<HTMLTextAreaElement>(null)
+  // The input survives a display-mode change; terminal modifiers must not.
+  useEffect(() => {
+    if (!terminal) setCtrl(false)
+  }, [terminal])
   const hint = useMemo(() => (screen === undefined ? null : readHint(screen)), [screen])
 
   const suggestions = useMemo(() => {
@@ -52,14 +60,34 @@ export function Composer({
 
   const sendKeys = (list: string[]) => list.forEach((k, i) => setTimeout(() => onKey(k), i * 40))
 
-  function submit() {
-    if (draft.trim()) onType(terminal ? draft : draft.trim(), true)
-    else if (terminal) onKey('enter')
-    setDraft('')
+  async function submit() {
+    if (submitting.current) return
+    const text = draft
+    if (!text.trim() && !terminal && !partiallySent) return
+    submitting.current = true
+    setIsSubmitting(true)
+    setSendFailed(false)
+    try {
+      // A partial write already delivered its text. Retry only Enter through
+      // the acknowledged input path, even if the draft changed while waiting.
+      const onlyEnter = partiallySent || !text.trim()
+      const accepted = await onType(onlyEnter ? '' : terminal ? text : text.trim(), true)
+      const failed = accepted === false || accepted === 'rejected' || accepted === 'unconfirmed'
+      setSendFailed(failed)
+      setPartiallySent(accepted === 'partial' || (failed && partiallySent))
+      if (!failed && !onlyEnter) setDraft((current) => current === text ? '' : current)
+    } catch {
+      setSendFailed(true)
+    } finally {
+      submitting.current = false
+      setIsSubmitting(false)
+    }
   }
 
   return (
-    <div className="relative z-10 border-t border-hair bg-surface/85 pb-[calc(env(safe-area-inset-bottom,0px)+6px)] backdrop-blur-xl backdrop-saturate-150 [.keyboard-open_&]:pb-1.5">
+    <div className="relative z-10 shrink-0 border-t border-hair bg-surface/85 pb-[calc(env(safe-area-inset-bottom,0px)+6px)] backdrop-blur-xl backdrop-saturate-150 [.keyboard-open_&]:pb-1.5">
+      {partiallySent && <p role="alert" className="px-4 pt-2 text-[13px] text-t2">{t('Text reached the terminal, but Enter was not confirmed. Check the terminal and press Return to submit.')}</p>}
+      {sendFailed && <p role="alert" className="px-4 pt-2 text-[13px] text-t2">{t('Input not confirmed. Check the terminal before trying again.')}</p>}
       {hint?.kind === 'menu' && (
         <div className="fade-in px-3 pt-2.5">
           {hint.question && <div className="mb-1.5 px-1 text-[13px] text-t3">{hint.question}</div>}
@@ -141,7 +169,7 @@ export function Composer({
           submit()
         }}
       >
-        <div className={cn('flex min-h-[38px] flex-1 items-center rounded-[19px] border bg-raised px-3.5 transition-colors', ctrl ? 'border-brand' : 'border-hair')}>
+        <div className={cn('flex min-h-[38px] flex-1 items-center rounded-[19px] border bg-raised px-3.5 transition-colors', terminal && ctrl ? 'border-brand' : 'border-hair')}>
           <textarea
             ref={field}
             value={draft}
@@ -149,7 +177,7 @@ export function Composer({
             onChange={(e) => {
               const value = e.target.value
               // ⌃ armed: the next letter goes as a control key.
-              if (ctrl && value.length > draft.length) {
+              if (terminal && ctrl && value.length > draft.length) {
                 const letter = value.slice(-1).toLowerCase()
                 if (/[a-z]/.test(letter)) onKey(`ctrl-${letter}`)
                 setCtrl(false)
@@ -160,7 +188,7 @@ export function Composer({
             onFocus={() => setFocused(true)}
             onBlur={() => setFocused(false)}
             onKeyDown={(e) => {
-              if (terminal && e.key === 'Enter' && !e.shiftKey) {
+              if (terminal && e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
                 e.preventDefault()
                 submit()
               }
@@ -175,27 +203,26 @@ export function Composer({
             autoComplete="off"
             spellCheck={!terminal}
             enterKeyHint={terminal ? 'send' : 'enter'}
-            placeholder={ctrl ? t('Letter for ctrl') : placeholder}
+            placeholder={terminal && ctrl ? t('Letter for ctrl') : placeholder}
             className={cn(
               'block max-h-[148px] w-full resize-none bg-transparent py-[8px] text-[16px] leading-[22px] text-t1 outline-none placeholder:text-t4',
               terminal && 'font-mono placeholder:font-sans',
             )}
           />
         </div>
-        {busy && !draft ? (
+        {busy && !draft && (
           <Tap label={t('Stop')} onPress={() => onKey('esc')} className="size-[38px] shrink-0 rounded-full bg-t1 text-bg">
             <Square className="size-[13px]" fill="currentColor" strokeWidth={0} />
           </Tap>
-        ) : (
-          <Tap
-            label={draft ? t('Send') : 'Return'}
-            onPress={submit}
-            disabled={!terminal && !draft.trim()}
-            className={cn('size-[38px] shrink-0 rounded-full transition-colors duration-150', draft.trim() ? 'bg-brand text-bg' : 'bg-active text-t3')}
-          >
-            <ArrowUp className="size-[20px]" strokeWidth={2.6} />
-          </Tap>
         )}
+        <Tap
+          label={isSubmitting ? t('Sending …') : partiallySent ? 'Return' : draft ? t('Send') : 'Return'}
+          onPress={submit}
+          disabled={isSubmitting || (!terminal && !partiallySent && !draft.trim())}
+          className={cn('size-[38px] shrink-0 rounded-full transition-colors duration-150', draft.trim() ? 'bg-brand text-bg' : 'bg-active text-t3')}
+        >
+          <ArrowUp className="size-[20px]" strokeWidth={2.6} />
+        </Tap>
       </form>
     </div>
   )

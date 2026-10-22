@@ -15,6 +15,15 @@ cp "$REPO/.build/debug/muxy" "$APP/Contents/MacOS/muxy"
 cp -R "$REPO/.build/debug/muxy_muxy.bundle" "$APP/Contents/Resources/"
 cp "$REPO/Packaging/AppIcon.icns" "$APP/Contents/Resources/"
 cp "$REPO/Scripts/agent-hook.sh" "$APP/Contents/Resources/"
+# Serve the same phone frontend being tested in this checkout.
+if command -v pnpm >/dev/null 2>&1; then
+    pnpm --dir "$REPO/Prototypes/remote" install --frozen-lockfile --silent
+    pnpm --dir "$REPO/Prototypes/remote" build
+    cp "$REPO/Prototypes/remote/dist/index.html" "$APP/Contents/Resources/remote.html"
+else
+    rm -f "$APP/Contents/Resources/remote.html"
+    echo "[muxy] pnpm not found: dev app built without the phone frontend"
+fi
 mkdir -p "$APP/Contents/Resources/bin"
 cp "$REPO/Scripts/muxy" "$APP/Contents/Resources/bin/"
 ditto "$REPO/.build/debug/Sparkle.framework" "$APP/Contents/Frameworks/Sparkle.framework"

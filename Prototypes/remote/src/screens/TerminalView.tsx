@@ -4,7 +4,7 @@ import { cn } from '@/lib/utils'
 import { Composer } from '@/components/Composer'
 import { Tap } from '@/components/touch'
 import { t } from '@/lib/i18n'
-import type { Key, Screen } from '@/lib/protocol'
+import type { InputDelivery, Key, Screen } from '@/lib/protocol'
 
 export function stored(name: string, fallback: string) {
   try {
@@ -34,28 +34,37 @@ export function TerminalView({
   busy,
   commands,
   composer = true,
+  followRequest,
 }: {
   screen?: Screen
   wrap: boolean
-  onType: (text: string, enter: boolean) => void
-  onKey: (key: Key | string) => void
+  onType: (text: string, enter: boolean) => boolean | void | InputDelivery | Promise<boolean | InputDelivery>
+  onKey: (key: Key | string) => boolean | void | InputDelivery | Promise<boolean | InputDelivery>
   busy?: boolean
   commands?: string[]
   /** Off where the chat has its own input below. */
   composer?: boolean
+  /** A shared external composer sent input: resume following live output. */
+  followRequest?: number
 }) {
   const [size, setSize] = useState(() => Number(stored('muxy.fontSize', '12.5')))
   const [behind, setBehind] = useState(false)
   const scroller = useRef<HTMLDivElement>(null)
   const stick = useRef(true)
+  const lastFollowRequest = useRef(followRequest)
   const pinch = useRef<{ size: number } | null>(null)
 
   useLayoutEffect(() => {
     const el = scroller.current
     if (!el) return
+    if (lastFollowRequest.current !== followRequest) {
+      lastFollowRequest.current = followRequest
+      stick.current = true
+      setBehind(false)
+    }
     if (stick.current) el.scrollTop = el.scrollHeight
     else setBehind(true)
-  }, [screen?.text, wrap, size])
+  }, [screen?.text, wrap, size, followRequest])
 
   // Pinch with two fingers: Safari's gesture events carry the scale.
   useEffect(() => {
@@ -142,11 +151,11 @@ export function TerminalView({
           placeholder={t('Command')}
           onType={(text, enter) => {
             stick.current = true
-            onType(text, enter)
+            return onType(text, enter)
           }}
           onKey={(k) => {
             stick.current = true
-            onKey(k)
+            return onKey(k)
           }}
         />
       )}

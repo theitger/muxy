@@ -23,13 +23,17 @@ enum Theme {
         let rgb = TerminalColors.current == .neutral
             ? (dark ? TerminalColors.neutralDark : TerminalColors.neutralLight)
             : (dark ? ghostty.dark : ghostty.light)
-        return rgb.nsColor
-    }).opacity(ghostty.opacity)
+        return rgb.nsColor.withAlphaComponent(TerminalColors.current == .neutral ? 1 : ghostty.opacity)
+    })
 
     /// The sidebar and title bar, at exactly the terminal's opacity. Areas
     /// of different opacity side by side leave a visible line in Mission
     /// Control, where macOS redraws the window blur.
-    static let sidebar = dyn(light: 0xFAFAFA, dark: 0x111113).opacity(ghostty.opacity)
+    static let sidebar = Color(nsColor: NSColor(name: nil) { appearance in
+        let dark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+        return RGB(hex: dark ? 0x111113 : 0xFAFAFA).nsColor
+            .withAlphaComponent(TerminalColors.current == .neutral ? 1 : ghostty.opacity)
+    })
 
     static let textPrimary = dyn(light: 0x09090B, dark: 0xFAFAFA)
     static let textBody = dyn(light: 0x3F3F46, dark: 0xD4D4D8)
