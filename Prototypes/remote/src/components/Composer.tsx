@@ -1,5 +1,5 @@
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Square } from 'lucide-react'
-import { useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { cn } from '@/lib/utils'
 import { keysFor, readHint } from '@/lib/hints'
 import { t } from '@/lib/i18n'
@@ -38,6 +38,10 @@ export function Composer({
   const [focused, setFocused] = useState(false)
   const [ctrl, setCtrl] = useState(false)
   const field = useRef<HTMLTextAreaElement>(null)
+  // The input survives a display-mode change; terminal modifiers must not.
+  useEffect(() => {
+    if (!terminal) setCtrl(false)
+  }, [terminal])
   const hint = useMemo(() => (screen === undefined ? null : readHint(screen)), [screen])
 
   const suggestions = useMemo(() => {
@@ -165,7 +169,7 @@ export function Composer({
           submit()
         }}
       >
-        <div className={cn('flex min-h-[38px] flex-1 items-center rounded-[19px] border bg-raised px-3.5 transition-colors', ctrl ? 'border-brand' : 'border-hair')}>
+        <div className={cn('flex min-h-[38px] flex-1 items-center rounded-[19px] border bg-raised px-3.5 transition-colors', terminal && ctrl ? 'border-brand' : 'border-hair')}>
           <textarea
             ref={field}
             value={draft}
@@ -173,7 +177,7 @@ export function Composer({
             onChange={(e) => {
               const value = e.target.value
               // ⌃ armed: the next letter goes as a control key.
-              if (ctrl && value.length > draft.length) {
+              if (terminal && ctrl && value.length > draft.length) {
                 const letter = value.slice(-1).toLowerCase()
                 if (/[a-z]/.test(letter)) onKey(`ctrl-${letter}`)
                 setCtrl(false)
@@ -199,7 +203,7 @@ export function Composer({
             autoComplete="off"
             spellCheck={!terminal}
             enterKeyHint={terminal ? 'send' : 'enter'}
-            placeholder={ctrl ? t('Letter for ctrl') : placeholder}
+            placeholder={terminal && ctrl ? t('Letter for ctrl') : placeholder}
             className={cn(
               'block max-h-[148px] w-full resize-none bg-transparent py-[8px] text-[16px] leading-[22px] text-t1 outline-none placeholder:text-t4',
               terminal && 'font-mono placeholder:font-sans',

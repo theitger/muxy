@@ -28,6 +28,7 @@ export function SessionScreen({
   const tab = session.tabs.find((t) => t.id === tabId) ?? session.tabs[0]
   const [mode, setMode] = useState<'auto' | 'terminal'>('auto')
   const [history, setHistory] = useState(false)
+  const [followRequest, setFollowRequest] = useState(0)
   const [wrap, setWrap] = useState(() => stored('muxy.wrap', '1') === '1')
   const [options, setOptions] = useState(false)
   const { watch } = muxy
@@ -45,8 +46,14 @@ export function SessionScreen({
   const who = agentName(tab.agentKind)
   const hasChat = tab.kind === 'agent' && !!items?.length
   const showChat = hasChat && mode === 'auto'
-  const type = (text: string, enter: boolean) => muxy.type(tab.id, text, enter)
-  const key = (k: string) => muxy.key(tab.id, k)
+  const type = (text: string, enter: boolean) => {
+    setFollowRequest((value) => value + 1)
+    return muxy.type(tab.id, text, enter)
+  }
+  const key = (k: string) => {
+    setFollowRequest((value) => value + 1)
+    return muxy.key(tab.id, k)
+  }
 
   return (
     <div className="flex h-full flex-col bg-bg">
@@ -126,6 +133,7 @@ export function SessionScreen({
           screen={muxy.screens[tab.id]}
           wrap={wrap}
           composer={false}
+          followRequest={followRequest}
           onType={type}
           onKey={key}
         />

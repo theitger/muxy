@@ -34,6 +34,7 @@ export function TerminalView({
   busy,
   commands,
   composer = true,
+  followRequest,
 }: {
   screen?: Screen
   wrap: boolean
@@ -43,19 +44,27 @@ export function TerminalView({
   commands?: string[]
   /** Off where the chat has its own input below. */
   composer?: boolean
+  /** A shared external composer sent input: resume following live output. */
+  followRequest?: number
 }) {
   const [size, setSize] = useState(() => Number(stored('muxy.fontSize', '12.5')))
   const [behind, setBehind] = useState(false)
   const scroller = useRef<HTMLDivElement>(null)
   const stick = useRef(true)
+  const lastFollowRequest = useRef(followRequest)
   const pinch = useRef<{ size: number } | null>(null)
 
   useLayoutEffect(() => {
     const el = scroller.current
     if (!el) return
+    if (lastFollowRequest.current !== followRequest) {
+      lastFollowRequest.current = followRequest
+      stick.current = true
+      setBehind(false)
+    }
     if (stick.current) el.scrollTop = el.scrollHeight
     else setBehind(true)
-  }, [screen?.text, wrap, size])
+  }, [screen?.text, wrap, size, followRequest])
 
   // Pinch with two fingers: Safari's gesture events carry the scale.
   useEffect(() => {
